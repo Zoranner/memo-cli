@@ -1,0 +1,50 @@
+# Memo-skill 配置文件示例
+# 复制此文件到 ~/.memo/config.toml 并填写你的配置
+
+# 向量数据库路径(可选, 默认: ~/.memo/brain)
+# brain_path = "/path/to/your/brain"
+
+# ============ Embedding API 配置 ============
+
+# 提供商类型(可选: "openai", "ollama", 默认根据 base_url 自动推断)
+# embedding_provider = "openai"
+
+# API 端点(可选, 默认: https://api.openai.com/v1)
+# embedding_base_url = "https://api.openai.com/v1"
+
+# API 密钥(必填)
+embedding_api_key = "your-api-key-here"
+
+# 模型名称(必填)
+embedding_model = "your-model-name"
+
+# Embedding 维度(可选, 会自动推断)
+# embedding_dimension = 1536
+
+# ============ 搜索配置 ============
+
+# 返回结果数量上限
+search_limit = 5
+
+# 相似度阈值(0.0-1.0)
+similarity_threshold = 0.7
+
+# ============ 配置示例 ============
+
+# --- OpenAI 兼容 API (默认) ---
+# embedding_provider = "openai"
+# # embedding_base_url = "https://api.openai.com/v1"  # 可省略，使用默认值
+# embedding_api_key = "sk-..."
+# embedding_model = "text-embedding-3-small"
+
+# --- Ollama 本地部署 ---
+# embedding_provider = "ollama"
+# embedding_base_url = "http://localhost:11434/api"
+# embedding_api_key = ""  # Ollama 无需 key
+# embedding_model = "nomic-embed-text"
+
+# --- 其他 OpenAI 兼容 API ---
+# embedding_provider = "openai"
+# embedding_base_url = "https://your-api-endpoint/v1"
+# embedding_api_key = "your-key"
+# embedding_model = "your-model"
