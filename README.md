@@ -1,8 +1,19 @@
 # Memo CLI - Vector-based Knowledge Base
 
-A semantic search knowledge base tool powered by vector database, supports **OpenAI-compatible APIs**.
+A high-performance semantic search knowledge base tool powered by vector database. Supports **OpenAI-compatible APIs** and provides **AI Agent Skill** for seamless integration with AI coding assistants.
 
 [中文](docs/README_zh-CN.md)
+
+## ✨ Features
+
+- 🔍 **Semantic Search** - Intelligent search based on vector similarity, not just keyword matching
+- 🤖 **AI Agent Integration** - Built-in skill for Cursor, Windsurf, Claude Code, and other AI coding tools
+- 🏷️ **Tag Management** - Support tag classification and Markdown frontmatter auto-merge
+- ⏰ **Time Filtering** - Filter memories by time range with flexible date formats
+- 📝 **Markdown Support** - Auto parse and index markdown files with frontmatter
+- 🌐 **OpenAI Compatible** - Support all OpenAI-compatible APIs (OpenAI, Azure, etc.)
+- 🏠 **Local/Cloud** - Support Ollama local deployment and cloud APIs
+- ⚡ **High Performance** - Powered by LanceDB vector database with Rust implementation
 
 ## 📋 Quick Commands
 
@@ -20,16 +31,6 @@ A semantic search knowledge base tool powered by vector database, supports **Ope
 - `-n, --limit` - Number of search results (default: 5)
 - `-l, --local` - Use local database
 - `-g, --global` - Use global database
-
-## ✨ Features
-
-- 🔍 **Semantic Search** - Intelligent search based on vector similarity
-- 🏷️ **Tag Management** - Support tag classification and Markdown frontmatter
-- ⏰ **Time Filtering** - Filter memories by time range
-- 📝 **Markdown Support** - Auto parse and index markdown files
-- 🌐 **OpenAI Compatible** - Support all OpenAI-compatible APIs
-- 🏠 **Local/Cloud** - Support Ollama local deployment and cloud APIs
-- ⚡ **High Performance** - Powered by LanceDB vector database
 
 ## 🚀 Quick Start
 
@@ -55,7 +56,7 @@ embedding_model = "your-model-name"
 # embedding_provider = "openai"
 ```
 
-### 3. Usage
+### 3. Basic Usage
 
 ```bash
 # Embed text (with tags)
@@ -76,6 +77,21 @@ memo search "development experience" --after 2026-01-20 --limit 10
 # List all memories
 memo list
 ```
+
+### 4. AI Agent Integration (Optional)
+
+For **Cursor**, **Windsurf**, **Claude Code**, and other AI coding tools:
+
+```bash
+# Copy the agent skill to your AI tool's skills directory
+# For Cursor:
+cp -r skills/memo-brain ~/.cursor/skills/
+
+# For Windsurf (example):
+cp -r skills/memo-brain ~/.windsurf/skills/
+```
+
+Once installed, your AI assistant can automatically record and search memories during conversations. See the [AI Agent Integration](#-ai-agent-integration) section for details.
 
 ## ⚙️ Configuration
 
@@ -113,6 +129,84 @@ embedding_base_url = "http://localhost:11434/api"
 embedding_api_key = ""  # No key needed for local
 embedding_model = "nomic-embed-text"
 ```
+
+## 🤖 AI Agent Integration
+
+Memo CLI includes an **Agent Skill** (`skills/memo-brain/SKILL.md`) that enables AI coding assistants to automatically manage knowledge during conversations.
+
+### Supported AI Coding Tools
+
+- **Cursor** - Copy skill to `~/.cursor/skills/`
+- **Windsurf** - Copy skill to `~/.windsurf/skills/`
+- **Claude Code** - Follow tool-specific skill installation
+- **Any MCP-compatible tools** - Works with tools supporting Agent Skills
+
+### Key Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Auto-Record** | Captures valuable solutions, patterns, and debugging insights automatically |
+| **Context-Aware Search** | Retrieves relevant past experiences during conversations |
+| **Smart Triggering** | Recognizes phrases like "remember this" or "how did we solve this before" |
+| **Structured Format** | Uses consistent templates for better organization and retrieval |
+
+### Installation
+
+```bash
+# For Cursor
+cp -r skills/memo-brain ~/.cursor/skills/
+
+# For Windsurf (or other tools with similar structure)
+cp -r skills/memo-brain ~/.windsurf/skills/
+```
+
+### How It Works
+
+Once the skill is installed, your AI assistant recognizes natural language triggers:
+
+**Recording memories:**
+- "Remember this"
+- "Record this solution"
+- "Save this for later"
+
+**Searching memories:**
+- "How did we solve this before?"
+- "Check past memories"
+- "What did we do for similar issue?"
+- "Show recent work on..."
+
+**Example conversation:**
+
+```
+You: "Remember this: Rust error handling - use anyhow for apps, thiserror for libs"
+AI:  [Automatically executes] memo embed "..." --tags rust,error-handling
+     ✓ Recorded to memory brain
+
+You: "How did we handle async traits in Rust before?"
+AI:  [Automatically executes] memo search "rust async trait" -n 5
+     [Provides answer based on past experience]
+```
+
+### Manual CLI Usage
+
+You can still use the CLI directly without AI integration:
+
+```bash
+# Record structured knowledge
+memo embed "Rust async trait - Use async-trait crate
+
+背景：Direct async fn in trait causes compile error
+方案：Use #[async_trait] macro on trait and impl
+关键点：Both trait definition and impl need the macro" --tags rust,async
+
+# Search past solutions
+memo search "rust async trait problem" -n 5
+
+# View recent work
+memo search "database optimization" --after 2026-01-20
+```
+
+See [skills/memo-brain/SKILL.md](skills/memo-brain/SKILL.md) for detailed usage guidelines.
 
 ## 📚 Commands
 
@@ -346,12 +440,38 @@ Just configure the correct `embedding_base_url` and `embedding_api_key`.
 
 </details>
 
+<details>
+<summary><strong>Which AI coding tools are supported?</strong></summary>
+
+The Agent Skill works with:
+- **Cursor** - Copy skill to `~/.cursor/skills/`
+- **Windsurf** - Copy skill to `~/.windsurf/skills/` (or tool-specific location)
+- **Claude Code** - Follow tool-specific skill installation
+- **Any MCP-compatible tools** - Check your tool's documentation for skill installation path
+
+The skill is designed to be tool-agnostic and follows common agent skill patterns.
+
+</details>
+
+<details>
+<summary><strong>Can I use the CLI without AI integration?</strong></summary>
+
+Absolutely! The CLI works independently and provides full functionality:
+- **Manual CLI**: Complete control with explicit commands
+- **AI Agent**: Automated, conversational interface
+- **Combined**: Mix both approaches as needed
+
+The AI Agent Skill is entirely optional and adds convenience, not core functionality.
+
+</details>
+
 ---
 
 ## 📖 More Information
 
 - Check `config.example.toml` for complete configuration options
 - Use `memo <command> --help` for command help
+- See `skills/memo-brain/SKILL.md` for AI agent integration details
 
 ## 📜 License
 
