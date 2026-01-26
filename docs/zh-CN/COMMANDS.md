@@ -11,8 +11,8 @@ Memo CLI 所有命令的详细文档。
 - [`memo search`](#memo-search---搜索记忆) - 语义搜索
 - [`memo list`](#memo-list---列出记忆) - 列出所有记忆
 - [`memo update`](#memo-update---更新记忆) - 更新已有记忆
-- [`memo delete`](#memo-delete---删除记忆) - 删除记忆
 - [`memo merge`](#memo-merge---合并记忆) - 合并多条记忆
+- [`memo delete`](#memo-delete---删除记忆) - 删除记忆
 - [`memo clear`](#memo-clear---清空数据库) - 清空数据库
 
 ---
@@ -218,37 +218,6 @@ memo update abc123 --content "新内容" --tags rust,updated,important
 
 ---
 
-## `memo delete` - 删除记忆
-
-根据 ID 删除记忆。
-
-### 语法
-
-```bash
-memo delete <id> [OPTIONS]
-```
-
-### 参数与选项
-
-| 参数/选项 | 说明 |
-|----------|------|
-| `<id>` | 要删除的记忆 ID |
-| `-f, --force` | 跳过确认提示 |
-| `-l, --local` | 使用本地数据库 |
-| `-g, --global` | 使用全局数据库 |
-
-### 示例
-
-```bash
-memo delete abc123
-memo delete abc123 --force
-memo delete xyz789 --local
-```
-
-**注意：** 除非指定 `--force`，否则会提示输入 `yes` 确认删除。
-
----
-
 ## `memo merge` - 合并记忆
 
 将多条记忆合并为一条。
@@ -283,6 +252,37 @@ memo merge id1 id2 id3 --content "综合见解"
 ```
 
 **注意：** 合并后的记忆会保留原始记忆中最早的 `created_at` 时间戳。
+
+---
+
+## `memo delete` - 删除记忆
+
+根据 ID 删除记忆。
+
+### 语法
+
+```bash
+memo delete <id> [OPTIONS]
+```
+
+### 参数与选项
+
+| 参数/选项 | 说明 |
+|----------|------|
+| `<id>` | 要删除的记忆 ID |
+| `-f, --force` | 跳过确认提示 |
+| `-l, --local` | 使用本地数据库 |
+| `-g, --global` | 使用全局数据库 |
+
+### 示例
+
+```bash
+memo delete abc123
+memo delete abc123 --force
+memo delete xyz789 --local
+```
+
+**注意：** 除非指定 `--force`，否则会提示输入 `yes` 确认删除。
 
 ---
 

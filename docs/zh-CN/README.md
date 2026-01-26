@@ -26,8 +26,8 @@
 | `memo search <query>` | 语义搜索记忆 | `memo search "Rust 最佳实践" --after 2026-01-20` |
 | `memo list` | 列出所有记忆 | `memo list` |
 | `memo update <id>` | 更新已有记忆 | `memo update abc123 --content "新内容"` |
-| `memo delete <id>` | 删除记忆 | `memo delete abc123` |
 | `memo merge <ids>...` | 合并多条记忆 | `memo merge id1 id2 id3 --content "整合内容"` |
+| `memo delete <id>` | 删除记忆 | `memo delete abc123` |
 | `memo clear` | 清空数据库（危险） | `memo clear --local --force` |
 
 **常用参数：**

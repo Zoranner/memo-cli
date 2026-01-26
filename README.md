@@ -26,8 +26,8 @@ A high-performance semantic search memory store tool powered by vector database.
 | `memo search <query>` | Semantic search memories | `memo search "Rust best practices" --after 2026-01-20` |
 | `memo list` | List all memories | `memo list` |
 | `memo update <id>` | Update existing memory | `memo update abc123 --content "new content"` |
-| `memo delete <id>` | Delete memory | `memo delete abc123` |
 | `memo merge <ids>...` | Merge multiple memories | `memo merge id1 id2 id3 --content "merged"` |
+| `memo delete <id>` | Delete memory | `memo delete abc123` |
 | `memo clear` | Clear database (dangerous) | `memo clear --local --force` |
 
 **Common Options:**

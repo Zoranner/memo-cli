@@ -11,8 +11,8 @@ Detailed documentation for all Memo CLI commands.
 - [`memo search`](#memo-search---search-memories) - Semantic search
 - [`memo list`](#memo-list---list-memories) - List all memories
 - [`memo update`](#memo-update---update-memory) - Update existing memory
-- [`memo delete`](#memo-delete---delete-memory) - Delete memory
 - [`memo merge`](#memo-merge---merge-memories) - Merge multiple memories
+- [`memo delete`](#memo-delete---delete-memory) - Delete memory
 - [`memo clear`](#memo-clear---clear-database) - Clear database
 
 ---
@@ -218,37 +218,6 @@ memo update abc123 --content "New content" --tags rust,updated,important
 
 ---
 
-## `memo delete` - Delete Memory
-
-Delete a memory by ID.
-
-### Syntax
-
-```bash
-memo delete <id> [OPTIONS]
-```
-
-### Arguments & Options
-
-| Arg/Option | Description |
-|------------|-------------|
-| `<id>` | Memory ID to delete |
-| `-f, --force` | Skip confirmation prompt |
-| `-l, --local` | Use local database |
-| `-g, --global` | Use global database |
-
-### Examples
-
-```bash
-memo delete abc123
-memo delete abc123 --force
-memo delete xyz789 --local
-```
-
-**Note:** You'll be prompted to confirm by typing `yes` unless `--force` is specified.
-
----
-
 ## `memo merge` - Merge Memories
 
 Merge multiple memories into a single consolidated memory.
@@ -283,6 +252,37 @@ memo merge id1 id2 id3 --content "Combined insights"
 ```
 
 **Note:** The merged memory preserves the earliest `created_at` timestamp from the original memories.
+
+---
+
+## `memo delete` - Delete Memory
+
+Delete a memory by ID.
+
+### Syntax
+
+```bash
+memo delete <id> [OPTIONS]
+```
+
+### Arguments & Options
+
+| Arg/Option | Description |
+|------------|-------------|
+| `<id>` | Memory ID to delete |
+| `-f, --force` | Skip confirmation prompt |
+| `-l, --local` | Use local database |
+| `-g, --global` | Use global database |
+
+### Examples
+
+```bash
+memo delete abc123
+memo delete abc123 --force
+memo delete xyz789 --local
+```
+
+**Note:** You'll be prompted to confirm by typing `yes` unless `--force` is specified.
 
 ---
 

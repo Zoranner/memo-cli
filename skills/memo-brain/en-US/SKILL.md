@@ -11,11 +11,16 @@ Record and retrieve valuable knowledge using vector database semantic search.
 
 | Command | Purpose | Example |
 |---------|---------|---------|
-| `memo embed <text>` | Record memory | `memo embed "Context:... Solution:..." --tags rust,cli` |
+| `memo embed <text>` | Record memory (text only) | `memo embed "Context:... Solution:..." --tags rust,cli` |
 | `memo search <query>` | Search memories | `memo search "how to use rust async" -n 5` |
 | `memo list` | List all memories | `memo list` |
+| `memo update <id>` | Update memory | `memo update abc123 --content "new content"` |
+| `memo merge <ids>...` | Merge memories | `memo merge id1 id2 --content "merged"` |
+| `memo delete <id>` | Delete memory | `memo delete abc123` |
 
-**Note:** These commands require network access for embedding API. When using Shell tool, set `required_permissions: ["network"]` or `["all"]`.
+> **Network Access:** These commands require network access for embedding API. When using Shell tool, set `required_permissions: ["network"]` or `["all"]`.
+>
+> **Duplicate Detection:** When embedding, similar content will be detected with prompts. Follow the prompts as needed.
 
 ## Common Parameters
 
@@ -24,8 +29,8 @@ Record and retrieve valuable knowledge using vector database semantic search.
 | `-t, --tags` | Add tags (comma-separated) | - |
 | `-n, --limit` | Result count | 5 |
 | `--threshold` | Similarity threshold (0-1) | 0.7 |
-| `--after` | Filter by time (YYYY-MM-DD) | - |
-| `--before` | Filter by time (YYYY-MM-DD) | - |
+| `--after` | Filter by time (YYYY-MM-DD or YYYY-MM-DD HH:MM) | - |
+| `--before` | Filter by time (YYYY-MM-DD or YYYY-MM-DD HH:MM) | - |
 
 ---
 
@@ -207,6 +212,19 @@ memo embed "Rust error handling - Use anyhow for app-level code
 Context: Application code needs simple error propagation
 Solution: Use anyhow::Result as return type, ? for propagation
 Key points: Use thiserror for libs, anyhow for apps" --tags rust,error-handling
+```
+
+### Memory Management
+
+```bash
+# Update memory
+memo update abc123 --content "Updated content" --tags rust,updated
+
+# Delete memory
+memo delete abc123
+
+# Merge multiple memories
+memo merge id1 id2 id3 --content "Merged summary content"
 ```
 
 ### Time-Based Search
