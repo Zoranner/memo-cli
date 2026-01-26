@@ -47,11 +47,16 @@ fn main() -> Result<()> {
                 before,
                 local,
                 global,
-            } => service::search::search(&query, limit, threshold, after, before, local, global).await,
-            cli::Commands::List { local, global } => service::list::list(local, global).await,
-            cli::Commands::Clear { local, global, force } => {
-                service::clear::clear(local, global, force).await
+            } => {
+                service::search::search(&query, limit, threshold, after, before, local, global)
+                    .await
             }
+            cli::Commands::List { local, global } => service::list::list(local, global).await,
+            cli::Commands::Clear {
+                local,
+                global,
+                force,
+            } => service::clear::clear(local, global, force).await,
         }
     })
 }

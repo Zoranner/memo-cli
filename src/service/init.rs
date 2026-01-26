@@ -32,12 +32,15 @@ pub async fn initialize(local: bool) -> Result<()> {
         std::fs::write(&config_path, content)?;
 
         output.resource_action("Creating", "config", &config_path);
-        
+
         // 提示用户配置 API key
         eprintln!();
         output.note("⚠️  请编辑配置文件,设置你的 embedding_api_key");
         eprintln!("{:>12} 配置文件位置: {}", "", config_path.display());
-        eprintln!("{:>12} 支持 OpenAI、Azure OpenAI、Jina AI 等所有 OpenAI 兼容 API", "");
+        eprintln!(
+            "{:>12} 支持 OpenAI、Azure OpenAI、Jina AI 等所有 OpenAI 兼容 API",
+            ""
+        );
     }
 
     // 加载配置并确保目录存在

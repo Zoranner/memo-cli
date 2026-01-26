@@ -43,12 +43,21 @@ impl Output {
 
     /// 显示数据库信息（带模型）
     /// 格式: "    Database /path/to/db (123 records, text-embedding-v4/1024d)"
-    pub fn database_info_with_model(&self, path: &Path, record_count: usize, model: &str, dimension: usize) {
+    pub fn database_info_with_model(
+        &self,
+        path: &Path,
+        record_count: usize,
+        model: &str,
+        dimension: usize,
+    ) {
         eprintln!(
             "{:>12} {} {}",
             self.green.apply_to("Database"),
             path.display(),
-            self.dim.apply_to(format!("({} records, {}/{}d)", record_count, model, dimension))
+            self.dim.apply_to(format!(
+                "({} records, {}/{}d)",
+                record_count, model, dimension
+            ))
         );
     }
 
@@ -107,7 +116,7 @@ impl Output {
             self.bold.apply_to(title),
             self.dim.apply_to(format!("({})", date))
         );
-        
+
         let preview = self.format_content_preview(content);
         println!("    {}", self.dim.apply_to(preview));
         println!();
@@ -123,7 +132,7 @@ impl Output {
             self.bold.apply_to(title),
             self.dim.apply_to(format!("({})", date))
         );
-        
+
         let preview = self.format_content_preview(content);
         println!("    {}", self.dim.apply_to(preview));
         println!();
@@ -132,9 +141,9 @@ impl Output {
     /// 格式化内容预览：过滤换行、截断到 100 字符
     fn format_content_preview(&self, content: &str) -> String {
         // 将换行符替换为空格
-        let single_line = content.replace('\n', " ").replace('\r', " ");
+        let single_line = content.replace(['\n', '\r'], " ");
         let truncated: String = single_line.chars().take(100).collect();
-        
+
         if single_line.len() > 100 {
             format!("{}...", truncated.trim_end())
         } else {

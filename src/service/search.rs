@@ -31,10 +31,14 @@ pub async fn search(
     let record_count = table.count_rows(None).await.unwrap_or(0);
 
     // 检查 API key（Ollama 不需要）
-    let is_ollama = config.embedding_provider.as_ref()
+    let is_ollama = config
+        .embedding_provider
+        .as_ref()
         .map(|p| p.to_lowercase() == "ollama")
         .unwrap_or_else(|| {
-            config.embedding_base_url.as_ref()
+            config
+                .embedding_base_url
+                .as_ref()
                 .map(|url| url.contains("ollama") || url.contains("11434"))
                 .unwrap_or(false)
         });
@@ -47,17 +51,28 @@ pub async fn search(
         eprintln!("    {}", Style::new().cyan().apply_to("memo init"));
         eprintln!();
         eprintln!("  然后编辑配置文件并设置你的 API key：");
-        eprintln!("    {}", Style::new().dim().apply_to(
-            if force_local {
+        eprintln!(
+            "    {}",
+            Style::new().dim().apply_to(if force_local {
                 "./.memo/config.toml"
             } else {
                 "~/.memo/config.toml"
-            }
-        ));
+            })
+        );
         eprintln!();
         eprintln!("  配置示例：");
-        eprintln!("    {}", Style::new().dim().apply_to("embedding_api_key = \"sk-...\""));
-        eprintln!("    {}", Style::new().dim().apply_to("embedding_model = \"text-embedding-3-small\""));
+        eprintln!(
+            "    {}",
+            Style::new()
+                .dim()
+                .apply_to("embedding_api_key = \"sk-...\"")
+        );
+        eprintln!(
+            "    {}",
+            Style::new()
+                .dim()
+                .apply_to("embedding_model = \"text-embedding-3-small\"")
+        );
         eprintln!();
         anyhow::bail!("Missing required configuration");
     }
@@ -94,7 +109,7 @@ pub async fn search(
             "title",
             "content",
             "updated_at",
-            "_distance",  // 必须包含 _distance 用于相似度计算
+            "_distance", // 必须包含 _distance 用于相似度计算
         ]))
         .limit(query_limit)
         .execute()
@@ -186,7 +201,10 @@ pub async fn search(
     }
 
     if results.is_empty() {
-        output.info(&format!("No results found above threshold {:.2}", threshold));
+        output.info(&format!(
+            "No results found above threshold {:.2}",
+            threshold
+        ));
     }
 
     Ok(())

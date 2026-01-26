@@ -53,36 +53,39 @@ impl EmbeddingModel {
     }
 
     /// 推断提供商类型
-    fn infer_provider(base_url: &Option<String>, provider: &Option<String>) -> (ProviderType, String) {
+    fn infer_provider(
+        base_url: &Option<String>,
+        provider: &Option<String>,
+    ) -> (ProviderType, String) {
         // 优先使用配置中指定的 provider
         if let Some(p) = provider {
             let provider_type = match p.to_lowercase().as_str() {
                 "ollama" => ProviderType::Ollama,
-                "openai" | _ => ProviderType::OpenAI,
+                _ => ProviderType::OpenAI,
             };
-            
-            let url = base_url.clone().unwrap_or_else(|| {
-                match provider_type {
-                    ProviderType::Ollama => "http://localhost:11434/api".to_string(),
-                    ProviderType::OpenAI => "https://api.openai.com/v1".to_string(),
-                }
+
+            let url = base_url.clone().unwrap_or_else(|| match provider_type {
+                ProviderType::Ollama => "http://localhost:11434/api".to_string(),
+                ProviderType::OpenAI => "https://api.openai.com/v1".to_string(),
             });
-            
+
             return (provider_type, url);
         }
 
         // 根据 base_url 自动推断
         match base_url {
             Some(url) => {
-                if url.contains("localhost") || url.contains("127.0.0.1") || url.contains("ollama") {
+                if url.contains("localhost") || url.contains("127.0.0.1") || url.contains("ollama")
+                {
                     (ProviderType::Ollama, url.clone())
                 } else {
                     (ProviderType::OpenAI, url.clone())
                 }
             }
-            None => {
-                (ProviderType::OpenAI, "https://api.openai.com/v1".to_string())
-            }
+            None => (
+                ProviderType::OpenAI,
+                "https://api.openai.com/v1".to_string(),
+            ),
         }
     }
 
@@ -95,9 +98,16 @@ impl EmbeddingModel {
             384
         } else if model.contains("512") || model.contains("small") && model.contains("bge") {
             512
-        } else if model.contains("768") || model.contains("nomic") || model.contains("v2") && model.contains("jina") {
+        } else if model.contains("768")
+            || model.contains("nomic")
+            || model.contains("v2") && model.contains("jina")
+        {
             768
-        } else if model.contains("1024") || model.contains("v3") || model.contains("v4") || model.contains("mxbai") {
+        } else if model.contains("1024")
+            || model.contains("v3")
+            || model.contains("v4")
+            || model.contains("mxbai")
+        {
             1024
         } else {
             // 默认维度

@@ -29,7 +29,7 @@ pub struct Config {
     pub brain_path: PathBuf,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_cache_dir: Option<PathBuf>,
-    
+
     // Embedding API 配置
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_provider: Option<String>,
@@ -41,7 +41,7 @@ pub struct Config {
     pub embedding_model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub embedding_dimension: Option<usize>,
-    
+
     // 搜索配置
     #[serde(default = "default_search_limit")]
     pub search_limit: usize,
@@ -56,14 +56,14 @@ impl Default for Config {
         Self {
             brain_path: global_memo_dir.join("brain"),
             model_cache_dir: None,
-            
+
             // 默认使用 OpenAI API (需要用户配置 API key)
             embedding_provider: None,
             embedding_base_url: None,
             embedding_api_key: String::new(),
             embedding_model: "text-embedding-3-small".to_string(),
             embedding_dimension: None,
-            
+
             search_limit: 5,
             similarity_threshold: 0.7,
         }
@@ -93,21 +93,21 @@ impl Config {
             Ok(dir) => dir,
             Err(_) => return false,
         };
-        
+
         // 获取全局 .memo 目录的父目录（用户主目录）
         let global_parent = Self::global_memo_dir().parent().map(|p| p.to_path_buf());
-        
+
         // 如果当前目录就是用户主目录，不应该被当作本地配置
         if let Some(home) = global_parent {
             // 使用 canonicalize 解析符号链接，但如果失败就直接比较
             let current_canonical = current_dir.canonicalize().unwrap_or(current_dir.clone());
             let home_canonical = home.canonicalize().unwrap_or(home);
-            
+
             if current_canonical == home_canonical {
                 return false;
             }
         }
-        
+
         // 检查本地配置文件是否存在
         Self::local_memo_dir().join("config.toml").exists()
     }
@@ -231,6 +231,7 @@ impl Config {
     }
 
     /// 保存配置到全局目录
+    #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
         let global_memo_dir = Self::global_memo_dir();
         std::fs::create_dir_all(&global_memo_dir).with_context(|| {

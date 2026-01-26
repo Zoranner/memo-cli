@@ -52,10 +52,14 @@ pub async fn clear(local: bool, global: bool, skip_confirm: bool) -> Result<()> 
 
     // 显示警告信息
     output.warning("this will delete all memories");
-    
+
     let dim = console::Style::new().dim();
     println!("{:>12} {} database: {}", "", scope_name, db_path.display());
-    println!("{:>12} {} records will be deleted", "", dim.apply_to(format!("{}", record_count)));
+    println!(
+        "{:>12} {} records will be deleted",
+        "",
+        dim.apply_to(format!("{}", record_count))
+    );
 
     // 确认操作
     if !skip_confirm {

@@ -39,10 +39,14 @@ pub async fn embed(
     };
 
     // 检查 API key（Ollama 不需要）
-    let is_ollama = config.embedding_provider.as_ref()
+    let is_ollama = config
+        .embedding_provider
+        .as_ref()
         .map(|p| p.to_lowercase() == "ollama")
         .unwrap_or_else(|| {
-            config.embedding_base_url.as_ref()
+            config
+                .embedding_base_url
+                .as_ref()
                 .map(|url| url.contains("ollama") || url.contains("11434"))
                 .unwrap_or(false)
         });
@@ -55,17 +59,28 @@ pub async fn embed(
         eprintln!("    {}", Style::new().cyan().apply_to("memo init"));
         eprintln!();
         eprintln!("  然后编辑配置文件并设置你的 API key：");
-        eprintln!("    {}", Style::new().dim().apply_to(
-            if force_local {
+        eprintln!(
+            "    {}",
+            Style::new().dim().apply_to(if force_local {
                 "./.memo/config.toml"
             } else {
                 "~/.memo/config.toml"
-            }
-        ));
+            })
+        );
         eprintln!();
         eprintln!("  配置示例：");
-        eprintln!("    {}", Style::new().dim().apply_to("embedding_api_key = \"sk-...\""));
-        eprintln!("    {}", Style::new().dim().apply_to("embedding_model = \"text-embedding-3-small\""));
+        eprintln!(
+            "    {}",
+            Style::new()
+                .dim()
+                .apply_to("embedding_api_key = \"sk-...\"")
+        );
+        eprintln!(
+            "    {}",
+            Style::new()
+                .dim()
+                .apply_to("embedding_model = \"text-embedding-3-small\"")
+        );
         eprintln!();
         anyhow::bail!("Missing required configuration");
     }
@@ -79,7 +94,12 @@ pub async fn embed(
     )?;
 
     // 显示数据库信息（包含模型和维度）
-    output.database_info_with_model(&config.brain_path, record_count, &config.embedding_model, model.dimension());
+    output.database_info_with_model(
+        &config.brain_path,
+        record_count,
+        &config.embedding_model,
+        model.dimension(),
+    );
     eprintln!();
 
     let table = if table_exists {
@@ -170,9 +190,7 @@ async fn embed_file(
 
 /// 规范化文本用于嵌入（移除多余空白符，提高匹配一致性）
 fn normalize_for_embedding(text: &str) -> String {
-    text.split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// 嵌入纯文本字符串
