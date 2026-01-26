@@ -138,7 +138,6 @@ impl Output {
         for line in content.lines() {
             println!("       {}", line);
         }
-        println!();
     }
 
     /// 显示列表项
@@ -162,18 +161,15 @@ impl Output {
         for line in content.lines() {
             println!("{}{}", indent, line);
         }
-        println!();
     }
 
     /// 显示注意事项（右对齐）
-    /// 自动在前面添加空行
     pub fn note(&self, message: &str) {
-        eprintln!();
         eprintln!("{:>12} {}", self.dim.apply_to("Note"), message);
     }
 
     /// 显示警告（红色，右对齐）
-    /// 自动在前后添加空行
+    /// 自动在前面添加空行
     pub fn warning(&self, message: &str) {
         eprintln!();
         eprintln!(

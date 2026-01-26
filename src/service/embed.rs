@@ -250,13 +250,21 @@ async fn embed_text(
                     duplicate_threshold
                 ));
 
-                for (score, id, content, _tags, updated) in similar_memories.iter() {
+                for (i, (score, id, content, _tags, updated)) in similar_memories.iter().enumerate()
+                {
                     output.search_result(*score, id, updated, content);
+
+                    // 如果不是最后一个结果，添加空行分隔
+                    if i < similar_memories.len() - 1 {
+                        println!();
+                    }
                 }
 
+                println!();
                 output.note("Use --force to add anyway, or update/merge/delete existing memories");
+                output.error("Embedding cancelled due to similar memories");
 
-                anyhow::bail!("Embedding cancelled due to similar memories");
+                std::process::exit(1);
             }
         }
     }

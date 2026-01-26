@@ -72,6 +72,11 @@ pub async fn list(force_local: bool, force_global: bool) -> Result<()> {
                 &updated,
                 contents.value(i),
             );
+
+            // 如果不是最后一个结果，添加空行分隔
+            if i < batch.num_rows() - 1 {
+                println!();
+            }
         }
     }
 

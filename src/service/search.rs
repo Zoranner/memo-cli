@@ -145,12 +145,17 @@ pub async fn search(
     results.truncate(limit);
 
     // 显示结果
-    for (score, id, timestamp, content) in &results {
+    for (i, (score, id, timestamp, content)) in results.iter().enumerate() {
         let updated = DateTime::from_timestamp_millis(*timestamp)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "N/A".to_string());
 
         output.search_result(*score, id, &updated, content);
+
+        // 如果不是最后一个结果，添加空行分隔
+        if i < results.len() - 1 {
+            println!();
+        }
     }
 
     if results.is_empty() {
