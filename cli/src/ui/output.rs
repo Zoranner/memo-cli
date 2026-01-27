@@ -206,10 +206,10 @@ impl Output {
     // === 私有辅助方法 ===
 
     /// 显示单个结果项（统一格式）
-    /// 格式: "[1/5] 0.89 id (date) [tag1, tag2]" 或 "[1/10] id (date) [tag1, tag2]"
-    ///       "            Content line 1"
-    ///       "            Content line 2"
-    fn result_item(&self, index: usize, total: usize, result: &QueryResult) {
+    /// 格式: "[0.89] id (date) [tag1, tag2]" 或 "id (date) [tag1, tag2]"
+    ///       "       Content line 1"
+    ///       "       Content line 2"
+    fn result_item(&self, _index: usize, _total: usize, result: &QueryResult) {
         let id = &result.id;
         let content = &result.content;
         let tags = &result.tags;
@@ -219,12 +219,9 @@ impl Output {
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "N/A".to_string());
 
-        // 构建索引部分
-        let index_part = format!("{}/{}", index, total);
-
-        // 构建分数部分（如果有）
+        // 构建分数部分（如果有，用中括号括起来）
         let score_part = if let Some(s) = score {
-            format!(" {}", Style::new().green().apply_to(format!("{:.2}", s)))
+            format!("{} ", self.green.apply_to(format!("[{:.2}]", s)))
         } else {
             String::new()
         };
@@ -237,18 +234,15 @@ impl Output {
         };
 
         println!(
-            "[{}]{} {} {}{}",
-            self.dim.apply_to(&index_part),
+            "{}{} {}{}",
             score_part,
             self.bold.apply_to(id),
             self.dim.apply_to(format!("({})", date)),
             tags_part
         );
 
-        // 计算缩进宽度：[index_part] + score_part(如果有) + 空格
-        // 由于 score_part 包含颜色代码，需要计算实际显示宽度
-        let score_width = if score.is_some() { 5 } else { 0 }; // " 0.89" = 5个字符
-        let indent_width = index_part.len() + 2 + score_width + 1; // [len] + score + 空格
+        // 计算缩进宽度：score_part(如果有) = "[0.89] " = 7个字符，否则0
+        let indent_width = if score.is_some() { 7 } else { 0 };
         let indent = " ".repeat(indent_width);
 
         // 全文显示，每行保持与 ID 对齐的缩进
