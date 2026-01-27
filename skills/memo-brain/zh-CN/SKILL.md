@@ -18,7 +18,7 @@ description: 管理和检索跨对话的上下文记忆，使用向量数据库�
 | `memo list` | 列出所有记忆 | `memo list` |
 | `memo update <id>` | 更新记忆 | `memo update abc123 --content "新内容" --tags rust,async` |
 | `memo merge <ids>...` | 合并记忆 | `memo merge id1 id2 --content "合并内容" --tags rust,cli` |
-| `memo delete <id>` | 删除记忆 | `memo delete abc123` |
+| `memo delete <id>` | 删除记忆 | `memo delete abc123 --force` |
 
 **重复检测：** 嵌入时如果检测到相似内容（相似度 > 0.85）会提示，应优先考虑合并或更新，避免盲目创建新记忆。
 
@@ -79,7 +79,7 @@ memo update abc123 --content "原有内容 + 新的细节和补充" --tags rust,
 memo merge id1 id2 --content "整合后的完整内容，涵盖两条记忆的要点" --tags rust,error-handling
 
 # 示例 C：删除后重新嵌入（内容完全替代）
-memo delete abc123
+memo delete abc123 --force
 memo embed "全新的完整内容..." --tags rust,optimization
 ```
 
@@ -190,7 +190,7 @@ memo embed "Rust 错误处理 - 应用层使用 anyhow
 memo update abc123 --content "更新后的内容" --tags rust,async
 
 # 删除记忆
-memo delete abc123
+memo delete abc123 --force
 
 # 合并多个记忆
 memo merge id1 id2 id3 --content "合并后的总结内容" --tags rust,cli
@@ -244,7 +244,7 @@ memo embed "CLI 错误退出 - exit vs bail 的选择..." --tags rust,cli,error
 memo embed "CLI 输出规范 - 禁止直接使用 println..." --tags rust,cli,output
 
 # 删除原来过大的记忆
-memo delete original-id
+memo delete original-id --force
 ```
 
 ### 基于时间的搜索

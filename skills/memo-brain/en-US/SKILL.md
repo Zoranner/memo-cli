@@ -18,7 +18,7 @@ Record and retrieve valuable knowledge using vector database semantic search.
 | `memo list` | List all memories | `memo list` |
 | `memo update <id>` | Update memory | `memo update abc123 --content "new content" --tags rust,async` |
 | `memo merge <ids>...` | Merge memories | `memo merge id1 id2 --content "merged" --tags rust,cli` |
-| `memo delete <id>` | Delete memory | `memo delete abc123` |
+| `memo delete <id>` | Delete memory | `memo delete abc123 --force` |
 
 **Duplicate Detection:** When embedding detects similar content (similarity > 0.85), prioritize merging or updating instead of blindly creating new memories.
 
@@ -79,7 +79,7 @@ memo update abc123 --content "Original content + new details and supplements" --
 memo merge id1 id2 --content "Consolidated content covering key points from both memories" --tags rust,error-handling
 
 # Example C: Delete and re-embed (complete replacement)
-memo delete abc123
+memo delete abc123 --force
 memo embed "Completely new content..." --tags rust,optimization
 ```
 
@@ -190,7 +190,7 @@ Key points: Use thiserror for libs, anyhow for apps" --tags rust,error-handling
 memo update abc123 --content "Updated content" --tags rust,async
 
 # Delete memory
-memo delete abc123
+memo delete abc123 --force
 
 # Merge multiple memories
 memo merge id1 id2 id3 --content "Merged summary content" --tags rust,cli
@@ -244,7 +244,7 @@ memo embed "CLI error exit - exit vs bail choice..." --tags rust,cli,error
 memo embed "CLI output rules - Prohibit direct println..." --tags rust,cli,output
 
 # Delete original oversized memory
-memo delete original-id
+memo delete original-id --force
 ```
 
 ### Time-Based Search
