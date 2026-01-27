@@ -11,8 +11,8 @@ clap = { version = "4.5", features = ["derive", "env"] }
 dialoguer = "0.11"
 console = "0.15"
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime (只启用需要的功能，加速编译)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 
 # LanceDB (official Rust SDK) - using older stable version
 lancedb = "0.23"
@@ -54,8 +54,21 @@ default = []
 name = "memo"
 path = "src/main.rs"
 
+[profile.dev]
+# 开发时快速编译（默认配置，显式声明便于理解）
+opt-level = 0
+incremental = true
+
 [profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
+# 日常 release 编译（平衡速度和性能）
+opt-level = 2
+lto = "thin"        # thin LTO：比 full 快 5-10 倍，性能损失 < 5%
+codegen-units = 16  # 并行编译，充分利用多核
 strip = true
+
+[profile.dist]
+# 最终发布版本（只在打包分发时使用：cargo build --profile dist）
+inherits = "release"
+opt-level = 3
+lto = true          # 完整 LTO，最大化性能
+codegen-units = 1   # 单线程代码生成，最大化优化
