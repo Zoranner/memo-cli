@@ -261,7 +261,29 @@ async fn embed_text(
                 }
 
                 println!();
-                output.note("Use --force to add anyway, or update/merge/delete existing memories");
+                
+                // 根据相似记忆数量提供更具体的建议
+                match similar_memories.len() {
+                    1 => {
+                        let id = &similar_memories[0].1;
+                        output.note(&format!("Consider updating the existing memory: memo update {}", id));
+                        output.note("Or delete it and add new: memo delete <id>, then embed again");
+                    }
+                    2 => {
+                        let id1 = &similar_memories[0].1;
+                        let id2 = &similar_memories[1].1;
+                        output.note(&format!("Consider merging similar memories: memo merge {} {}", id1, id2));
+                        output.note("Or update the most relevant one: memo update <id>");
+                    }
+                    _ => {
+                        output.note("Consider reorganizing memories:");
+                        output.note("  - Merge overlapping content: memo merge <id1> <id2> ...");
+                        output.note("  - Update the most relevant one: memo update <id>");
+                        output.note("  - Delete outdated ones: memo delete <id>");
+                    }
+                }
+                
+                output.note("Or use --force to add anyway (not recommended)");
                 output.error("Embedding cancelled due to similar memories");
 
                 std::process::exit(1);
