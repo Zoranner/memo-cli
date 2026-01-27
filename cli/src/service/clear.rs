@@ -1,8 +1,9 @@
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::db::{Connection, TableOperations};
 use crate::ui::Output;
+use memo_local::LocalStorageClient;
+use memo_types::{StorageBackend, StorageConfig};
 
 /// 清空数据库（高危操作）
 pub async fn clear(local: bool, global: bool, skip_confirm: bool) -> Result<()> {
@@ -29,16 +30,22 @@ pub async fn clear(local: bool, global: bool, skip_confirm: bool) -> Result<()> 
     }
 
     // 尝试获取记录数
-    let record_count = if let Ok(conn) = Connection::connect(&brain_path).await {
-        if TableOperations::table_exists(conn.inner(), "memories").await {
-            if let Ok(table) = TableOperations::open_table(conn.inner(), "memories").await {
-                table.count_rows(None).await.unwrap_or(0)
-            } else {
-                0
-            }
-        } else {
-            0
+    let config = if local || global {
+        Config {
+            brain_path: brain_path.clone(),
+            ..Default::default()
         }
+    } else {
+        Config::load()?
+    };
+
+    let storage_config = StorageConfig {
+        path: brain_path.to_string_lossy().to_string(),
+        dimension: config.embedding_dimension.unwrap_or(1536),
+    };
+
+    let record_count = if let Ok(storage) = LocalStorageClient::connect(&storage_config).await {
+        storage.count().await.unwrap_or(0)
     } else {
         0
     };
@@ -64,15 +71,10 @@ pub async fn clear(local: bool, global: bool, skip_confirm: bool) -> Result<()> 
     // 执行清空操作
     output.begin_operation("Clearing", "database");
 
-    // 删除整个 brain 目录
-    if brain_path.exists() {
-        std::fs::remove_dir_all(&brain_path)?;
+    // 使用存储接口清空
+    if let Ok(storage) = LocalStorageClient::connect(&storage_config).await {
+        storage.clear().await?;
     }
-
-    // 重新创建空的数据库
-    std::fs::create_dir_all(&brain_path)?;
-    let conn = Connection::connect(&brain_path).await?;
-    TableOperations::create_table(conn.inner(), "memories").await?;
 
     output.finish("clearing", scope_name);
 

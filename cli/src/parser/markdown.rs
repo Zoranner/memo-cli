@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::Path;
 
-use crate::models::{MemoMetadata, MemoSection};
+use memo_types::{MemoMetadata, MemoSection};
 
 pub fn parse_markdown_file(file_path: &Path) -> Result<Vec<MemoSection>> {
     let content = std::fs::read_to_string(file_path)

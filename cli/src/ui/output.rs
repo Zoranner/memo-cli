@@ -2,7 +2,7 @@ use console::Style;
 use std::io::{self, Write};
 use std::path::Path;
 
-use crate::service::query::QueryResult;
+use memo_types::QueryResult;
 
 /// 命令行输出格式化工具
 /// 提供统一的 Cargo 风格输出
@@ -148,14 +148,10 @@ impl Output {
         };
 
         // 构建 tags 部分
-        let tags_part = if let Some(tags) = tags {
-            if tags.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", self.dim.apply_to(format!("[{}]", tags.join(", "))))
-            }
-        } else {
+        let tags_part = if tags.is_empty() {
             String::new()
+        } else {
+            format!(" {}", self.dim.apply_to(format!("[{}]", tags.join(", "))))
         };
 
         println!(

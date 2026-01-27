@@ -1,0 +1,42 @@
+[package]
+name = "memo-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Vector-based memo system with semantic search"
+
+[[bin]]
+name = "memo"
+path = "src/main.rs"
+
+[dependencies]
+# 本地依赖
+memo-types = { path = "../types" }
+memo-local = { path = "../local" }
+
+# HTTP 客户端（用于 embedding API）
+reqwest = { version = "0.12", features = ["json"] }
+
+# CLI 依赖
+clap = { version = "4.5", features = ["derive", "env"] }
+dialoguer = "0.11"
+console = "0.15"
+
+# 文件处理
+walkdir = "2"
+regex = "1"
+toml = "0.8"
+dirs = "5"
+shellexpand = "3"
+once_cell = "1"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 共享依赖
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+chrono.workspace = true

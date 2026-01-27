@@ -1,8 +1,9 @@
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::db::{Connection, TableOperations};
 use crate::ui::Output;
+use memo_local::LocalStorageClient;
+use memo_types::{StorageBackend, StorageConfig};
 
 pub async fn delete(
     id: &str,
@@ -14,9 +15,13 @@ pub async fn delete(
     let config = Config::load_with_scope(force_local, force_global)?;
     let scope = Config::get_scope_name(force_local, force_global);
 
-    let conn = Connection::connect(&config.brain_path).await?;
-    let table = TableOperations::open_table(conn.inner(), "memories").await?;
-    let record_count = table.count_rows(None).await.unwrap_or(0);
+    // 创建存储客户端（delete 不需要 embedding）
+    let storage_config = StorageConfig {
+        path: config.brain_path.to_string_lossy().to_string(),
+        dimension: config.embedding_dimension.unwrap_or(1536),
+    };
+    let storage = LocalStorageClient::connect(&storage_config).await?;
+    let record_count = storage.count().await?;
 
     output.database_info(&config.brain_path, record_count);
 
@@ -31,7 +36,7 @@ pub async fn delete(
 
     // 删除记忆
     output.begin_operation("Deleting", &format!("memory {}", id));
-    table.delete(&format!("id = '{}'", id)).await?;
+    storage.delete(id).await?;
 
     output.finish("delete", scope);
 

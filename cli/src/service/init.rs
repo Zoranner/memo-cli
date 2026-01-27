@@ -1,8 +1,10 @@
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::db::{Connection, TableOperations};
+use crate::embedding::EmbeddingModel;
 use crate::ui::Output;
+use memo_local::{DatabaseMetadata, LocalStorageClient};
+use memo_types::{StorageBackend, StorageConfig};
 
 /// 显式初始化（带用户反馈）
 /// local: true 表示在本地目录初始化，false 表示在全局目录初始化
@@ -50,14 +52,36 @@ pub async fn initialize(local: bool) -> Result<()> {
 
     config.ensure_dirs()?;
 
+    // 创建 embedding 模型以获取维度信息
+    let model = EmbeddingModel::new(
+        config.embedding_api_key.clone(),
+        config.embedding_model.clone(),
+        config.embedding_base_url.clone(),
+        config.embedding_dimension,
+        config.embedding_provider.clone(),
+    )?;
+
     // 确保 memories 表存在
-    let conn = Connection::connect(&config.brain_path).await?;
+    let storage_config = StorageConfig {
+        path: config.brain_path.to_string_lossy().to_string(),
+        dimension: model.dimension(),
+    };
+
+    let storage = LocalStorageClient::connect(&storage_config).await?;
     let table_path = config.brain_path.join("memories.lance");
-    if !TableOperations::table_exists(conn.inner(), "memories").await {
-        TableOperations::create_table(conn.inner(), "memories").await?;
+    let metadata_path = config.brain_path.join("metadata.json");
+
+    if !storage.exists().await? {
+        storage.init().await?;
         output.resource_action("Creating", "database", &table_path);
+
+        // 创建元数据
+        let metadata = DatabaseMetadata::new(config.embedding_model.clone(), model.dimension());
+        metadata.save(&config.brain_path)?;
+        output.resource_action("Creating", "metadata", &metadata_path);
     } else {
         output.resource_action("Found", "database", &table_path);
+        output.resource_action("Found", "metadata", &metadata_path);
     }
 
     output.finish("initialization", location);
@@ -75,10 +99,29 @@ pub async fn ensure_initialized() -> Result<bool> {
     // 确保必要的目录存在
     config.ensure_dirs()?;
 
+    // 创建 embedding 模型以获取维度信息
+    let model = EmbeddingModel::new(
+        config.embedding_api_key.clone(),
+        config.embedding_model.clone(),
+        config.embedding_base_url.clone(),
+        config.embedding_dimension,
+        config.embedding_provider.clone(),
+    )?;
+
     // 确保 memories 表存在
-    let conn = Connection::connect(&config.brain_path).await?;
-    if !TableOperations::table_exists(conn.inner(), "memories").await {
-        TableOperations::create_table(conn.inner(), "memories").await?;
+    let storage_config = StorageConfig {
+        path: config.brain_path.to_string_lossy().to_string(),
+        dimension: model.dimension(),
+    };
+
+    let storage = LocalStorageClient::connect(&storage_config).await?;
+    if !storage.exists().await? {
+        storage.init().await?;
+
+        // 创建元数据
+        let metadata = DatabaseMetadata::new(config.embedding_model.clone(), model.dimension());
+        metadata.save(&config.brain_path)?;
+
         initialized = true;
     }
 

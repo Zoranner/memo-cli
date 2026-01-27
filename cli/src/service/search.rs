@@ -2,10 +2,10 @@ use anyhow::{Context, Result};
 use chrono::NaiveDateTime;
 
 use crate::config::Config;
-use crate::db::{Connection, TableOperations};
 use crate::embedding::EmbeddingModel;
-use crate::service::query::QueryBuilder;
 use crate::ui::Output;
+use memo_local::LocalStorageClient;
+use memo_types::{StorageBackend, StorageConfig, TimeRange};
 
 pub async fn search(
     query: &str,
@@ -23,17 +23,10 @@ pub async fn search(
 
     let config = Config::load_with_scope(force_local, force_global)?;
 
-    // 连接数据库并显示基本信息
-    let conn = Connection::connect(&config.brain_path).await?;
-    let table = TableOperations::open_table(conn.inner(), "memories").await?;
-    let record_count = table.count_rows(None).await.unwrap_or(0);
-
     // 检查 API key（Ollama 不需要）
     config.validate_api_key(force_local)?;
 
-    // 显示数据库信息
-    output.database_info(&config.brain_path, record_count);
-
+    // 创建 embedding 模型
     let model = EmbeddingModel::new(
         config.embedding_api_key.clone(),
         config.embedding_model.clone(),
@@ -42,31 +35,39 @@ pub async fn search(
         config.embedding_provider.clone(),
     )?;
 
+    // 创建存储客户端
+    let storage_config = StorageConfig {
+        path: config.brain_path.to_string_lossy().to_string(),
+        dimension: model.dimension(),
+    };
+    let storage = LocalStorageClient::connect(&storage_config).await?;
+    let record_count = storage.count().await?;
+
+    // 显示数据库信息
+    output.database_info(&config.brain_path, record_count);
+
     output.status("Encoding", "query");
+
+    // 生成查询向量
     let query_vector = model.encode(query).await?;
 
     output.status("Searching", "database");
 
     // 解析时间过滤参数
-    let after_ts = if let Some(after_str) = &after {
-        Some(parse_datetime(after_str)?)
+    let time_range = if after.is_some() || before.is_some() {
+        let after_ts = after.as_ref().map(|s| parse_datetime(s)).transpose()?;
+        let before_ts = before.as_ref().map(|s| parse_datetime(s)).transpose()?;
+        Some(TimeRange {
+            after: after_ts,
+            before: before_ts,
+        })
     } else {
         None
     };
 
-    let before_ts = if let Some(before_str) = &before {
-        Some(parse_datetime(before_str)?)
-    } else {
-        None
-    };
-
-    // 使用通用查询构建器
-    let results = QueryBuilder::vector_search(&table, query_vector)
-        .select_columns(vec!["id", "content", "tags", "updated_at", "_distance"])
-        .limit(limit)
-        .threshold(threshold)
-        .time_range(after_ts, before_ts)
-        .execute()
+    // 使用向量搜索
+    let results = storage
+        .search_by_vector(query_vector, limit, threshold, time_range)
         .await?;
 
     // 显示结果

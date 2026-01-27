@@ -1,0 +1,19 @@
+[package]
+name = "memo-types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Common types and trait definitions for memo storage backends"
+
+[lib]
+name = "memo_types"
+path = "src/lib.rs"
+
+[dependencies]
+# 只依赖基础库，零重型依赖
+async-trait = "0.1"
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+anyhow.workspace = true

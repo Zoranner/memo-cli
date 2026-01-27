@@ -4303,28 +4303,55 @@ name = "memo-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arrow-array",
- "arrow-schema",
  "chrono",
  "clap",
  "console",
  "dialoguer",
  "dirs 5.0.1",
- "futures",
- "lancedb",
+ "memo-local",
+ "memo-types",
  "once_cell",
  "regex",
  "reqwest",
  "serde",
  "serde_json",
  "shellexpand",
- "thiserror 1.0.69",
  "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
- "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "memo-local"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arrow-array",
+ "arrow-schema",
+ "async-trait",
+ "chrono",
+ "futures",
+ "lancedb",
+ "memo-types",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "memo-types"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

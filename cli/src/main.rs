@@ -4,13 +4,11 @@ use clap::Parser;
 // Core modules
 mod cli;
 mod config;
-mod models;
 
 // UI module
 mod ui;
 
 // Infrastructure
-mod db;
 mod embedding;
 mod parser;
 

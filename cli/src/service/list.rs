@@ -1,9 +1,9 @@
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::db::{Connection, TableOperations};
-use crate::service::query::QueryBuilder;
 use crate::ui::Output;
+use memo_local::LocalStorageClient;
+use memo_types::{StorageBackend, StorageConfig};
 
 pub async fn list(force_local: bool, force_global: bool) -> Result<()> {
     let output = Output::new();
@@ -13,9 +13,13 @@ pub async fn list(force_local: bool, force_global: bool) -> Result<()> {
 
     let config = Config::load_with_scope(force_local, force_global)?;
 
-    let conn = Connection::connect(&config.brain_path).await?;
-    let table = TableOperations::open_table(conn.inner(), "memories").await?;
-    let record_count = table.count_rows(None).await.unwrap_or(0);
+    // 创建存储客户端（list 不需要 embedding）
+    let storage_config = StorageConfig {
+        path: config.brain_path.to_string_lossy().to_string(),
+        dimension: config.embedding_dimension.unwrap_or(1536),
+    };
+    let storage = LocalStorageClient::connect(&storage_config).await?;
+    let record_count = storage.count().await?;
 
     // 显示数据库信息
     output.database_info(&config.brain_path, record_count);
@@ -25,11 +29,8 @@ pub async fn list(force_local: bool, force_global: bool) -> Result<()> {
         return Ok(());
     }
 
-    // 使用通用查询构建器
-    let results = QueryBuilder::list(&table)
-        .select_columns(vec!["id", "content", "tags", "updated_at"])
-        .execute()
-        .await?;
+    // 列出所有记忆
+    let results = storage.list().await?;
 
     // 显示结果
     output.list_items(&results);

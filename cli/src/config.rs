@@ -3,6 +3,83 @@ use console::Style;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// 配置作用域
+enum ConfigScope {
+    /// 自动选择：本地 > 全局 > 默认
+    Auto,
+    /// 强制使用本地配置
+    Local,
+    /// 强制使用全局配置
+    Global,
+}
+
+/// 配置加载器（内部使用）
+struct ConfigLoader {
+    scope: ConfigScope,
+}
+
+impl ConfigLoader {
+    fn new(scope: ConfigScope) -> Self {
+        Self { scope }
+    }
+
+    fn load(self) -> Result<Config> {
+        match self.scope {
+            ConfigScope::Auto => self.load_auto(),
+            ConfigScope::Local => {
+                self.load_from_path(&Config::local_memo_dir().join("config.toml"), true)
+            }
+            ConfigScope::Global => {
+                self.load_from_path(&Config::global_memo_dir().join("config.toml"), false)
+            }
+        }
+    }
+
+    /// 自动加载：本地 > 全局 > 默认
+    fn load_auto(&self) -> Result<Config> {
+        // 1. 尝试本地配置（排除用户主目录）
+        if Config::has_local_config() {
+            return self.load_from_path(&Config::local_memo_dir().join("config.toml"), true);
+        }
+
+        // 2. 尝试全局配置
+        let global_config_path = Config::global_memo_dir().join("config.toml");
+        if global_config_path.exists() {
+            return self.load_from_path(&global_config_path, false);
+        }
+
+        // 3. 使用默认配置
+        Ok(Config::default())
+    }
+
+    /// 从指定路径加载配置文件
+    fn load_from_path(&self, path: &std::path::Path, is_local: bool) -> Result<Config> {
+        if path.exists() {
+            let content = std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+            let mut config: Config = toml::from_str(&content)
+                .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
+
+            // 本地配置需要覆盖数据库路径
+            if is_local {
+                config.brain_path = Config::local_memo_dir().join("brain");
+            }
+
+            Ok(config)
+        } else {
+            // 配置文件不存在，使用默认配置
+            if is_local {
+                Ok(Config {
+                    brain_path: Config::local_memo_dir().join("brain"),
+                    ..Config::default()
+                })
+            } else {
+                Ok(Config::default())
+            }
+        }
+    }
+}
+
 // 默认值函数
 fn default_brain_path() -> PathBuf {
     Config::global_memo_dir().join("brain")
@@ -160,84 +237,20 @@ impl Config {
     pub fn load_with_scope(force_local: bool, force_global: bool) -> Result<Self> {
         Self::validate_scope_flags(force_local, force_global)?;
 
-        if force_local {
-            // 强制使用本地配置
-            return Self::load_from_path(&Self::local_memo_dir().join("config.toml"), true);
-        }
-
-        if force_global {
-            // 强制使用全局配置
-            return Self::load_from_path(&Self::global_memo_dir().join("config.toml"), false);
-        }
-
-        // 默认优先级：本地 > 全局 > 默认
-        Self::load()
-    }
-
-    /// 从指定路径加载配置文件
-    fn load_from_path(path: &std::path::Path, is_local: bool) -> Result<Self> {
-        if path.exists() {
-            let content = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-            let mut config: Config = toml::from_str(&content)
-                .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
-
-            // 本地配置需要覆盖数据库路径
-            if is_local {
-                config.brain_path = Self::local_memo_dir().join("brain");
-            }
-
-            Ok(config)
+        let scope = if force_local {
+            ConfigScope::Local
+        } else if force_global {
+            ConfigScope::Global
         } else {
-            // 配置文件不存在，使用默认配置
-            if is_local {
-                Ok(Self {
-                    brain_path: Self::local_memo_dir().join("brain"),
-                    ..Self::default()
-                })
-            } else {
-                Ok(Self::default())
-            }
-        }
+            ConfigScope::Auto
+        };
+
+        ConfigLoader::new(scope).load()
     }
 
     /// 加载配置：优先本地配置，其次全局配置，最后默认配置
     pub fn load() -> Result<Self> {
-        // 1. 尝试本地配置（排除用户主目录）
-        let local_config_path = Self::local_memo_dir().join("config.toml");
-        if Self::has_local_config() {
-            let content = std::fs::read_to_string(&local_config_path).with_context(|| {
-                format!(
-                    "Failed to read local config file: {}",
-                    local_config_path.display()
-                )
-            })?;
-            let mut config: Config =
-                toml::from_str(&content).with_context(|| "Failed to parse local config file")?;
-
-            // 使用本地数据库路径
-            config.brain_path = Self::local_memo_dir().join("brain");
-
-            return Ok(config);
-        }
-
-        // 2. 尝试全局配置
-        let global_config_path = Self::global_memo_dir().join("config.toml");
-        if global_config_path.exists() {
-            let content = std::fs::read_to_string(&global_config_path).with_context(|| {
-                format!(
-                    "Failed to read global config file: {}",
-                    global_config_path.display()
-                )
-            })?;
-            let config: Config =
-                toml::from_str(&content).with_context(|| "Failed to parse global config file")?;
-
-            return Ok(config);
-        }
-
-        // 3. 使用默认配置
-        Ok(Self::default())
+        ConfigLoader::new(ConfigScope::Auto).load()
     }
 
     /// 保存配置到全局目录
