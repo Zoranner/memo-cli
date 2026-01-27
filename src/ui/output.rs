@@ -2,6 +2,8 @@ use console::Style;
 use std::io::{self, Write};
 use std::path::Path;
 
+use crate::service::query::QueryResult;
+
 /// 命令行输出格式化工具
 /// 提供统一的 Cargo 风格输出
 pub struct Output {
@@ -122,44 +124,88 @@ impl Output {
         eprintln!("{:>12} {}", self.green.apply_to("Query"), query);
     }
 
-    /// 显示搜索结果项
-    /// 格式: "[0.89] abc123-def456-... (2024-01-22 14:30)"
-    ///       "       Content line 1"
-    ///       "       Content line 2"
-    pub fn search_result(&self, score: f32, id: &str, date: &str, content: &str) {
+    /// 显示单个结果项（统一格式）
+    /// 格式: "[1/5] 0.89 id (date) [tag1, tag2]" 或 "[1/10] id (date) [tag1, tag2]"
+    ///       "            Content line 1"
+    ///       "            Content line 2"
+    fn result_item(&self, index: usize, total: usize, result: &QueryResult) {
+        let id = &result.id;
+        let content = &result.content;
+        let tags = &result.tags;
+        let score = result.score;
+
+        let date = chrono::DateTime::from_timestamp_millis(result.updated_at)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| "N/A".to_string());
+        // 构建索引部分
+        let index_part = format!("{}/{}", index, total);
+
+        // 构建分数部分（如果有）
+        let score_part = if let Some(s) = score {
+            format!(" {}", Style::new().green().apply_to(format!("{:.2}", s)))
+        } else {
+            String::new()
+        };
+
+        // 构建 tags 部分
+        let tags_part = if let Some(tags) = tags {
+            if tags.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", self.dim.apply_to(format!("[{}]", tags.join(", "))))
+            }
+        } else {
+            String::new()
+        };
+
         println!(
-            "[{}] {} {}",
-            self.dim.apply_to(format!("{:.2}", score)),
+            "[{}]{} {} {}{}",
+            self.dim.apply_to(&index_part),
+            score_part,
             self.bold.apply_to(id),
-            self.dim.apply_to(format!("({})", date))
+            self.dim.apply_to(format!("({})", date)),
+            tags_part
         );
 
-        // 全文显示，每行保持与 ID 对齐的缩进（7个空格）
+        // 计算缩进宽度：[index_part] + score_part(如果有) + 空格
+        // 由于 score_part 包含颜色代码，需要计算实际显示宽度
+        let score_width = if score.is_some() { 5 } else { 0 }; // " 0.89" = 5个字符
+        let indent_width = index_part.len() + 2 + score_width + 1; // [len] + score + 空格
+        let indent = " ".repeat(indent_width);
+
+        // 全文显示，每行保持与 ID 对齐的缩进
         for line in content.lines() {
-            println!("       {}", line);
+            println!("{}{}", indent, line);
         }
     }
 
-    /// 显示列表项
-    /// 格式: "[1/10] abc123-def456-... (2024-01-22)"
-    ///       "       Content line 1"
-    ///       "       Content line 2"
-    pub fn list_item(&self, index: usize, total: usize, id: &str, date: &str, content: &str) {
-        let index_str = format!("{}/{}", index, total);
-        println!(
-            "[{}] {} {}",
-            self.dim.apply_to(&index_str),
-            self.bold.apply_to(id),
-            self.dim.apply_to(format!("({})", date))
-        );
+    /// 显示搜索结果列表（自动处理分隔和格式化）
+    pub fn search_results(&self, results: &[QueryResult]) {
+        let total = results.len();
+        for (i, result) in results.iter().enumerate() {
+            self.result_item(i + 1, total, result);
 
-        // 全文显示，每行保持与 ID 对齐的缩进
-        // [1/10] <- 长度可变，需要动态计算
-        let indent_width = index_str.len() + 3; // [index/total] + 空格 = len + 2 + 1
-        let indent = " ".repeat(indent_width);
+            // 只在非最后一个结果后添加空行分隔
+            if i < results.len() - 1 {
+                println!();
+            }
+        }
+    }
 
-        for line in content.lines() {
-            println!("{}{}", indent, line);
+    /// 显示列表（自动处理分隔和格式化）
+    pub fn list_items(&self, results: &[QueryResult]) {
+        let total = results.len();
+        for (i, result) in results.iter().enumerate() {
+            // 创建一个不带分数的副本
+            let mut list_result = result.clone();
+            list_result.score = None;
+
+            self.result_item(i + 1, total, &list_result);
+
+            // 只在非最后一个结果后添加空行分隔
+            if i < results.len() - 1 {
+                println!();
+            }
         }
     }
 
@@ -168,13 +214,13 @@ impl Output {
         eprintln!("{:>12} {}", self.dim.apply_to("Note"), message);
     }
 
-    /// 显示警告（红色，右对齐）
+    /// 显示警告（黄色，右对齐）
     /// 自动在前面添加空行
     pub fn warning(&self, message: &str) {
         eprintln!();
         eprintln!(
             "{:>12} {}",
-            Style::new().red().bold().apply_to("Warning"),
+            Style::new().yellow().bold().apply_to("Warning"),
             message
         );
         eprintln!();

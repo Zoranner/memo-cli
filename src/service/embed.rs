@@ -9,6 +9,7 @@ use crate::db::{Connection, TableOperations};
 use crate::embedding::EmbeddingModel;
 use crate::models::{Memory, MemoryBuilder};
 use crate::parser::parse_markdown_file;
+use crate::service::query::QueryBuilder;
 use crate::ui::Output;
 use walkdir::WalkDir;
 
@@ -178,116 +179,56 @@ async fn embed_text(
     if !force {
         output.status("Checking", "for similar memories");
 
-        use futures::TryStreamExt;
-        use lancedb::query::{ExecutableQuery, QueryBase};
-
-        let mut stream = table
-            .vector_search(embedding.clone())?
-            .select(lancedb::query::Select::columns(&[
-                "id",
-                "content",
-                "tags",
-                "updated_at",
-                "_distance",
-            ]))
+        // 使用通用查询构建器检查相似记忆
+        let similar_memories = QueryBuilder::vector_search(table, embedding.clone())
+            .select_columns(vec!["id", "content", "tags", "updated_at", "_distance"])
             .limit(5)
+            .threshold(duplicate_threshold)
             .execute()
             .await?;
 
-        if let Some(batch) = stream.try_next().await? {
-            let distances = batch
-                .column_by_name("_distance")
-                .and_then(|c| c.as_any().downcast_ref::<arrow_array::Float32Array>())
-                .context("Failed to get distance column")?;
+        if !similar_memories.is_empty() {
+            // 检测到相似记忆，输出详细信息并取消嵌入
+            output.warning(&format!(
+                "Found {} similar memories (threshold: {:.2})",
+                similar_memories.len(),
+                duplicate_threshold
+            ));
 
-            let mut similar_memories = Vec::new();
+            // 显示相似记忆
+            output.search_results(&similar_memories);
 
-            for i in 0..batch.num_rows() {
-                let distance = distances.value(i);
-                let score = (1.0 - (distance / 2.0)).max(0.0);
-
-                if score >= duplicate_threshold {
-                    let ids = batch
-                        .column_by_name("id")
-                        .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
-                        .context("Failed to get id column")?;
-
-                    let contents = batch
-                        .column_by_name("content")
-                        .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
-                        .context("Failed to get content column")?;
-
-                    let tags_col = batch
-                        .column_by_name("tags")
-                        .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
-                        .context("Failed to get tags column")?;
-
-                    let updated_ats = batch
-                        .column_by_name("updated_at")
-                        .and_then(|c| {
-                            c.as_any()
-                                .downcast_ref::<arrow_array::TimestampMillisecondArray>()
-                        })
-                        .context("Failed to get updated_at column")?;
-
-                    let id = ids.value(i).to_string();
-                    let content = contents.value(i).to_string();
-                    let tags: Vec<String> = serde_json::from_str(tags_col.value(i))?;
-                    let timestamp = updated_ats.value(i);
-                    let updated = chrono::DateTime::from_timestamp_millis(timestamp)
-                        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                        .unwrap_or_else(|| "N/A".to_string());
-
-                    similar_memories.push((score, id, content, tags, updated));
+            // 根据相似记忆数量提供更具体的建议
+            match similar_memories.len() {
+                1 => {
+                    let id = &similar_memories[0].id;
+                    output.note(&format!(
+                        "Consider updating the existing memory: memo update {}",
+                        id
+                    ));
+                    output.note("Or delete it and add new: memo delete <id>, then embed again");
+                }
+                2 => {
+                    let id1 = &similar_memories[0].id;
+                    let id2 = &similar_memories[1].id;
+                    output.note(&format!(
+                        "Consider merging similar memories: memo merge {} {}",
+                        id1, id2
+                    ));
+                    output.note("Or update the most relevant one: memo update <id>");
+                }
+                _ => {
+                    output.note("Consider reorganizing memories:");
+                    output.note("  - Merge overlapping content: memo merge <id1> <id2> ...");
+                    output.note("  - Update the most relevant one: memo update <id>");
+                    output.note("  - Delete outdated ones: memo delete <id>");
                 }
             }
 
-            if !similar_memories.is_empty() {
-                // 检测到相似记忆，输出详细信息并取消嵌入
-                output.warning(&format!(
-                    "Found {} similar memories (threshold: {:.2})",
-                    similar_memories.len(),
-                    duplicate_threshold
-                ));
+            output.note("Or use --force to add anyway (not recommended)");
+            output.error("Embedding cancelled due to similar memories");
 
-                for (i, (score, id, content, _tags, updated)) in similar_memories.iter().enumerate()
-                {
-                    output.search_result(*score, id, updated, content);
-
-                    // 如果不是最后一个结果，添加空行分隔
-                    if i < similar_memories.len() - 1 {
-                        println!();
-                    }
-                }
-
-                println!();
-                
-                // 根据相似记忆数量提供更具体的建议
-                match similar_memories.len() {
-                    1 => {
-                        let id = &similar_memories[0].1;
-                        output.note(&format!("Consider updating the existing memory: memo update {}", id));
-                        output.note("Or delete it and add new: memo delete <id>, then embed again");
-                    }
-                    2 => {
-                        let id1 = &similar_memories[0].1;
-                        let id2 = &similar_memories[1].1;
-                        output.note(&format!("Consider merging similar memories: memo merge {} {}", id1, id2));
-                        output.note("Or update the most relevant one: memo update <id>");
-                    }
-                    _ => {
-                        output.note("Consider reorganizing memories:");
-                        output.note("  - Merge overlapping content: memo merge <id1> <id2> ...");
-                        output.note("  - Update the most relevant one: memo update <id>");
-                        output.note("  - Delete outdated ones: memo delete <id>");
-                    }
-                }
-                
-                output.note("Or use --force to add anyway (not recommended)");
-                output.error("Embedding cancelled due to similar memories");
-
-                std::process::exit(1);
-            }
+            std::process::exit(1);
         }
     }
 

@@ -1,11 +1,10 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, NaiveDateTime};
-use futures::TryStreamExt;
-use lancedb::query::{ExecutableQuery, QueryBase};
+use chrono::NaiveDateTime;
 
 use crate::config::Config;
 use crate::db::{Connection, TableOperations};
 use crate::embedding::EmbeddingModel;
+use crate::service::query::QueryBuilder;
 use crate::ui::Output;
 
 pub async fn search(
@@ -48,51 +47,6 @@ pub async fn search(
 
     output.status("Searching", "database");
 
-    // 如果有时间过滤，增加查询限制以便后续过滤
-    let query_limit = if after.is_some() || before.is_some() {
-        limit * 10 // 获取更多结果用于过滤
-    } else {
-        limit
-    };
-
-    // 只查询需要的列，提升性能
-    let mut stream = table
-        .vector_search(query_vector)?
-        .select(lancedb::query::Select::columns(&[
-            "id",
-            "content",
-            "updated_at",
-            "_distance", // 必须包含 _distance 用于相似度计算
-        ]))
-        .limit(query_limit)
-        .execute()
-        .await?;
-
-    let batch = stream.try_next().await?.context("No results found")?;
-
-    let ids = batch
-        .column_by_name("id")
-        .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
-        .context("Failed to get id column")?;
-
-    let contents = batch
-        .column_by_name("content")
-        .and_then(|c| c.as_any().downcast_ref::<arrow_array::StringArray>())
-        .context("Failed to get content column")?;
-
-    let updated_ats = batch
-        .column_by_name("updated_at")
-        .and_then(|c| {
-            c.as_any()
-                .downcast_ref::<arrow_array::TimestampMillisecondArray>()
-        })
-        .context("Failed to get updated_at column")?;
-
-    let distances = batch
-        .column_by_name("_distance")
-        .and_then(|c| c.as_any().downcast_ref::<arrow_array::Float32Array>())
-        .context("Failed to get distance column")?;
-
     // 解析时间过滤参数
     let after_ts = if let Some(after_str) = &after {
         Some(parse_datetime(after_str)?)
@@ -106,63 +60,23 @@ pub async fn search(
         None
     };
 
-    // 收集所有结果到 Vec 以便过滤和排序
-    let mut results: Vec<(f32, String, i64, String)> = Vec::new();
-
-    for i in 0..batch.num_rows() {
-        let distance = distances.value(i);
-        // 将 L2 距离转换为相似度分数 (0-1)
-        let score = (1.0 - (distance / 2.0)).max(0.0);
-
-        if score < threshold {
-            continue;
-        }
-
-        let timestamp = updated_ats.value(i);
-
-        // 时间范围过滤
-        if let Some(after_ts) = after_ts {
-            if timestamp < after_ts {
-                continue;
-            }
-        }
-
-        if let Some(before_ts) = before_ts {
-            if timestamp > before_ts {
-                continue;
-            }
-        }
-
-        results.push((
-            score,
-            ids.value(i).to_string(),
-            timestamp,
-            contents.value(i).to_string(),
-        ));
-    }
-
-    // 限制结果数量
-    results.truncate(limit);
+    // 使用通用查询构建器
+    let results = QueryBuilder::vector_search(&table, query_vector)
+        .select_columns(vec!["id", "content", "tags", "updated_at", "_distance"])
+        .limit(limit)
+        .threshold(threshold)
+        .time_range(after_ts, before_ts)
+        .execute()
+        .await?;
 
     // 显示结果
-    for (i, (score, id, timestamp, content)) in results.iter().enumerate() {
-        let updated = DateTime::from_timestamp_millis(*timestamp)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-            .unwrap_or_else(|| "N/A".to_string());
-
-        output.search_result(*score, id, &updated, content);
-
-        // 如果不是最后一个结果，添加空行分隔
-        if i < results.len() - 1 {
-            println!();
-        }
-    }
-
     if results.is_empty() {
         output.info(&format!(
             "No results found above threshold {:.2}",
             threshold
         ));
+    } else {
+        output.search_results(&results);
     }
 
     Ok(())
