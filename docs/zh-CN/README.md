@@ -1,108 +1,85 @@
-# Memo CLI - 向量记忆库
+# 🧠 Memo - 给你的 AI 编程助手装上"长期记忆"
 
-基于向量数据库的高性能语义搜索记忆库工具。支持 **OpenAI 兼容 API**，并提供 **AI Agent Skill** 以无缝集成各类 AI 编码助手。
+> 让 AI 记住每一次对话，积累和复用开发经验
 
 中文 | [English](../../README.md)
 
-## ✨ 特性
+---
 
-- 🔍 **语义搜索** - 基于向量相似度的智能搜索，而非简单的关键词匹配
-- 🌲 **记忆树** - 通过递归语义搜索，层次化探索关联记忆
-- 🤖 **AI Agent 集成** - 内置 Skill，支持 Cursor、Windsurf、Claude Code 等 AI 编码工具
-- 🧠 **智能重复检测** - 自动检测相似记忆，避免重复添加
-- 🔄 **记忆管理** - 更新、删除、合并记忆，便于组织整理
-- 🏷️ **标签管理** - 支持标签分类和 Markdown frontmatter 自动合并
-- ⏰ **时间过滤** - 按时间范围筛选记忆，支持灵活的日期格式
-- 📝 **Markdown 支持** - 自动解析和索引带 frontmatter 的 markdown 文件
-- 🌐 **OpenAI 兼容** - 支持所有 OpenAI 兼容 API（OpenAI、Azure 等）
-- 🏠 **本地/云端** - 支持 Ollama 本地部署和云端 API
-- ⚡ **高性能** - 使用 LanceDB 向量数据库和 Rust 实现
+## 💡 为什么需要 Memo？
 
-## 📋 命令速查
+- 💬 **AI 总是"失忆"** - 三天前讨论的方案，今天又要重新解释
+- 🔄 **重复解决问题** - 上周修的 bug，这周又遇到类似的，AI 完全不记得
+- 📚 **知识无法沉淀** - 每次对话都是"一次性"，宝贵经验无法积累
+- 🤝 **团队知识断层** - 各自使用 AI，无法共享经验和最佳实践
 
-| 命令 | 功能 | 示例 |
-|------|------|------|
-| `memo init` | 初始化配置（可选） | `memo init --local` |
-| `memo embed <input>` | 嵌入文本/文件/目录 | `memo embed "笔记内容" --tags rust,cli` |
-| `memo search <query>` | 语义搜索记忆 | `memo search "Rust 最佳实践" --after 2026-01-20` |
-| `memo search <query> --tree` | 记忆树搜索 | `memo search "异步模式" --tree -n 20` |
-| `memo list` | 列出所有记忆 | `memo list` |
-| `memo update <id>` | 更新已有记忆 | `memo update abc123 --content "新内容"` |
-| `memo merge <ids>...` | 合并多条记忆 | `memo merge id1 id2 id3 --content "整合内容"` |
-| `memo delete <id>` | 删除记忆 | `memo delete abc123` |
-| `memo clear` | 清空数据库（危险） | `memo clear --local --force` |
+---
 
-**常用参数：**
-- `-t, --tags` - 添加标签（逗号分隔）
-- `--after / --before` - 时间范围过滤（格式：`YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM`）
-- `-n, --limit` - 搜索结果数量（默认：5，树模式：最大总节点数）
-- `--tree` - 以层次树显示结果（递归语义搜索）
-- `-l, --local` - 使用本地数据库
-- `-g, --global` - 使用全局数据库
+## ⚡ 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| 🤖 **自动记录** | 对话中说"记住这个"，AI 自动记录到知识库 |
+| 🔍 **智能检索** | 对话中说"之前怎么做的"，AI 自动搜索相关记忆 |
+| ⏰ **时间回溯** | 快速查找"上周"、"上个月"的开发经验 |
+| 👥 **团队协作** | 个人知识库或项目级共享，灵活选择 |
+| 🔐 **数据安全** | 记忆数据完全存储在本地，由你掌控 |
+| 🌐 **灵活配置** | 支持阿里云百炼、OpenAI、Ollama 本地等多种选择 |
 
 ## 🚀 快速开始
 
-### 1. 安装
+### 第 1 步：一键安装
 
+**Windows (PowerShell)：**
+```powershell
+irm https://memo.zoran.ink/install.ps1 | iex
+```
+
+**macOS/Linux：**
 ```bash
-cargo build --release
+curl -fsSL https://memo.zoran.ink/install.sh | bash
 ```
 
-### 2. 配置
+### 第 2 步：开始使用
 
-创建配置文件 `~/.memo/config.toml`：
+安装完成后，直接在 AI 编程工具中对话使用：
 
-```toml
-# 必填：API 密钥和模型
-embedding_api_key = "your-api-key"
-embedding_model = "your-model-name"
-
-# 可选：API 端点（默认：OpenAI）
-# embedding_base_url = "https://api.openai.com/v1"
-
-# 可选：提供商类型（自动推断）
-# embedding_provider = "openai"
 ```
+你：数据库连接超时了，怎么解决？
 
-### 3. 基本使用
+AI：[自动搜索记忆] memo search "数据库连接超时" -n 5
+    [未找到相关记忆]
+    
+    数据库连接超时通常是因为连接池配置不当...
+    建议检查 max_connections、timeout 等参数
 
-```bash
-# 嵌入文本（带标签）
-memo embed "学习了 Rust 的生命周期" --tags rust,learning
+你：我试了，不行。后来发现是服务器防火墙把端口屏蔽了，需要在阿里云控制台
+    安全组里开放 3306 端口才行
 
-# 嵌入文件
-memo embed notes.md --tags important
+AI：原来如此！这是个容易忽略的问题，让我记录下来：
+    
+    [自动记录] memo embed "数据库连接超时 - 阿里云防火墙问题
+    
+    问题：数据库连接一直超时
+    原因：阿里云服务器默认没有开放数据库端口
+    解决：登录阿里云控制台 → 安全组 → 添加规则 → 开放 3306 端口
+    注意：别忘了同时检查服务器本地防火墙" --tags 数据库,阿里云,问题排查
+    
+    ✓ 已记录到记忆库
 
-# 嵌入目录
-memo embed ./docs --tags documentation
+---
 
-# 搜索
-memo search "Rust 最佳实践"
+[两周后，换了个项目]
 
-# 按时间范围搜索
-memo search "开发经验" --after 2026-01-20 --limit 10
+你：新项目的 MySQL 怎么连不上？
 
-# 记忆树搜索（递归语义搜索）
-memo search "异步模式" --tree -n 20
-
-# 列出所有记忆
-memo list
+AI：[自动搜索记忆] memo search "mysql 连接" -n 5
+    [找到相关记忆]
+    
+    之前遇到过类似问题！如果是阿里云服务器，需要检查安全组配置：
+    登录阿里云控制台 → 安全组 → 添加规则 → 开放 3306 端口
+    另外也要检查服务器本地防火墙设置
 ```
-
-### 4. AI Agent 集成（可选）
-
-适用于 **Cursor**、**Windsurf**、**Claude Code** 等 AI 编码工具：
-
-```bash
-# 将 agent skill 复制到你的 AI 工具的 skills 目录
-# Cursor:
-cp -r skills/memo-brain ~/.cursor/skills/
-
-# Windsurf（示例）:
-cp -r skills/memo-brain ~/.windsurf/skills/
-```
-
-安装后，你的 AI 助手可以在对话过程中自动记录和搜索记忆。详见 [AI Agent 集成](#-ai-agent-集成)章节。
 
 ## ⚙️ 配置说明
 
@@ -121,7 +98,7 @@ cp -r skills/memo-brain ~/.windsurf/skills/
 |------|:----:|------|--------|
 | `embedding_api_key` | ✅ | API 密钥 | - |
 | `embedding_model` | ✅ | 模型名称 | - |
-| `embedding_base_url` | ❌ | API 端点 | `https://api.openai.com/v1` |
+| `embedding_base_url` | ❌ | API 端点 | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `embedding_provider` | ❌ | 提供商类型 | 自动推断 |
 | `embedding_dimension` | ❌ | 向量维度 | 自动推断 |
 | `similarity_threshold` | ❌ | 搜索相似度阈值（0-1） | `0.7` |
@@ -129,264 +106,26 @@ cp -r skills/memo-brain ~/.windsurf/skills/
 
 ### 支持的 API 类型
 
-**OpenAI 兼容 API（默认）：**
+**阿里云百炼（推荐）：**
+```toml
+embedding_api_key = "sk-..."  # 你的阿里云 API 密钥
+embedding_model = "text-embedding-v4"
+embedding_base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+**Ollama 本地部署（免费）：**
+```toml
+embedding_base_url = "http://localhost:11434/api"
+embedding_api_key = ""  # 本地无需 key
+embedding_model = "nomic-embed-text"
+```
+
+**其他 OpenAI 兼容 API：**
 ```toml
 embedding_api_key = "sk-..."
 embedding_model = "text-embedding-3-small"
-# embedding_base_url = "https://api.example.com/v1"  # 可选
+embedding_base_url = "https://api.openai.com/v1"  # OpenAI 或其他兼容服务
 ```
-
-**Ollama 本地部署：**
-```toml
-embedding_base_url = "http://localhost:11434/api"
-embedding_api_key = ""  # 本地无需 key
-embedding_model = "nomic-embed-text"
-```
-
-## 🤖 AI Agent 集成
-
-Memo CLI 包含一个 **Agent Skill**（`skills/memo-brain/SKILL.md`），使 AI 编码助手能在对话过程中自动管理知识。
-
-### 支持的 AI 编码工具
-
-- **Cursor** - 将 skill 复制到 `~/.cursor/skills/`
-- **Windsurf** - 将 skill 复制到 `~/.windsurf/skills/`
-- **Claude Code** - 按工具特定方式安装 skill
-- **其他 MCP 兼容工具** - 适用于支持 Agent Skills 的工具
-
-### 核心能力
-
-| 功能 | 说明 |
-|------|------|
-| **自动记录** | 自动捕获有价值的解决方案、模式和调试经验 |
-| **上下文感知搜索** | 在对话过程中检索相关的过往经验 |
-| **智能触发** | 识别"记住这个"或"之前是怎么解决的"等自然语言 |
-| **结构化格式** | 使用一致的模板以便更好地组织和检索 |
-
-### 安装方法
-
-```bash
-# Cursor
-cp -r skills/memo-brain ~/.cursor/skills/
-
-# Windsurf（或其他类似结构的工具）
-cp -r skills/memo-brain ~/.windsurf/skills/
-```
-
-### 工作原理
-
-安装 skill 后，你的 AI 助手会识别自然语言触发词：
-
-**记录记忆：**
-- "记住这个"
-- "记录这个解决方案"
-- "保存一下"
-
-**搜索记忆：**
-- "之前是怎么解决的？"
-- "查一下过往记忆"
-- "类似的问题我们是怎么做的？"
-- "最近在...方面的工作"
-
-**对话示例：**
-
-```
-你：  "记住这个：Rust 错误处理 - 应用层用 anyhow，库层用 thiserror"
-AI：  [自动执行] memo embed "..." --tags rust,error-handling
-      ✓ 已记录到知识库
-
-你：  "之前 Rust 的 async trait 问题是怎么解决的？"
-AI：  [自动执行] memo search "rust async trait" -n 5
-      [基于过往经验提供答案]
-```
-
-### 手动 CLI 使用
-
-你仍然可以不依赖 AI 集成直接使用 CLI：
-
-```bash
-# 记录结构化知识
-memo embed "Rust async trait - 使用 async-trait crate
-
-背景：trait 中直接使用 async fn 会导致编译错误
-方案：在 trait 和 impl 上使用 #[async_trait] 宏
-关键点：trait 定义和 impl 实现都需要添加该宏" --tags rust,async
-
-# 搜索过往解决方案
-memo search "rust async trait 问题" -n 5
-
-# 查看最近的工作
-memo search "数据库优化" --after 2026-01-20
-```
-
-查看 [skills/memo-brain/SKILL.md](../../skills/memo-brain/zh-CN/SKILL.md) 了解详细使用指南。
-
----
-
-## 💡 使用示例
-
-> **📖 详细命令文档**，请查阅[命令参考](COMMANDS.md)
-
-### 基本操作
-
-```bash
-# 嵌入文本并添加标签
-memo embed "学习了 Rust 生命周期" --tags rust,learning
-
-# 搜索记忆
-memo search "Rust 最佳实践" --limit 10
-
-# 列出所有记忆
-memo list
-
-# 更新记忆
-memo update abc123 --content "更新后的内容" --tags rust,updated
-```
-
-### 高级用法
-
-```bash
-# 智能重复检测
-memo embed "相似内容"  # 会检查重复
-memo embed "相似内容" --force  # 跳过重复检测
-
-# 基于时间的搜索
-memo search "项目更新" --after 2026-01-20 --before 2026-01-31
-
-# 记忆树搜索（层次化探索）
-memo search "错误处理模式" --tree -n 30
-# 返回树状结构，展示不同语义层级的相关记忆
-
-# 多项目管理
-cd project-a && memo embed ./docs --local --tags project-a
-cd project-b && memo init --local && memo embed ./docs --tags project-b
-```
-
-## ❓ 常见问题
-
-<details>
-<summary><strong>什么是记忆树搜索？</strong></summary>
-
-记忆树（`--tree` 参数）通过递归查找相关记忆，将搜索结果以层次结构展示：
-
-- **第 1 层**：与查询直接匹配的记忆（最高相似度）
-- **第 2+ 层**：使用父记忆作为种子查找的相关记忆
-- **智能过滤**：使用自适应阈值和标签重叠确保相关性
-- **去重**：每条记忆在树中只出现一次
-
-使用场景示例：
-- 探索相互关联的知识（如"异步编程" → 相关模式 → 错误处理）
-- 发现你忘记搜索的相关上下文
-- 理解不同记忆之间的关系
-
-注意：树模式下，`-n/--limit` 控制最大总节点数，而非仅顶层结果数。
-
-</details>
-
-<details>
-<summary><strong>如何切换不同的嵌入模型？</strong></summary>
-
-⚠️ **重要**：不同模型的向量空间不兼容。切换模型后需要：
-
-1. 清空数据库：`memo clear --global --force`
-2. 修改配置文件中的 `embedding_model`
-3. 重新嵌入所有数据
-
-</details>
-
-<details>
-<summary><strong>本地/全局数据库有什么区别？</strong></summary>
-
-- **全局数据库**（`~/.memo/brain`）：默认，适合个人知识库
-- **本地数据库**（`./.memo/brain`）：项目独立，适合团队协作
-
-使用 `--local` 或 `--global` 参数显式指定。
-
-</details>
-
-<details>
-<summary><strong>Markdown 文件的标签如何处理？</strong></summary>
-
-Markdown frontmatter 标签会与命令行标签**自动合并去重**：
-
-```markdown
----
-tags: [rust, cli]
----
-```
-
-执行 `memo embed file.md --tags important` 后：
-- 最终标签：`[rust, cli, important]`
-
-</details>
-
-<details>
-<summary><strong>时间过滤是基于创建时间还是更新时间？</strong></summary>
-
-- 基于 **`updated_at`（更新时间）**
-- 每条记忆创建时会同时记录 `created_at` 和 `updated_at`
-- 时间过滤在相似度筛选**之后**进行，不影响搜索相关性
-
-</details>
-
-<details>
-<summary><strong>如何使用 Ollama 本地部署？</strong></summary>
-
-配置文件示例：
-
-```toml
-embedding_base_url = "http://localhost:11434/api"
-embedding_api_key = ""  # 本地无需 key
-embedding_model = "nomic-embed-text"
-```
-
-</details>
-
-<details>
-<summary><strong>支持哪些 OpenAI 兼容 API？</strong></summary>
-
-支持所有遵循 OpenAI API 格式的服务，包括但不限于：
-- OpenAI
-- Azure OpenAI
-- 各类云端 API 服务
-
-只需配置正确的 `embedding_base_url` 和 `embedding_api_key`。
-
-</details>
-
-<details>
-<summary><strong>支持哪些 AI 编码工具？</strong></summary>
-
-Agent Skill 支持以下工具：
-- **Cursor** - 复制 skill 到 `~/.cursor/skills/`
-- **Windsurf** - 复制 skill 到 `~/.windsurf/skills/`（或工具特定位置）
-- **Claude Code** - 按工具特定方式安装 skill
-- **其他 MCP 兼容工具** - 查看你的工具文档了解 skill 安装路径
-
-该 skill 设计为工具无关，遵循通用的 agent skill 模式。
-
-</details>
-
-<details>
-<summary><strong>可以不使用 AI 集成直接用 CLI 吗？</strong></summary>
-
-完全可以！CLI 独立运行并提供完整功能：
-- **手动 CLI**：完全控制，显式命令
-- **AI Agent**：自动化，对话式界面
-- **组合使用**：根据需要灵活混合使用
-
-AI Agent Skill 完全是可选的，它增加了便利性而非核心功能。
-
-</details>
-
----
-
-## 📖 更多信息
-
-- [命令参考](COMMANDS.md) - 所有命令的详细文档
-- [AI Agent Skill](../../skills/memo-brain/zh-CN/SKILL.md) - AI 编码助手集成指南
-- `config.example.toml` - 完整配置选项
-- `memo <command> --help` - 命令特定帮助
 
 ## 📜 License
 
