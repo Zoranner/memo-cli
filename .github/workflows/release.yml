@@ -128,7 +128,7 @@ jobs:
       - name: Prepare archive (Unix)
         if: matrix.archive == 'tar.gz'
         run: |
-          cd cli/target/${{ matrix.target }}/dist
+          cd target/${{ matrix.target }}/dist
           tar -czf memo-${{ matrix.target }}.tar.gz memo
           mv memo-${{ matrix.target }}.tar.gz ${{ github.workspace }}
 
@@ -136,7 +136,7 @@ jobs:
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          cd cli/target/${{ matrix.target }}/dist
+          cd target/${{ matrix.target }}/dist
           Compress-Archive -Path memo.exe -DestinationPath ${{ github.workspace }}/memo-${{ matrix.target }}.zip
 
       - name: Upload artifact
