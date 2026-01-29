@@ -70,11 +70,11 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             archive: tar.gz
-          # macOS Intel
+          # macOS Intel (使用 macos-15-intel，运行在 Intel 硬件上)
           - target: x86_64-apple-darwin
-            os: macos-latest
+            os: macos-15-intel
             archive: tar.gz
-          # macOS Apple Silicon
+          # macOS Apple Silicon (使用 macos-latest，运行在 ARM 硬件上)
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
@@ -123,6 +123,9 @@ jobs:
 
       - name: Build release binary
         working-directory: ./cli
+        env:
+          # macOS: 设置最低部署目标
+          MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '11.0' || '' }}
         run: cargo build --profile dist --target ${{ matrix.target }}
 
       - name: Prepare archive (Unix)
@@ -175,4 +178,4 @@ jobs:
             artifacts/memo-x86_64-unknown-linux-gnu/memo-x86_64-unknown-linux-gnu.tar.gz
             artifacts/memo-x86_64-unknown-linux-musl/memo-x86_64-unknown-linux-musl.tar.gz
             artifacts/memo-x86_64-apple-darwin/memo-x86_64-apple-darwin.tar.gz
-            artifacts/memo-aarch64-apple-darwin/memo-aarch64-apple-darwin.tar.gz 
+            artifacts/memo-aarch64-apple-darwin/memo-aarch64-apple-darwin.tar.gz
