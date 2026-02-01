@@ -9,7 +9,8 @@ use crate::rerank::RerankModel;
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{
-    QueryResult, SearchConfig as MultiLayerSearchConfig, StorageBackend, StorageConfig, TimeRange,
+    QueryResult, ScoreType, SearchConfig as MultiLayerSearchConfig, StorageBackend, StorageConfig,
+    TimeRange,
 };
 
 pub struct SearchOptions {
@@ -170,7 +171,6 @@ async fn multi_layer_search(params: MultiLayerSearchParams<'_>) -> Result<()> {
             .iter()
             .map(|result| {
                 let result_id = result.id.clone();
-                let layer_threshold = layer_threshold;
                 let time_range = time_range.clone();
                 let branch_limit = search_config.branch_limit;
                 let require_tag_overlap = search_config.require_tag_overlap;
@@ -251,37 +251,114 @@ async fn multi_layer_search(params: MultiLayerSearchParams<'_>) -> Result<()> {
         all_candidates.len()
     );
 
-    output.status("Reranking", &format!("{} candidates", all_candidates.len()));
+    // 智能决策是否需要重排序
+    let should_rerank = should_use_rerank(&all_candidates, limit);
 
-    let rerank_model = RerankModel::new(
-        config.rerank_api_key.clone(),
-        config.rerank_model.clone(),
-        config.rerank_base_url.clone(),
-    )?;
+    let (final_results, used_rerank) = if should_rerank {
+        output.status("Reranking", &format!("{} candidates", all_candidates.len()));
 
-    let documents: Vec<&str> = all_candidates.iter().map(|r| r.content.as_str()).collect();
-    let reranked = rerank_model.rerank(query, &documents, Some(limit)).await?;
+        let rerank_model = RerankModel::new(
+            config.rerank_api_key.clone(),
+            config.rerank_model.clone(),
+            config.rerank_base_url.clone(),
+        )?;
 
-    tracing::debug!("Rerank returned {} results", reranked.len());
+        let documents: Vec<&str> = all_candidates.iter().map(|r| r.content.as_str()).collect();
+        let reranked = rerank_model.rerank(query, &documents, Some(limit)).await?;
 
-    let mut final_results = Vec::new();
-    for item in &reranked {
-        if let Some(result) = all_candidates.get(item.index) {
-            let mut reranked_result = result.clone();
-            reranked_result.score = Some(item.score as f32);
-            final_results.push(reranked_result);
+        tracing::debug!("Rerank returned {} results", reranked.len());
 
-            tracing::debug!(
-                "Reranked: index={}, score={:.4}, id={}",
-                item.index,
-                item.score,
-                result.id
-            );
+        let mut results = Vec::new();
+        for item in &reranked {
+            if let Some(result) = all_candidates.get(item.index) {
+                let mut reranked_result = result.clone();
+                reranked_result.score = Some(item.score as f32);
+                reranked_result.score_type = Some(ScoreType::Rerank);
+                results.push(reranked_result);
+
+                tracing::debug!(
+                    "Reranked: index={}, score={:.4}, id={}",
+                    item.index,
+                    item.score,
+                    result.id
+                );
+            }
         }
+        (results, true)
+    } else {
+        output.status("Ranking", "by vector similarity (rerank skipped)");
+        tracing::debug!("Rerank skipped: candidates are high quality");
+
+        // 按向量相似度排序，取 Top N
+        let mut sorted = all_candidates.clone();
+        sorted.sort_by(|a, b| {
+            b.score
+                .unwrap_or(0.0)
+                .partial_cmp(&a.score.unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        sorted.truncate(limit);
+        (sorted, false)
+    };
+
+    output.search_results_with_summary(&final_results, used_rerank);
+    Ok(())
+}
+
+/// 判断是否需要使用重排序
+/// 策略：候选少且质量高时，跳过 rerank 以节省时间和成本
+fn should_use_rerank(candidates: &[QueryResult], limit: usize) -> bool {
+    let candidate_count = candidates.len();
+
+    // 如果候选数小于等于需求数，不需要排序
+    if candidate_count <= limit {
+        tracing::debug!(
+            "Rerank decision: skip (candidates {} <= limit {})",
+            candidate_count,
+            limit
+        );
+        return false;
     }
 
-    output.search_results(&final_results);
-    Ok(())
+    // 计算平均相似度分数
+    let avg_score = if !candidates.is_empty() {
+        let sum: f32 = candidates.iter().filter_map(|c| c.score).sum();
+        let count = candidates.iter().filter(|c| c.score.is_some()).count();
+        if count > 0 {
+            sum / count as f32
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    tracing::debug!(
+        "Rerank decision: candidates={}, avg_score={:.3}",
+        candidate_count,
+        avg_score
+    );
+
+    // 决策规则
+    let skip_rerank = match candidate_count {
+        // 候选 <= 15 且平均分 > 0.80 → 跳过 rerank
+        1..=15 if avg_score > 0.80 => {
+            tracing::debug!("Rerank decision: skip (small + high quality)");
+            true
+        }
+        // 候选 <= 25 且平均分 > 0.85 → 跳过 rerank
+        16..=25 if avg_score > 0.85 => {
+            tracing::debug!("Rerank decision: skip (medium + very high quality)");
+            true
+        }
+        // 其他情况都需要 rerank
+        _ => {
+            tracing::debug!("Rerank decision: use rerank");
+            false
+        }
+    };
+
+    !skip_rerank
 }
 
 fn parse_datetime(input: &str) -> Result<i64> {

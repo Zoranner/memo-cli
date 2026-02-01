@@ -125,6 +125,34 @@ impl Output {
         }
     }
 
+    /// 显示搜索结果（带汇总信息）
+    pub fn search_results_with_summary(&self, results: &[QueryResult], used_rerank: bool) {
+        // 显示结果汇总
+        let rank_method = if used_rerank {
+            "rerank scores"
+        } else {
+            "vector scores"
+        };
+
+        eprintln!(
+            "{:>12} {} results ranked by {}",
+            self.green.apply_to("Results"),
+            results.len(),
+            rank_method
+        );
+        eprintln!();
+
+        // 显示结果列表
+        for (i, result) in results.iter().enumerate() {
+            self.display_result_item_list(result);
+
+            // 只在非最后一个结果后添加空行分隔
+            if i < results.len() - 1 {
+                println!();
+            }
+        }
+    }
+
     /// 显示列表结果（列表格式，不带分数）
     pub fn list_results(&self, results: &[QueryResult]) {
         for (i, result) in results.iter().enumerate() {
@@ -209,9 +237,17 @@ impl Output {
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "N/A".to_string());
 
-        // 构建分数部分（如果有，用中括号括起来）
+        // 构建分数部分（如果有，用中括号括起来，带类型前缀）
         let score_part = if let Some(s) = score {
-            format!("{} ", self.green.apply_to(format!("[{:.2}]", s)))
+            let type_prefix = match result.score_type {
+                Some(memo_types::ScoreType::Rerank) => "R:",
+                Some(memo_types::ScoreType::Vector) => "V:",
+                None => "",
+            };
+            format!(
+                "{} ",
+                self.green.apply_to(format!("[{}{:.2}]", type_prefix, s))
+            )
         } else {
             String::new()
         };
@@ -231,8 +267,8 @@ impl Output {
             tags_part
         );
 
-        // 计算缩进宽度：score_part(如果有) = "[0.89] " = 7个字符，否则0
-        let indent_width = if score.is_some() { 7 } else { 0 };
+        // 计算缩进宽度：score_part(如果有) = "[R:0.89] " 或 "[V:0.89] " = 9个字符，否则0
+        let indent_width = if score.is_some() { 9 } else { 0 };
         let indent = " ".repeat(indent_width);
 
         // 全文显示，每行保持与 ID 对齐的缩进

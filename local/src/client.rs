@@ -583,6 +583,7 @@ fn parse_query_results(
                 tags,
                 updated_at: updated_at_array.value(i),
                 score,
+                score_type: Some(memo_types::ScoreType::Vector),
             });
         }
     }

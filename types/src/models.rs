@@ -13,6 +13,13 @@ pub struct Memory {
     pub updated_at: DateTime<Utc>,
 }
 
+/// 分数类型
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ScoreType {
+    Vector, // 向量相似度分数
+    Rerank, // 重排序分数
+}
+
 /// 查询结果（用于返回搜索/列表结果）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryResult {
@@ -21,6 +28,7 @@ pub struct QueryResult {
     pub tags: Vec<String>,
     pub updated_at: i64,
     pub score: Option<f32>,
+    pub score_type: Option<ScoreType>,
 }
 
 /// 时间范围过滤
