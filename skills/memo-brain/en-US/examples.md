@@ -217,14 +217,14 @@ Insight: Operations involving data modification must consider failure scenarios,
 
 ## Usage Tips
 
-### 1. Choose Dimensions Based on Content
+### Choose Dimensions Based on Content
 
 Not all memories need all five dimensions:
 - **Pure knowledge**: Action + Insight (e.g., API usage)
 - **Quick Q&A**: Intent + Action (e.g., configuration questions)
 - **Complete case**: Context + Intent + Action + Result + Insight (e.g., complex bug troubleshooting)
 
-### 2. Dimensions Can Be Merged
+### Dimensions Can Be Merged
 
 ```bash
 # Result and Insight can be merged
@@ -234,7 +234,7 @@ Not all memories need all five dimensions:
 "Encountered MySQL timeout, needed quick diagnosis (Context+Intent)"
 ```
 
-### 3. Don't Force Dimension Labels
+### Don't Force Dimension Labels
 
 ```bash
 # With labels (clear structure)
@@ -246,7 +246,7 @@ Not all memories need all five dimensions:
 
 Both work - goal is content clarity.
 
-### 4. Titles Should Include Key Information
+### Titles Should Include Key Information
 
 ```bash
 ✅ Good title: "MySQL Connection Timeout - AWS Security Group Issue"

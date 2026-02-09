@@ -21,6 +21,10 @@ Detailed documentation for all Memo CLI commands.
 
 Initialize configuration (optional, auto-initializes on first use).
 
+Creates the following files:
+- `~/.memo/config.toml` - Main application configuration
+- `~/.memo/providers.toml` - API provider configuration (you need to create this from example)
+
 ### Syntax
 
 ```bash
@@ -42,6 +46,25 @@ memo init
 # Initialize local config for current project
 memo init --local
 ```
+
+### Setup Guide
+
+After `memo init`, you need to configure providers:
+
+```bash
+# Copy the providers example
+cp providers.example.toml ~/.memo/providers.toml
+
+# Edit providers.toml with your API keys
+#    - Add your Alibaba Cloud / Zhipu AI / OpenAI API keys
+#    - Configure services (embedding, rerank, llm)
+
+# Edit config.toml to select services
+#    embedding = "aliyun.embed"
+#    rerank = "aliyun.rerank"
+```
+
+See `providers.example.toml` and `config.example.toml` for complete examples.
 
 ---
 

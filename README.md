@@ -87,41 +87,45 @@ AI: [Auto searches memory] memo search "mysql connection" -n 5
 
 - **Global config**: `~/.memo/config.toml` (recommended)
 - **Local config**: `./.memo/config.toml` (project-specific)
+- **Providers config**: `~/.memo/providers.toml` (API keys and service settings)
 
 ### Priority Order
 
 Command-line args > Local config > Global config > Defaults
 
+### Quick Setup
+
+1. Copy example files:
+```bash
+cp providers.example.toml ~/.memo/providers.toml
+cp config.example.toml ~/.memo/config.toml
+```
+
+2. Edit `~/.memo/providers.toml` with your API keys
+
+3. Edit `~/.memo/config.toml` to select your preferred services
+
 ### Configuration Parameters
 
 | Parameter | Required | Description | Default |
 |-----------|:--------:|-------------|---------|
-| `embedding_api_key` | ✅ | API key | - |
-| `embedding_model` | ✅ | Model name | - |
-| `embedding_base_url` | ❌ | API endpoint | `https://api.openai.com/v1` |
-| `embedding_provider` | ❌ | Provider type | Auto-inferred |
-| `embedding_dimension` | ❌ | Vector dimension | Auto-inferred |
-| `similarity_threshold` | ❌ | Search similarity threshold (0-1) | `0.3` |
+| `embedding` | ✅ | Embedding service reference (e.g., `aliyun.embed`) | - |
+| `rerank` | ✅ | Rerank service reference (e.g., `aliyun.rerank`) | - |
+| `search_limit` | ❌ | Maximum search results | `10` |
+| `similarity_threshold` | ❌ | Search similarity threshold (0-1) | `0.35` |
 | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
-| `rerank_api_key` | ✅ | Rerank API key (required) | - |
-| `rerank_model` | ❌ | Rerank model name | Auto-inferred |
-| `rerank_base_url` | ❌ | Rerank API endpoint | Auto-inferred |
 
-### Supported API Types
+### Quick Setup
 
-**OpenAI-compatible API (default):**
-```toml
-embedding_api_key = "sk-..."
-embedding_model = "text-embedding-3-small"
-# embedding_base_url = "https://api.example.com/v1"  # Optional
+1. Copy example files:
+```bash
+cp providers.example.toml ~/.memo/providers.toml
+cp config.example.toml ~/.memo/config.toml
 ```
 
-**Ollama local deployment:**
-```toml
-embedding_base_url = "http://localhost:11434/api"
-embedding_api_key = ""  # No key needed for local
-embedding_model = "nomic-embed-text"
-```
+2. Edit `~/.memo/providers.toml` with your API keys
+
+3. Edit `~/.memo/config.toml` to select your preferred services
 
 ---
 
@@ -129,7 +133,8 @@ embedding_model = "nomic-embed-text"
 
 - [Command Reference](docs/COMMANDS.md) - Detailed documentation for all commands
 - [AI Agent Skill](skills/memo-brain/en-US/SKILL.md) - AI coding assistant integration guide
-- `config.example.toml` - Complete configuration options
+- `config.example.toml` - Main configuration example
+- `providers.example.toml` - Provider configuration example
 - `memo <command> --help` - Command-specific help
 
 ---

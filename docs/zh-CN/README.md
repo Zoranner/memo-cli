@@ -87,41 +87,45 @@ AI：[自动搜索记忆] memo search "mysql connection" -n 5
 
 - **全局配置**：`~/.memo/config.toml`（推荐）
 - **本地配置**：`./.memo/config.toml`（项目独立）
+- **供应商配置**：`~/.memo/providers.toml`（API 密钥和服务设置）
 
 ### 配置优先级
 
 命令行参数 > 本地配置 > 全局配置 > 默认值
 
+### 快速设置
+
+1. 复制示例文件：
+```bash
+cp providers.example.toml ~/.memo/providers.toml
+cp config.example.toml ~/.memo/config.toml
+```
+
+2. 编辑 `~/.memo/providers.toml` 填入你的 API 密钥
+
+3. 编辑 `~/.memo/config.toml` 选择要使用的服务
+
 ### 配置参数
 
 | 参数 | 必填 | 说明 | 默认值 |
 |------|:----:|------|--------|
-| `embedding_api_key` | ✅ | API 密钥 | - |
-| `embedding_model` | ✅ | 模型名称 | - |
-| `embedding_base_url` | ❌ | API 端点 | `https://api.openai.com/v1` |
-| `embedding_provider` | ❌ | 提供商类型 | 自动推断 |
-| `embedding_dimension` | ❌ | 向量维度 | 自动推断 |
-| `similarity_threshold` | ❌ | 搜索相似度阈值（0-1） | `0.3` |
+| `embedding` | ✅ | Embedding 服务引用（如 `aliyun.embed`） | - |
+| `rerank` | ✅ | Rerank 服务引用（如 `aliyun.rerank`） | - |
+| `search_limit` | ❌ | 搜索结果数量上限 | `10` |
+| `similarity_threshold` | ❌ | 搜索相似度阈值（0-1） | `0.35` |
 | `duplicate_threshold` | ❌ | 重复检测相似度阈值（0-1） | `0.85` |
-| `rerank_api_key` | ✅ | Rerank API 密钥（必填） | - |
-| `rerank_model` | ❌ | Rerank 模型名称 | 自动推断 |
-| `rerank_base_url` | ❌ | Rerank API 端点 | 自动推断 |
 
-### 支持的 API 类型
+### 快速设置
 
-**OpenAI 兼容 API（默认）：**
-```toml
-embedding_api_key = "sk-..."
-embedding_model = "text-embedding-3-small"
-# embedding_base_url = "https://api.example.com/v1"  # 可选
+1. 复制示例文件：
+```bash
+cp providers.example.toml ~/.memo/providers.toml
+cp config.example.toml ~/.memo/config.toml
 ```
 
-**Ollama 本地部署：**
-```toml
-embedding_base_url = "http://localhost:11434/api"
-embedding_api_key = ""  # 本地无需 key
-embedding_model = "nomic-embed-text"
-```
+2. 编辑 `~/.memo/providers.toml` 填入你的 API 密钥
+
+3. 编辑 `~/.memo/config.toml` 选择要使用的服务
 
 ---
 
@@ -129,7 +133,8 @@ embedding_model = "nomic-embed-text"
 
 - [命令参考](COMMANDS.md) - 所有命令的详细文档
 - [AI Agent Skill](../../skills/memo-brain/zh-CN/SKILL.md) - AI 编码助手集成指南
-- `config.example.toml` - 完整配置选项
+- `config.example.toml` - 主配置示例
+- `providers.example.toml` - 供应商配置示例
 - `memo <command> --help` - 命令特定帮助
 
 ---

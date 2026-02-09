@@ -2,7 +2,7 @@
 
 ## 🎯 设计目标
 
-将 API 提供商配置与应用配置分离，实现：
+将 API 提供商配置与### 应用配置分离，实现：
 - 集中管理 API keys
 - 一个 token 对应多个服务
 - 易于添加和切换 provider
@@ -138,7 +138,7 @@ duplicate_threshold = 0.85
 
 ## 🏗️ 代码结构
 
-### 1. 配置数据结构
+### 配置数据结构
 
 ```rust
 // cli/src/config/providers.rs
@@ -178,7 +178,7 @@ impl ProvidersConfig {
 }
 ```
 
-### 2. 应用配置
+应用配置
 
 ```rust
 // cli/src/config/app_config.rs
@@ -210,7 +210,7 @@ pub struct ResolvedService {
 }
 ```
 
-### 3. Provider Trait
+### Provider Trait
 
 ```rust
 // cli/src/providers/rerank.rs

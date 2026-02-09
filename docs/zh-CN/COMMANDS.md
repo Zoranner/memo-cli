@@ -21,6 +21,10 @@ Memo CLI 所有命令的详细文档。
 
 初始化配置（可选，首次使用时会自动初始化）。
 
+创建以下文件：
+- `~/.memo/config.toml` - 主应用配置
+- `~/.memo/providers.toml` - API 供应商配置（需要从示例创建）
+
 ### 语法
 
 ```bash
@@ -42,6 +46,25 @@ memo init
 # 为当前项目初始化本地配置
 memo init --local
 ```
+
+### 设置指南
+
+执行 `memo init` 后，需要配置供应商：
+
+```bash
+# 复制供应商配置示例
+cp providers.example.toml ~/.memo/providers.toml
+
+# 编辑 providers.toml 填入你的 API 密钥
+#    - 添加阿里云 / 智谱 AI / OpenAI 的 API 密钥
+#    - 配置服务（embedding、rerank、llm）
+
+# 编辑 config.toml 选择要使用的服务
+#    embedding = "aliyun.embed"
+#    rerank = "aliyun.rerank"
+```
+
+完整的示例请参见 `providers.example.toml` 和 `config.example.toml`。
 
 ---
 
