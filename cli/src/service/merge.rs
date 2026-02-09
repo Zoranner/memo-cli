@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 
-use crate::config::Config;
-use crate::embedding::EmbeddingModel;
+use crate::config::{AppConfig, ProvidersConfig};
+use crate::providers::create_embed_provider;
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{Memory, MemoryBuilder, StorageBackend, StorageConfig};
@@ -15,34 +15,30 @@ pub async fn merge(
     force_global: bool,
 ) -> Result<()> {
     let output = Output::new();
-    let config = Config::load_with_scope(force_local, force_global)?;
-    let scope = Config::get_scope_name(force_local, force_global);
+
+    // 加载 providers 和 app 配置
+    let providers = ProvidersConfig::load()?;
+    let config = AppConfig::load_with_scope(force_local, force_global)?;
+    let scope = AppConfig::get_scope_name(force_local, force_global);
 
     if ids.len() < 2 {
         anyhow::bail!("Need at least 2 memory IDs to merge");
     }
 
-    // 检查 API key
-    config.validate_api_key(force_local)?;
-
-    // 创建 embedding 模型
-    let model = EmbeddingModel::new(
-        config.embedding_api_key.clone(),
-        config.embedding_model.clone(),
-        config.embedding_base_url.clone(),
-        config.embedding_dimension,
-        config.embedding_provider.clone(),
-    )?;
+    // 解析 embedding 服务配置
+    let embed_config = config.resolve_embedding(&providers)?;
+    let embed_provider = create_embed_provider(&embed_config)?;
 
     // 创建存储客户端
+    let brain_path = config.get_brain_path()?;
     let storage_config = StorageConfig {
-        path: config.brain_path.to_string_lossy().to_string(),
-        dimension: model.dimension(),
+        path: brain_path.to_string_lossy().to_string(),
+        dimension: embed_provider.dimension(),
     };
     let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;
 
-    output.database_info(&config.brain_path, record_count);
+    output.database_info(&brain_path, record_count);
 
     // 验证所有记忆是否存在，并收集信息
     output.status("Collecting", &format!("{} memories", ids.len()));
@@ -85,7 +81,7 @@ pub async fn merge(
 
     // 编码合并后的内容
     output.status("Encoding", "merged content");
-    let vector = model.encode(&content).await?;
+    let vector = embed_provider.encode(&content).await?;
 
     // 插入合并后的新记忆（保留最早的 created_at）
     output.status("Merging", &format!("{} memories", ids.len()));

@@ -1,0 +1,78 @@
+# ============================================
+# Provider 配置文件示例
+# 复制此文件到 ~/.memo/providers.toml 并填写你的配置
+# ============================================
+
+# 阿里云 DashScope
+[aliyun]
+name = "阿里云 DashScope"
+api_key = "sk-your-dashscope-api-key"  # 从 https://dashscope.console.aliyun.com/ 获取
+
+  # Embedding 服务
+  [aliyun.embed]
+  type = "embed"
+  base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model = "text-embedding-v4"
+  dimension = 1024
+
+  # Rerank 服务（推荐使用，效果优于智谱）
+  [aliyun.rerank]
+  type = "rerank"
+  base_url = "https://dashscope.aliyuncs.com/compatible-api/v1"
+  model = "qwen3-rerank"
+
+  # LLM 服务（用于多查询拆解等高级功能）
+  [aliyun.llm]
+  type = "llm"
+  base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model = "qwen-max"
+
+# 智谱 AI
+[zhipu]
+name = "智谱 AI"
+api_key = "your-zhipu-api-key.xxx"  # 从 https://bigmodel.cn/ 获取
+
+  # Embedding 服务
+  [zhipu.embed]
+  type = "embed"
+  base_url = "https://open.bigmodel.cn/api/paas/v4"
+  model = "embedding-3"
+  dimension = 2048
+
+  # Rerank 服务（注意：智谱 rerank 存在质量问题，不推荐使用）
+  [zhipu.rerank]
+  type = "rerank"
+  base_url = "https://open.bigmodel.cn/api/paas/v4"
+  model = "rerank"
+
+# OpenAI
+[openai]
+name = "OpenAI"
+api_key = "sk-your-openai-api-key"
+
+  [openai.embed]
+  type = "embed"
+  base_url = "https://api.openai.com/v1"
+  model = "text-embedding-3-small"
+  dimension = 1536
+
+  [openai.llm]
+  type = "llm"
+  base_url = "https://api.openai.com/v1"
+  model = "gpt-4"
+
+# Ollama（本地部署）
+[ollama]
+name = "Ollama Local"
+api_key = ""  # 本地不需要 key
+
+  [ollama.embed]
+  type = "embed"
+  base_url = "http://localhost:11434"
+  model = "bge-m3"
+  dimension = 1024
+
+  [ollama.rerank]
+  type = "rerank"
+  base_url = "http://localhost:11434"
+  model = "bge-reranker-v2-m3"

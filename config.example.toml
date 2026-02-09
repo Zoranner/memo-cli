@@ -1,78 +1,34 @@
-# Memo CLI 配置文件示例
-# 复制此文件到 ~/.memo/config.toml 并填写你的配置
+# Memo 主配置文件示例
+# 复制此文件到 ~/.memo/config.toml 并根据需要修改
 
-# 向量数据库路径(可选, 默认: ~/.memo/brain)
+# 数据库路径（可选，默认: ~/.memo/brain）
 # brain_path = "/path/to/your/brain"
 
-# ============ Embedding API 配置 ============
+# ============================================
+# 服务配置（引用 providers.toml）
+# ============================================
 
-# 提供商类型(可选: "zhipu"/"bigmodel", "openai", "ollama", 默认: zhipu)
-# embedding_provider = "zhipu"
+# Embedding 服务
+# 推荐：aliyun.embed（便宜、快速、中文效果好）
+embedding = "aliyun.embed"
 
-# API 端点(可选, 默认: https://open.bigmodel.cn/api/paas/v4)
-# embedding_base_url = "https://open.bigmodel.cn/api/paas/v4"
+# Rerank 服务
+# 推荐：aliyun.rerank（效果好，智谱 rerank 存在质量问题）
+rerank = "aliyun.rerank"
 
-# API 密钥(必填)
-# 从 https://bigmodel.cn/usercenter/proj-mgmt/apikeys 获取
-embedding_api_key = "your-api-key-here"
+# LLM 服务（可选，用于多查询拆解等高级功能）
+# llm = "aliyun.llm"
 
-# 模型名称(默认: embedding-3)
-# 可选: embedding-3, embedding-2
-embedding_model = "embedding-3"
+# ============================================
+# 搜索配置
+# ============================================
 
-# Embedding 维度(可选, 默认 2048)
-# embedding-3 支持: 256, 512, 1024, 2048
-# embedding-2 固定: 1024
-# embedding_dimension = 2048
-
-# ============ Rerank API 配置(必填) ============
-# Rerank 用于对多层搜索结果进行智能重排序，显著提升搜索相关性
-# 系统会自动判断是否需要 rerank：候选少且质量高时自动跳过以节省成本
-# 这是必须的配置项，未配置将无法使用搜索功能
-
-# API 端点(可选, 默认: https://open.bigmodel.cn/api/paas/v4)
-# rerank_base_url = "https://open.bigmodel.cn/api/paas/v4"
-
-# API 密钥(必填, 可与 embedding_api_key 相同)
-rerank_api_key = "your-api-key-here"
-
-# Rerank 模型名称(默认: rerank)
-rerank_model = "rerank"
-
-# ============ 搜索配置 ============
-
-# 返回结果数量上限(默认: 10)
-# 注意：这是多层搜索完成后返回的最终结果数，不是每层的数量
+# 返回结果数量上限（默认: 10）
 search_limit = 10
 
-# 第一层搜索阈值(0.0-1.0, 默认: 0.35)
+# 第一层搜索阈值（0.0-1.0，默认: 0.35）
 # 较低的阈值可以召回更多候选，后续层级会使用更高的自适应阈值
-# 系统会自动生成各层阈值: 0.35 → 0.45 → 0.52 → 0.59 → ...
-# 建议保持默认值或更低(0.3-0.4)以确保多层搜索能发现相关记忆
 similarity_threshold = 0.35
 
-# 重复检测相似度阈值(0.0-1.0)
+# 重复检测相似度阈值（0.0-1.0，默认: 0.85）
 duplicate_threshold = 0.85
-
-# ============ 配置示例 ============
-
-# --- 智谱 AI (默认, 推荐) ---
-# 从 https://bigmodel.cn/usercenter/proj-mgmt/apikeys 获取 API Key
-# embedding_api_key = "your-zhipu-api-key"
-# embedding_model = "embedding-3"
-# rerank_api_key = "your-zhipu-api-key"  # 可与 embedding 使用同一个 key
-# rerank_model = "rerank"
-
-# --- Ollama 本地部署 ---
-# embedding_provider = "ollama"
-# embedding_base_url = "http://localhost:11434/api"
-# embedding_api_key = ""  # Ollama 无需 key
-# embedding_model = "nomic-embed-text"
-
-# --- 其他 OpenAI 兼容 API (如 OpenAI, Azure) ---
-# embedding_base_url = "https://api.openai.com/v1"
-# embedding_api_key = "sk-..."
-# embedding_model = "text-embedding-3-small"
-# rerank_base_url = "https://api.cohere.ai/v1"
-# rerank_api_key = "your-cohere-key"
-# rerank_model = "rerank-english-v3.0"

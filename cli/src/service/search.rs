@@ -3,9 +3,8 @@ use chrono::NaiveDateTime;
 use futures::future::join_all;
 use std::collections::HashSet;
 
-use crate::config::Config;
-use crate::embedding::EmbeddingModel;
-use crate::rerank::RerankModel;
+use crate::config::{AppConfig, ProvidersConfig};
+use crate::providers::{create_embed_provider, create_rerank_provider};
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{
@@ -36,28 +35,28 @@ pub async fn search(options: SearchOptions) -> Result<()> {
     let output = Output::new();
 
     let _initialized = crate::service::init::ensure_initialized().await?;
-    let config = Config::load_with_scope(force_local, force_global)?;
-    config.validate_api_key(force_local)?;
 
-    let model = EmbeddingModel::new(
-        config.embedding_api_key.clone(),
-        config.embedding_model.clone(),
-        config.embedding_base_url.clone(),
-        config.embedding_dimension,
-        config.embedding_provider.clone(),
-    )?;
+    // 加载 providers 和 app 配置
+    let providers = ProvidersConfig::load()?;
+    let config = AppConfig::load_with_scope(force_local, force_global)?;
 
+    // 解析 embedding 和 rerank 服务配置
+    let embed_config = config.resolve_embedding(&providers)?;
+    let rerank_config = config.resolve_rerank(&providers)?;
+    let embed_provider = create_embed_provider(&embed_config)?;
+
+    let brain_path = config.get_brain_path()?;
     let storage_config = StorageConfig {
-        path: config.brain_path.to_string_lossy().to_string(),
-        dimension: model.dimension(),
+        path: brain_path.to_string_lossy().to_string(),
+        dimension: embed_provider.dimension(),
     };
     let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;
 
-    output.database_info(&config.brain_path, record_count);
+    output.database_info(&brain_path, record_count);
     output.status("Encoding", "query");
 
-    let query_vector = model.encode(&query).await?;
+    let query_vector = embed_provider.encode(&query).await?;
 
     multi_layer_search(MultiLayerSearchParams {
         query_vector,
@@ -67,7 +66,7 @@ pub async fn search(options: SearchOptions) -> Result<()> {
         after,
         before,
         storage: &storage,
-        config: &config,
+        rerank_config: &rerank_config,
         output: &output,
     })
     .await
@@ -81,7 +80,7 @@ struct MultiLayerSearchParams<'a> {
     after: Option<String>,
     before: Option<String>,
     storage: &'a LocalStorageClient,
-    config: &'a Config,
+    rerank_config: &'a crate::config::ResolvedService,
     output: &'a Output,
 }
 
@@ -95,7 +94,7 @@ async fn multi_layer_search(params: MultiLayerSearchParams<'_>) -> Result<()> {
         after,
         before,
         storage,
-        config,
+        rerank_config,
         output,
     } = params;
 
@@ -257,14 +256,12 @@ async fn multi_layer_search(params: MultiLayerSearchParams<'_>) -> Result<()> {
     let (final_results, used_rerank) = if should_rerank {
         output.status("Reranking", &format!("{} candidates", all_candidates.len()));
 
-        let rerank_model = RerankModel::new(
-            config.rerank_api_key.clone(),
-            config.rerank_model.clone(),
-            config.rerank_base_url.clone(),
-        )?;
+        let rerank_provider = create_rerank_provider(rerank_config)?;
 
         let documents: Vec<&str> = all_candidates.iter().map(|r| r.content.as_str()).collect();
-        let reranked = rerank_model.rerank(query, &documents, Some(limit)).await?;
+        let reranked = rerank_provider
+            .rerank(query, &documents, Some(limit))
+            .await?;
 
         tracing::debug!("Rerank returned {} results", reranked.len());
 

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
-use crate::config::Config;
-use crate::embedding::EmbeddingModel;
+use crate::config::{AppConfig, ProvidersConfig};
+use crate::providers::create_embed_provider;
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{StorageBackend, StorageConfig};
@@ -14,30 +14,26 @@ pub async fn update(
     force_global: bool,
 ) -> Result<()> {
     let output = Output::new();
-    let config = Config::load_with_scope(force_local, force_global)?;
-    let scope = Config::get_scope_name(force_local, force_global);
 
-    // 检查 API key
-    config.validate_api_key(force_local)?;
+    // 加载 providers 和 app 配置
+    let providers = ProvidersConfig::load()?;
+    let config = AppConfig::load_with_scope(force_local, force_global)?;
+    let scope = AppConfig::get_scope_name(force_local, force_global);
 
-    // 创建 embedding 模型
-    let model = EmbeddingModel::new(
-        config.embedding_api_key.clone(),
-        config.embedding_model.clone(),
-        config.embedding_base_url.clone(),
-        config.embedding_dimension,
-        config.embedding_provider.clone(),
-    )?;
+    // 解析 embedding 服务配置
+    let embed_config = config.resolve_embedding(&providers)?;
+    let embed_provider = create_embed_provider(&embed_config)?;
 
     // 创建存储客户端
+    let brain_path = config.get_brain_path()?;
     let storage_config = StorageConfig {
-        path: config.brain_path.to_string_lossy().to_string(),
-        dimension: model.dimension(),
+        path: brain_path.to_string_lossy().to_string(),
+        dimension: embed_provider.dimension(),
     };
     let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;
 
-    output.database_info(&config.brain_path, record_count);
+    output.database_info(&brain_path, record_count);
 
     // 查找要更新的记忆
     output.status("Finding", &format!("memory {}", id));
@@ -52,7 +48,7 @@ pub async fn update(
 
     // 编码新内容
     output.status("Encoding", "new content");
-    let new_vector = model.encode(&content).await?;
+    let new_vector = embed_provider.encode(&content).await?;
 
     // 更新记忆
     output.status("Updating", &format!("memory {}", id));

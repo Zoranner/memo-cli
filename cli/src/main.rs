@@ -9,9 +9,8 @@ mod config;
 mod ui;
 
 // Infrastructure
-mod embedding;
 mod parser;
-mod rerank;
+mod providers;
 
 // Business logic
 mod service;

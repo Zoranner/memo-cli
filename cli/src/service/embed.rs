@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 
-use crate::config::Config;
-use crate::embedding::EmbeddingModel;
+use crate::config::{AppConfig, ProvidersConfig};
 use crate::parser::parse_markdown_file;
+use crate::providers::{create_embed_provider, EmbedProvider};
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{Memory, MemoryBuilder, StorageBackend, StorageConfig};
@@ -22,35 +22,31 @@ pub async fn embed(
     let _initialized = crate::service::init::ensure_initialized().await?;
 
     let output = Output::new();
-    let config = Config::load_with_scope(force_local, force_global)?;
-    let scope = Config::get_scope_name(force_local, force_global);
 
-    // 检查 API key（Ollama 不需要）
-    config.validate_api_key(force_local)?;
+    // 加载 providers 和 app 配置
+    let providers = ProvidersConfig::load()?;
+    let config = AppConfig::load_with_scope(force_local, force_global)?;
+    let scope = AppConfig::get_scope_name(force_local, force_global);
 
-    // 创建 embedding 模型
-    let model = EmbeddingModel::new(
-        config.embedding_api_key.clone(),
-        config.embedding_model.clone(),
-        config.embedding_base_url.clone(),
-        config.embedding_dimension,
-        config.embedding_provider.clone(),
-    )?;
+    // 解析 embedding 服务配置
+    let embed_config = config.resolve_embedding(&providers)?;
+    let embed_provider = create_embed_provider(&embed_config)?;
 
     // 创建存储客户端
+    let brain_path = config.get_brain_path()?;
     let storage_config = StorageConfig {
-        path: config.brain_path.to_string_lossy().to_string(),
-        dimension: model.dimension(),
+        path: brain_path.to_string_lossy().to_string(),
+        dimension: embed_provider.dimension(),
     };
     let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;
 
     // 显示数据库信息（包含模型和维度）
     output.database_info_with_model(
-        &config.brain_path,
+        &brain_path,
         record_count,
-        &config.embedding_model,
-        model.dimension(),
+        &embed_config.model,
+        embed_provider.dimension(),
     );
 
     // 使用命令行参数或配置文件中的阈值
@@ -64,7 +60,7 @@ pub async fn embed(
         if input_path.is_dir() {
             // 情况1：目录 - 递归扫描所有 .md 文件
             embed_directory(
-                &model,
+                &*embed_provider,
                 &storage,
                 input_path,
                 user_tags.as_ref(),
@@ -75,7 +71,7 @@ pub async fn embed(
         } else if input_path.is_file() {
             // 情况2：单个文件
             embed_file(
-                &model,
+                &*embed_provider,
                 &storage,
                 input_path,
                 user_tags.as_ref(),
@@ -87,7 +83,7 @@ pub async fn embed(
     } else {
         // 情况3：纯文本字符串
         embed_text(
-            &model,
+            &*embed_provider,
             &storage,
             &input,
             user_tags.as_ref(),
@@ -106,7 +102,7 @@ pub async fn embed(
 
 /// 嵌入目录中的所有 markdown 文件
 async fn embed_directory(
-    model: &EmbeddingModel,
+    model: &dyn EmbedProvider,
     storage: &LocalStorageClient,
     dir_path: &std::path::Path,
     user_tags: Option<&Vec<String>>,
@@ -151,7 +147,7 @@ async fn embed_directory(
 
 /// 嵌入单个 markdown 文件
 async fn embed_file(
-    model: &EmbeddingModel,
+    model: &dyn EmbedProvider,
     storage: &LocalStorageClient,
     file_path: &std::path::Path,
     user_tags: Option<&Vec<String>>,
@@ -186,7 +182,7 @@ async fn embed_file(
 
 /// 嵌入纯文本字符串
 async fn embed_text(
-    model: &EmbeddingModel,
+    model: &dyn EmbedProvider,
     storage: &LocalStorageClient,
     text: &str,
     user_tags: Option<&Vec<String>>,
@@ -221,7 +217,7 @@ async fn embed_text(
 
 /// 嵌入单个 section
 async fn embed_section(
-    model: &EmbeddingModel,
+    model: &dyn EmbedProvider,
     storage: &LocalStorageClient,
     section: memo_types::MemoSection,
     file_path: Option<&std::path::Path>,
