@@ -26,7 +26,9 @@ pub struct ServiceConfig {
 /// Provider 配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProviderConfig {
-    pub name: String,
+    /// 显示名称（可选，仅用于展示）
+    #[serde(default)]
+    pub name: Option<String>,
     pub api_key: String,
     #[serde(flatten)]
     pub services: HashMap<String, ServiceConfig>,
@@ -104,6 +106,7 @@ impl ProvidersConfig {
         })?;
 
         Ok(ResolvedService {
+            provider_name: provider_name.to_string(),
             api_key: provider.api_key.clone(),
             base_url: service.base_url.clone(),
             model: service.model.clone(),
@@ -115,6 +118,7 @@ impl ProvidersConfig {
 /// 解析后的服务配置
 #[derive(Debug, Clone)]
 pub struct ResolvedService {
+    pub provider_name: String,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
@@ -168,8 +172,28 @@ api_key = "xxx.yyy"
         assert!(config.providers.contains_key("zhipu"));
 
         let resolved = config.get_service("aliyun.embed").unwrap();
+        assert_eq!(resolved.provider_name, "aliyun");
         assert_eq!(resolved.api_key, "sk-test");
         assert_eq!(resolved.model, "text-embedding-v4");
         assert_eq!(resolved.get_int("dimension"), Some(1024));
+    }
+
+    #[test]
+    fn test_parse_providers_config_without_name() {
+        let toml_str = r#"
+[aliyun]
+api_key = "sk-test"
+
+  [aliyun.embed]
+  type = "embed"
+  base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model = "text-embedding-v4"
+  dimension = 1024
+        "#;
+
+        let config: ProvidersConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.providers.get("aliyun").unwrap().name.is_none());
+        let resolved = config.get_service("aliyun.embed").unwrap();
+        assert_eq!(resolved.api_key, "sk-test");
     }
 }
