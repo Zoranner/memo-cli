@@ -20,11 +20,11 @@
 | Capability | Description |
 |------------|-------------|
 | 🤖 **Auto Recording** | Say "remember this" in conversation, AI automatically saves to knowledge base |
-| 🔍 **Smart Retrieval** | Say "how did we do this before", AI automatically searches related memories |
+| 🔍 **Multi-Query Search** | LLM decomposes your question into sub-queries, searches in parallel, and synthesizes a comprehensive answer |
 | ⏰ **Time Travel** | Quickly find development experience from "last week" or "last month" |
 | 👥 **Team Collaboration** | Personal knowledge base or project-level sharing, flexible choice |
 | 🔐 **Data Security** | Memory data stored entirely locally, fully under your control |
-| 🌐 **Flexible Options** | Supports OpenAI, Ollama local, and more |
+| 🌐 **Flexible Options** | Supports OpenAI, Ollama local, Aliyun, ZhipuAI, and any OpenAI-compatible service |
 
 ## 🚀 Quick Start
 
@@ -111,21 +111,13 @@ cp config.example.toml ~/.memo/config.toml
 |-----------|:--------:|-------------|---------|
 | `embedding` | ✅ | Embedding service reference (e.g., `aliyun.embed`) | - |
 | `rerank` | ✅ | Rerank service reference (e.g., `aliyun.rerank`) | - |
+| `llm` | ✅ | LLM service reference for query decomposition & summarization (e.g., `aliyun.llm`) | - |
 | `search_limit` | ❌ | Maximum search results | `10` |
 | `similarity_threshold` | ❌ | Search similarity threshold (0-1) | `0.35` |
 | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
-
-### Quick Setup
-
-1. Copy example files:
-```bash
-cp providers.example.toml ~/.memo/providers.toml
-cp config.example.toml ~/.memo/config.toml
-```
-
-2. Edit `~/.memo/providers.toml` with your API keys
-
-3. Edit `~/.memo/config.toml` to select your preferred services
+| `[decomposition]` | ❌ | Query decomposition config: `max_level`, `max_total_leaves`, `max_children` | built-in defaults |
+| `[multi_query]` | ❌ | Search & merge config: `candidates_per_query`, `top_n_per_leaf`, `min_per_leaf`, `max_total_results` | built-in defaults |
+| `[prompts]` | ❌ | Custom LLM strategy prompts: `decompose`, `summarize` (strategy content only, not full prompt) | built-in 5D strategy |
 
 ---
 

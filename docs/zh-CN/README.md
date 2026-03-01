@@ -20,11 +20,11 @@
 | 能力 | 说明 |
 |------|------|
 | 🤖 **自动记录** | 对话中说"记住这个"，AI 自动保存到知识库 |
-| 🔍 **智能检索** | 说"之前怎么做的"，AI 自动搜索相关记忆 |
+| 🔍 **多维搜索** | LLM 将问题拆解为多个子问题并行搜索，最终综合生成一个完整回答 |
 | ⏰ **时光回溯** | 快速找到"上周"、"上个月"的开发经验 |
 | 👥 **团队协作** | 个人知识库或项目级共享，灵活选择 |
 | 🔐 **数据安全** | 记忆数据完全本地存储，完全掌控 |
-| 🌐 **灵活选择** | 支持 OpenAI、Ollama 本地等多种方式 |
+| 🌐 **灵活选择** | 支持 OpenAI、Ollama 本地、阿里云、智谱及任意 OpenAI 兼容服务 |
 
 ## 🚀 快速开始
 
@@ -111,21 +111,13 @@ cp config.example.toml ~/.memo/config.toml
 |------|:----:|------|--------|
 | `embedding` | ✅ | Embedding 服务引用（如 `aliyun.embed`） | - |
 | `rerank` | ✅ | Rerank 服务引用（如 `aliyun.rerank`） | - |
+| `llm` | ✅ | LLM 服务引用，用于查询拆解和结果总结（如 `aliyun.llm`） | - |
 | `search_limit` | ❌ | 搜索结果数量上限 | `10` |
 | `similarity_threshold` | ❌ | 搜索相似度阈值（0-1） | `0.35` |
 | `duplicate_threshold` | ❌ | 重复检测相似度阈值（0-1） | `0.85` |
-
-### 快速设置
-
-1. 复制示例文件：
-```bash
-cp providers.example.toml ~/.memo/providers.toml
-cp config.example.toml ~/.memo/config.toml
-```
-
-2. 编辑 `~/.memo/providers.toml` 填入你的 API 密钥
-
-3. 编辑 `~/.memo/config.toml` 选择要使用的服务
+| `[decomposition]` | ❌ | 查询拆解配置：`max_level`、`max_total_leaves`、`max_children` | 内置默认值 |
+| `[multi_query]` | ❌ | 搜索合并配置：`candidates_per_query`、`top_n_per_leaf`、`min_per_leaf`、`max_total_results` | 内置默认值 |
+| `[prompts]` | ❌ | 自定义 LLM 策略提示词：`decompose`、`summarize`（只需提供策略内容，框架由系统控制） | 内置五维策略 |
 
 ---
 

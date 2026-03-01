@@ -62,6 +62,7 @@ cp providers.example.toml ~/.memo/providers.toml
 # Edit config.toml to select services
 #    embedding = "aliyun.embed"
 #    rerank = "aliyun.rerank"
+#    llm = "aliyun.llm"
 ```
 
 See `providers.example.toml` and `config.example.toml` for complete examples.
@@ -179,40 +180,31 @@ memo search <query> [OPTIONS]
 
 ### How It Works
 
-**Multi-Layer Search:**
+Search uses a multi-query pipeline powered by LLM:
 
-The search uses an intelligent multi-layer approach to discover related memories:
+1. **Query Decomposition**
+   - LLM breaks the query into multiple independent sub-questions (BFS, up to `max_level` levels, up to `max_total_leaves` leaf nodes)
+   - Default strategy: five-dimensional model (core, why, how, case, note) — customizable via `[prompts].decompose`
 
-1. **Layer 1 - Direct Search**
-   - Searches for memories directly matching your query
-   - Uses configurable threshold (default: 0.35)
-   - Returns the most relevant matches
+2. **Parallel Sub-Query Search**
+   - Each leaf sub-question is searched in parallel using multi-layer vector search
+   - Layer 1 uses the configured threshold; deeper layers use progressively higher thresholds to find related memories
+   - Up to `candidates_per_query` candidates are fetched per sub-query, then reranked to keep `top_n_per_leaf`
 
-2. **Layer 2+ - Related Exploration**
-   - Uses Layer 1 results as "seeds" to find related memories
-   - Each layer uses progressively higher similarity thresholds
-   - Adaptive threshold generation: 0.35 → 0.45 → 0.52 → 0.59 → ...
-   - Explores multiple branches in parallel for better performance
+3. **Merge & Deduplication**
+   - Results from all sub-queries are merged by memory ID (highest score wins)
+   - Each sub-query is guaranteed at least `min_per_leaf` results in the final output
+   - Total results are capped at `min(--limit, max_total_results)`
 
-3. **Smart Filtering**
-   - Requires tag overlap in deeper layers (Layer 2+) to ensure relevance
-   - Global deduplication: each memory appears only once
-   - Limits branch exploration to prevent result explosion
-   - Stops when reaching `max_nodes` or `max_depth`
+4. **LLM Summarization**
+   - The merged results are sent to LLM along with the original query
+   - LLM synthesizes a comprehensive answer based on relevant memories
+   - Summary strategy is customizable via `[prompts].summarize`
 
-**Intelligent Reranking:**
+**Intelligent Reranking** (per sub-query):
 
-After multi-layer search, the system decides whether reranking is beneficial:
-
-- **Rerank Skipped** when:
-  - Candidates ≤ limit (no need to re-order)
-  - Candidates ≤ 15 and avg similarity > 0.80 (high quality)
-  - Candidates ≤ 25 and avg similarity > 0.85 (very high quality)
-
-- **Rerank Applied** when:
-  - Larger candidate sets with mixed quality
-  - Lower average similarity scores
-  - Benefits from semantic re-ordering
+- **Rerank Skipped** when candidates ≤ limit, or average similarity is very high
+- **Rerank Applied** for larger or mixed-quality candidate sets
 
 **Score Types:**
 - `V:` prefix = Vector similarity score (from embedding model)
@@ -221,7 +213,6 @@ After multi-layer search, the system decides whether reranking is beneficial:
 **Time Filtering:**
 - Use `--after` and `--before` to filter by date range
 - Supports flexible date formats: `YYYY-MM-DD` or `YYYY-MM-DD HH:MM`
-- Filtering happens after similarity search, doesn't affect ranking
 
 ### Examples
 
@@ -243,38 +234,36 @@ memo search "error handling" --threshold 0.65 -n 30
 
 ### Output Example
 
-Search displays complete memory content with relevance scores, timestamps, and tags:
+Search first displays the LLM-synthesized answer, then the source memories with relevance scores:
 
 ```
-      Results 3 results ranked by rerank scores
+  Decomposing query into sub-questions (max_level=3)
+   Decomposed 5 sub-questions
+    Searching 5 sub-queries in parallel
+      Merging results from 5 sub-queries
+      Results 3 results from multi-query search
+  Summarizing results with LLM
+
+For async trait patterns in Rust, use the `async-trait` crate. Add `#[async_trait]`
+to both the trait definition and all implementations. This is because Rust's type
+system cannot represent the return type of async fn in traits directly...
 
 [R:0.89] a1b2c3d4-e5f6-7890-abcd-ef1234567890 (2026-01-27 10:30) [rust, async, trait]
          Rust async patterns - async-trait usage guide
          
          Context: Using async fn directly in traits causes compilation errors
          Solution: Use #[async_trait] macro on trait definitions and implementations
-         Key Points: The macro must be added to both trait and impl blocks
 
 [R:0.85] b2c3d4e5-f6a7-8901-bcde-f12345678901 (2026-01-26 14:20) [rust, async, error]
          Async error handling - Result<T, E> usage
-         
-         Context: Need to handle errors gracefully in async functions
-         Solution: Return Result<T, Box<dyn Error>> or use anyhow::Result
-         Key Points: Use ? operator for error propagation
 
 [V:0.82] f9a8b7c6-d5e4-3210-fedc-ba9876543210 (2026-01-26 15:45) [rust, error]
          Rust error handling best practices
-         
-         Context: Application and library layers need different error handling strategies
-         Solution: Use anyhow for applications, thiserror for libraries
-         Key Points: Avoid using anyhow in libraries
 ```
 
 **Score Prefixes:**
 - `R:` = Rerank score (more accurate, semantically re-ordered)
 - `V:` = Vector similarity score (from embedding model)
-
-The summary line shows total results and which scoring method was used.
 
 ---
 

@@ -62,6 +62,7 @@ cp providers.example.toml ~/.memo/providers.toml
 # 编辑 config.toml 选择要使用的服务
 #    embedding = "aliyun.embed"
 #    rerank = "aliyun.rerank"
+#    llm = "aliyun.llm"
 ```
 
 完整的示例请参见 `providers.example.toml` 和 `config.example.toml`。
@@ -179,40 +180,31 @@ memo search <query> [OPTIONS]
 
 ### 工作原理
 
-**多层搜索：**
+搜索使用 LLM 驱动的多查询流水线：
 
-搜索使用智能多层方法来发现相关记忆：
+1. **查询拆解**
+   - LLM 将问题拆解为多个独立子问题（BFS，最多 `max_level` 层，最多 `max_total_leaves` 个叶子节点）
+   - 默认策略：五维模型（核心、原因、方法、案例、注意）——可通过 `[prompts].decompose` 自定义
 
-1. **第 1 层 - 直接搜索**
-   - 搜索与查询直接匹配的记忆
-   - 使用可配置阈值（默认：0.35）
-   - 返回最相关的匹配结果
+2. **并行子查询搜索**
+   - 每个叶子子问题并行执行多层向量搜索
+   - 第 1 层使用配置的阈值，深层逐步提高阈值以发现关联记忆
+   - 每个子查询最多召回 `candidates_per_query` 个候选，重排序后保留 `top_n_per_leaf` 条
 
-2. **第 2+ 层 - 关联探索**
-   - 使用第 1 层结果作为"种子"查找相关记忆
-   - 每层使用逐步提高的相似度阈值
-   - 自适应阈值生成：0.35 → 0.45 → 0.52 → 0.59 → ...
-   - 并行探索多个分支以提高性能
+3. **合并去重**
+   - 所有子查询结果按记忆 ID 合并（保留最高分）
+   - 每个子查询至少保证 `min_per_leaf` 条结果出现在最终输出中
+   - 总结果数上限为 `min(--limit, max_total_results)`
 
-3. **智能过滤**
-   - 深层（第 2+ 层）要求标签重叠以确保相关性
-   - 全局去重：每条记忆只出现一次
-   - 限制分支探索以防止结果爆炸
-   - 达到 `max_nodes` 或 `max_depth` 时停止
+4. **LLM 综合总结**
+   - 将合并后的记忆连同原始问题一起发送给 LLM
+   - LLM 基于相关记忆综合生成一个完整回答
+   - 总结策略可通过 `[prompts].summarize` 自定义
 
-**智能重排序：**
+**智能重排序**（每个子查询独立）：
 
-多层搜索后，系统决定是否需要重排序：
-
-- **跳过重排序**的情况：
-  - 候选数 ≤ limit（无需重新排序）
-  - 候选数 ≤ 15 且平均相似度 > 0.80（高质量）
-  - 候选数 ≤ 25 且平均相似度 > 0.85（极高质量）
-
-- **使用重排序**的情况：
-  - 较大的候选集且质量参差不齐
-  - 平均相似度分数较低
-  - 需要语义重新排序的收益
+- **跳过重排序**：候选数 ≤ limit，或平均相似度极高时
+- **使用重排序**：候选集较大或质量参差不齐时
 
 **分数类型：**
 - `V:` 前缀 = 向量相似度分数（来自嵌入模型）
@@ -221,7 +213,6 @@ memo search <query> [OPTIONS]
 **时间过滤：**
 - 使用 `--after` 和 `--before` 按日期范围过滤
 - 支持灵活的日期格式：`YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM`
-- 过滤在相似度搜索之后进行，不影响排名
 
 ### 示例
 
@@ -243,38 +234,36 @@ memo search "错误处理" --threshold 0.65 -n 30
 
 ### 输出示例
 
-搜索显示完整的记忆内容，包含相关性分数、时间戳和标签：
+搜索先输出 LLM 综合总结，再展示来源记忆及相关性分数：
 
 ```
-      Results 3 results ranked by rerank scores
+  Decomposing query into sub-questions (max_level=3)
+   Decomposed 5 sub-questions
+    Searching 5 sub-queries in parallel
+      Merging results from 5 sub-queries
+      Results 3 results from multi-query search
+  Summarizing results with LLM
+
+在 Rust 的 trait 中使用 async fn，需要借助 `async-trait` crate。
+在 trait 定义和所有 impl 块上都需要添加 `#[async_trait]` 宏。
+这是因为 Rust 的类型系统无法直接表示 trait 中 async fn 的返回类型...
 
 [R:0.89] a1b2c3d4-e5f6-7890-abcd-ef1234567890 (2026-01-27 10:30) [rust, async, trait]
          Rust 异步模式 - async-trait 使用指南
          
          背景：在 trait 中直接使用 async fn 会导致编译错误
          方案：使用 #[async_trait] 宏修饰 trait 定义和实现
-         关键点：需要在 trait 和 impl 块都添加该宏
 
 [R:0.85] b2c3d4e5-f6a7-8901-bcde-f12345678901 (2026-01-26 14:20) [rust, async, error]
          异步错误处理 - Result<T, E> 使用
-         
-         背景：异步函数中需要优雅地处理错误
-         方案：返回 Result<T, Box<dyn Error>> 或使用 anyhow::Result
-         关键点：使用 ? 操作符进行错误传播
 
 [V:0.82] f9a8b7c6-d5e4-3210-fedc-ba9876543210 (2026-01-26 15:45) [rust, error]
          Rust 错误处理最佳实践
-         
-         背景：应用层和库层需要不同的错误处理策略
-         方案：应用层用 anyhow，库层用 thiserror
-         关键点：避免在库中使用 anyhow
 ```
 
 **分数前缀：**
 - `R:` = 重排序分数（更准确，语义重新排序）
 - `V:` = 向量相似度分数（来自嵌入模型）
-
-汇总行显示总结果数和使用的评分方法。
 
 ---
 
