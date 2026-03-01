@@ -3,20 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// 服务类型
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ServiceType {
-    Embed,
-    Rerank,
-    Llm,
-}
-
 /// 服务配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ServiceConfig {
-    #[serde(rename = "type")]
-    pub service_type: ServiceType,
     pub base_url: String,
     pub model: String,
     #[serde(flatten)]
@@ -155,13 +144,11 @@ name = "阿里云 DashScope"
 api_key = "sk-test"
 
   [aliyun.embed]
-  type = "embed"
   base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
   model = "text-embedding-v4"
   dimension = 1024
 
   [aliyun.rerank]
-  type = "rerank"
   base_url = "https://dashscope.aliyuncs.com/compatible-api/v1"
   model = "qwen3-rerank"
 
@@ -170,7 +157,6 @@ name = "智谱 AI"
 api_key = "xxx.yyy"
 
   [zhipu.embed]
-  type = "embed"
   base_url = "https://open.bigmodel.cn/api/paas/v4"
   model = "embedding-3"
   dimension = 2048
@@ -196,7 +182,6 @@ api_key = "xxx.yyy"
 api_key = "sk-test"
 
   [aliyun.embed]
-  type = "embed"
   base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
   model = "text-embedding-v4"
   dimension = 1024
