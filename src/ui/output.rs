@@ -125,34 +125,6 @@ impl Output {
         }
     }
 
-    /// 显示搜索结果（带汇总信息）
-    pub fn search_results_with_summary(&self, results: &[QueryResult], used_rerank: bool) {
-        // 显示结果汇总
-        let rank_method = if used_rerank {
-            "rerank scores"
-        } else {
-            "vector scores"
-        };
-
-        eprintln!(
-            "{:>12} {} results ranked by {}",
-            self.green.apply_to("Results"),
-            results.len(),
-            rank_method
-        );
-        eprintln!();
-
-        // 显示结果列表
-        for (i, result) in results.iter().enumerate() {
-            self.display_result_item_list(result);
-
-            // 只在非最后一个结果后添加空行分隔
-            if i < results.len() - 1 {
-                println!();
-            }
-        }
-    }
-
     /// 显示列表结果（列表格式，不带分数）
     pub fn list_results(&self, results: &[QueryResult]) {
         for (i, result) in results.iter().enumerate() {
@@ -167,6 +139,13 @@ impl Output {
                 println!();
             }
         }
+    }
+
+    /// 显示 LLM 生成的综合回答（输出到 stdout，前后各一个空行）
+    pub fn llm_answer(&self, text: &str) {
+        println!();
+        println!("{}", text);
+        println!();
     }
 
     // === 消息提示方法 ===

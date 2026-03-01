@@ -45,6 +45,7 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 async-trait = "0.1"
+quick-xml = { version = "0.37", features = ["serialize"] }
 
 [profile.dev]
 # 开发时快速编译（默认配置，显式声明便于理解）

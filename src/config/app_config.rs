@@ -12,6 +12,100 @@ pub enum ConfigScope {
     Global,
 }
 
+/// 递归拆解配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DecompositionConfig {
+    /// 最大递归深度（默认: 3）
+    #[serde(default = "default_max_level")]
+    pub max_level: usize,
+
+    /// 最大叶子节点数（默认: 12）
+    #[serde(default = "default_max_total_leaves")]
+    pub max_total_leaves: usize,
+
+    /// 每次拆解最多子节点数（默认: 4）
+    #[serde(default = "default_max_children")]
+    pub max_children: usize,
+}
+
+impl Default for DecompositionConfig {
+    fn default() -> Self {
+        Self {
+            max_level: default_max_level(),
+            max_total_leaves: default_max_total_leaves(),
+            max_children: default_max_children(),
+        }
+    }
+}
+
+fn default_max_level() -> usize {
+    3
+}
+
+fn default_max_total_leaves() -> usize {
+    12
+}
+
+fn default_max_children() -> usize {
+    4
+}
+
+/// 多查询搜索配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MultiQueryConfig {
+    /// 每个子问题的候选数量（默认: 50）
+    #[serde(default = "default_candidates_per_query")]
+    pub candidates_per_query: usize,
+
+    /// 每个叶子节点重排后保留数量（默认: 5）
+    #[serde(default = "default_top_n_per_leaf")]
+    pub top_n_per_leaf: usize,
+
+    /// 每个叶子节点至少保留记忆数（默认: 3）
+    #[serde(default = "default_min_per_leaf")]
+    pub min_per_leaf: usize,
+
+    /// 最终返回的总记忆数（默认: 20）
+    #[serde(default = "default_max_total_results")]
+    pub max_total_results: usize,
+
+    /// 去重相似度阈值（默认: 0.98，预留未来内容级去重）
+    #[serde(default = "default_dedup_threshold")]
+    pub dedup_threshold: f32,
+}
+
+impl Default for MultiQueryConfig {
+    fn default() -> Self {
+        Self {
+            candidates_per_query: default_candidates_per_query(),
+            top_n_per_leaf: default_top_n_per_leaf(),
+            min_per_leaf: default_min_per_leaf(),
+            max_total_results: default_max_total_results(),
+            dedup_threshold: default_dedup_threshold(),
+        }
+    }
+}
+
+fn default_candidates_per_query() -> usize {
+    50
+}
+
+fn default_top_n_per_leaf() -> usize {
+    5
+}
+
+fn default_min_per_leaf() -> usize {
+    3
+}
+
+fn default_max_total_results() -> usize {
+    20
+}
+
+fn default_dedup_threshold() -> f32 {
+    0.98
+}
+
 /// 应用配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
@@ -24,8 +118,8 @@ pub struct AppConfig {
     /// Rerank 服务引用（如 "aliyun.rerank"）
     pub rerank: String,
 
-    /// LLM 服务引用（可选，如 "aliyun.llm"）
-    pub llm: Option<String>,
+    /// LLM 服务引用（如 "aliyun.llm"）
+    pub llm: String,
 
     /// 搜索结果数量上限（默认: 10）
     #[serde(default = "default_search_limit")]
@@ -38,6 +132,14 @@ pub struct AppConfig {
     /// 重复检测相似度阈值（0.0-1.0，默认: 0.85）
     #[serde(default = "default_duplicate_threshold")]
     pub duplicate_threshold: f32,
+
+    /// 递归拆解配置
+    #[serde(default)]
+    pub decomposition: DecompositionConfig,
+
+    /// 多查询搜索配置
+    #[serde(default)]
+    pub multi_query: MultiQueryConfig,
 }
 
 fn default_search_limit() -> usize {
@@ -229,6 +331,13 @@ impl AppConfig {
             .with_context(|| format!("Failed to resolve rerank service: {}", self.rerank))
     }
 
+    /// 解析 LLM 服务配置
+    pub fn resolve_llm(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
+        providers
+            .get_service(&self.llm)
+            .with_context(|| format!("Failed to resolve LLM service: {}", self.llm))
+    }
+
     /// 保存配置到全局目录
     #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
@@ -270,7 +379,7 @@ duplicate_threshold = 0.85
 
         assert_eq!(config.embedding, "aliyun.embed");
         assert_eq!(config.rerank, "aliyun.rerank");
-        assert_eq!(config.llm, Some("aliyun.llm".to_string()));
+        assert_eq!(config.llm, "aliyun.llm");
         assert_eq!(config.search_limit, 10);
         assert_eq!(config.similarity_threshold, 0.35);
         assert_eq!(config.duplicate_threshold, 0.85);
@@ -281,6 +390,7 @@ duplicate_threshold = 0.85
         let toml_str = r#"
 embedding = "aliyun.embed"
 rerank = "aliyun.rerank"
+llm = "aliyun.llm"
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
@@ -288,5 +398,32 @@ rerank = "aliyun.rerank"
         assert_eq!(config.search_limit, 10);
         assert_eq!(config.similarity_threshold, 0.35);
         assert_eq!(config.duplicate_threshold, 0.85);
+        assert_eq!(config.decomposition.max_level, 3);
+        assert_eq!(config.decomposition.max_total_leaves, 12);
+        assert_eq!(config.multi_query.max_total_results, 20);
+    }
+
+    #[test]
+    fn test_decomposition_config() {
+        let toml_str = r#"
+embedding = "aliyun.embed"
+rerank = "aliyun.rerank"
+llm = "aliyun.llm"
+
+[decomposition]
+max_level = 2
+max_total_leaves = 8
+max_children = 3
+
+[multi_query]
+top_n_per_leaf = 3
+        "#;
+
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.decomposition.max_level, 2);
+        assert_eq!(config.decomposition.max_total_leaves, 8);
+        assert_eq!(config.decomposition.max_children, 3);
+        assert_eq!(config.multi_query.top_n_per_leaf, 3);
     }
 }

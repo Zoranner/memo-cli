@@ -4271,6 +4271,7 @@ dependencies = [
  "memo-types",
  "model-provider",
  "once_cell",
+ "quick-xml 0.37.5",
  "regex",
  "reqwest",
  "serde",
