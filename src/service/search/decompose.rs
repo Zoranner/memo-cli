@@ -77,7 +77,7 @@ pub async fn build_decomposition_tree(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("BFS level {} decompose failed: {}", current_level, e);
+                    tracing::debug!("BFS level {} decompose failed: {}", current_level, e);
                 }
             }
         }

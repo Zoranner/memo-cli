@@ -10,6 +10,7 @@ pub struct Output {
     green: Style,
     bold: Style,
     dim: Style,
+    silent: bool,
 }
 
 impl Output {
@@ -20,6 +21,17 @@ impl Output {
             green: Style::new().green().bold(),
             bold: Style::new().bold(),
             dim: Style::new().dim(),
+            silent: false,
+        }
+    }
+
+    /// 静默模式：所有 status 类输出被抑制，仅保留结果输出
+    pub fn silent() -> Self {
+        Self {
+            green: Style::new().green().bold(),
+            bold: Style::new().bold(),
+            dim: Style::new().dim(),
+            silent: true,
         }
     }
 
@@ -28,12 +40,18 @@ impl Output {
     /// 显示状态消息（如 "Loading model", "Embedding text" 等）
     /// 格式: "     Loading model ..."（动词右对齐到 12 字符）
     pub fn status(&self, action: &str, target: &str) {
+        if self.silent {
+            return;
+        }
         eprintln!("{:>12} {}", self.green.apply_to(action), target);
     }
 
     /// 开始执行操作的状态消息（会在前面自动添加空行）
     /// 用于标记一个新操作的开始，例如用户确认后的实际执行
     pub fn begin_operation(&self, action: &str, target: &str) {
+        if self.silent {
+            return;
+        }
         eprintln!();
         eprintln!("{:>12} {}", self.green.apply_to(action), target);
     }
@@ -42,6 +60,9 @@ impl Output {
     /// 格式: "    Finished action for scope"
     /// 自动在前面添加空行
     pub fn finish(&self, action: &str, scope: &str) {
+        if self.silent {
+            return;
+        }
         eprintln!();
         eprintln!(
             "{:>12} {} for {} scope",
@@ -57,6 +78,9 @@ impl Output {
     /// 格式: "    Database /path/to/db (123 records)"
     /// 自动在后面添加空行
     pub fn database_info(&self, path: &Path, record_count: usize) {
+        if self.silent {
+            return;
+        }
         eprintln!(
             "{:>12} {} {}",
             self.green.apply_to("Database"),
@@ -76,6 +100,9 @@ impl Output {
         model: &str,
         dimension: usize,
     ) {
+        if self.silent {
+            return;
+        }
         eprintln!(
             "{:>12} {} {}",
             self.green.apply_to("Database"),
@@ -92,6 +119,9 @@ impl Output {
     /// 格式: "    Creating config at /path/to/config"
     /// 自动在后面添加空行
     pub fn resource_action(&self, action: &str, resource: &str, path: &Path) {
+        if self.silent {
+            return;
+        }
         eprintln!(
             "{:>12} {} at {}",
             self.green.apply_to(action),
@@ -157,12 +187,18 @@ impl Output {
 
     /// 显示注意事项（右对齐）
     pub fn note(&self, message: &str) {
+        if self.silent {
+            return;
+        }
         eprintln!("{:>12} {}", self.dim.apply_to("Note"), message);
     }
 
     /// 显示警告（黄色，右对齐）
     /// 自动在前后添加空行
     pub fn warning(&self, message: &str) {
+        if self.silent {
+            return;
+        }
         eprintln!();
         eprintln!(
             "{:>12} {}",

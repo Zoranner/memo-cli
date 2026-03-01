@@ -120,7 +120,7 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Branch search failed: {}", e);
+                    tracing::debug!("Branch search failed: {}", e);
                     continue;
                 }
             }

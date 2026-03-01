@@ -95,7 +95,7 @@ pub async fn search(
                 let query_vector = match embed_provider.encode(&leaf_query).await {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::warn!("Failed to encode leaf query '{}': {}", leaf_query, e);
+                        tracing::debug!("Failed to encode leaf query '{}': {}", leaf_query, e);
                         return None;
                     }
                 };
@@ -108,7 +108,7 @@ pub async fn search(
                     time_range,
                     storage: &storage,
                     rerank_config: &rerank_config,
-                    output: &Output::new(),
+                    output: &Output::silent(),
                 };
 
                 match multi_layer_search(params).await {
@@ -117,7 +117,7 @@ pub async fn search(
                         results: results.into_iter().take(top_n).collect(),
                     }),
                     Err(e) => {
-                        tracing::warn!("Leaf search failed: {}", e);
+                        tracing::debug!("Leaf search failed: {}", e);
                         None
                     }
                 }
@@ -166,7 +166,7 @@ pub async fn search(
         {
             Ok(text) => Some(text),
             Err(e) => {
-                tracing::warn!("LLM summarization failed: {}", e);
+                tracing::debug!("LLM summarization failed: {}", e);
                 None
             }
         }

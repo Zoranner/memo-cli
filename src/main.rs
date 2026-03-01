@@ -15,7 +15,7 @@ mod parser;
 // Business logic
 mod service;
 
-fn main() -> Result<()> {
+fn main() {
     // 初始化日志（从环境变量 RUST_LOG 读取日志级别，默认为 warn）
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -28,9 +28,9 @@ fn main() -> Result<()> {
     let args = cli::Cli::parse();
 
     // 统一创建 Tokio Runtime，避免重复创建
-    let runtime = tokio::runtime::Runtime::new()?;
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
-    runtime.block_on(async {
+    let result = runtime.block_on(async {
         match args.command {
             // 初始化
             cli::Commands::Init { local } => service::init::initialize(local).await,
@@ -93,5 +93,11 @@ fn main() -> Result<()> {
                 force,
             } => service::clear::clear(local, global, force).await,
         }
-    })
+    });
+
+    if let Err(e) = result {
+        let output = ui::Output::new();
+        output.error(&format!("{:#}", e));
+        std::process::exit(1);
+    }
 }

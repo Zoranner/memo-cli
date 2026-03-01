@@ -91,7 +91,7 @@ fn parse_queries_xml(xml: &str) -> Result<Vec<SubQuery>> {
                     question: sq.question,
                 })
             } else {
-                tracing::warn!(
+                tracing::debug!(
                     "Skipping invalid subquery: question_len={}",
                     sq.question.len()
                 );
