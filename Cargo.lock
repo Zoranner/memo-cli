@@ -4269,6 +4269,7 @@ dependencies = [
  "futures",
  "memo-local",
  "memo-types",
+ "model-provider",
  "once_cell",
  "regex",
  "reqwest",
@@ -4361,6 +4362,19 @@ name = "mock_instant"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dce6dd36094cac388f119d2e9dc82dc730ef91c32a6222170d630e5414b956e6"
+
+[[package]]
+name = "model-provider"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tracing",
+]
 
 [[package]]
 name = "moka"

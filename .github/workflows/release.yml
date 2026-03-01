@@ -47,10 +47,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy checks
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --all-features
 
   build-release:
     name: Build Release Binaries
@@ -115,7 +115,6 @@ jobs:
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
       - name: Build release binary
-        working-directory: ./cli
         env:
           # macOS: 设置最低部署目标
           MACOSX_DEPLOYMENT_TARGET: ${{ runner.os == 'macOS' && '11.0' || '' }}

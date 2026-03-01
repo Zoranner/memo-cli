@@ -1,0 +1,31 @@
+[package]
+name = "memo-local"
+version = "0.1.1"
+edition = "2021"
+authors = ["Zoranner"]
+description = "Local storage backend for memo using LanceDB"
+license = "GPL-3.0-only"
+
+[lib]
+name = "memo_local"
+path = "src/lib.rs"
+
+[dependencies]
+# 依赖 memo-types
+memo-types = { path = "../types" }
+
+# 重型数据库依赖
+lancedb = "0.23"
+arrow-array = "56"
+arrow-schema = "56"
+futures = "0.3"
+
+# 共享依赖
+anyhow = "1"
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+async-trait = "0.1"
