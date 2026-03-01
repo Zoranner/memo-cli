@@ -4,8 +4,8 @@ use crate::config::{AppConfig, ProvidersConfig};
 use crate::parser::parse_markdown_file;
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
-use model_provider::{create_embed_provider, EmbedProvider};
 use memo_types::{Memory, MemoryBuilder, StorageBackend, StorageConfig};
+use model_provider::{create_embed_provider, EmbedProvider};
 use walkdir::WalkDir;
 
 // === 公开接口 ===

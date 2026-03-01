@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use crate::config::{AppConfig, ProvidersConfig};
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
-use model_provider::create_embed_provider;
 use memo_types::{Memory, MemoryBuilder, StorageBackend, StorageConfig};
+use model_provider::create_embed_provider;
 
 pub async fn merge(
     ids: Vec<String>,

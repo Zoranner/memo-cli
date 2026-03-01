@@ -45,6 +45,7 @@ pub async fn search(
 
     let decomp_config = &app_config.decomposition;
     let mq_config = &app_config.multi_query;
+    let prompts = &app_config.prompts;
 
     let llm_client = LlmClient::from_resolved(&llm_config)?;
 
@@ -55,7 +56,13 @@ pub async fn search(
             decomp_config.max_level
         ),
     );
-    let tree = build_decomposition_tree(&query, &llm_client, decomp_config).await?;
+    let tree = build_decomposition_tree(
+        &query,
+        &llm_client,
+        decomp_config,
+        prompts.decompose.as_deref(),
+    )
+    .await?;
     let leaves = tree.get_leaves();
 
     if leaves.is_empty() {
@@ -77,7 +84,6 @@ pub async fn search(
         .map(|leaf| {
             let leaf_query = leaf.query.clone();
             let leaf_id = leaf.id.clone();
-            let leaf_dim = leaf.dimension.clone();
             let time_range = time_range.clone();
             let rerank_config = rerank_config.clone();
             let candidates_limit = mq_config.candidates_per_query;
@@ -97,7 +103,7 @@ pub async fn search(
                 let params = LayerSearchParams {
                     query_vector,
                     query: &leaf_query,
-                    limit: top_n,
+                    limit: candidates_limit,
                     threshold,
                     time_range,
                     storage: &storage,
@@ -108,8 +114,7 @@ pub async fn search(
                 match multi_layer_search(params).await {
                     Ok(results) => Some(SubQueryResult {
                         node_id: leaf_id,
-                        dimension: leaf_dim,
-                        results: results.into_iter().take(candidates_limit).collect(),
+                        results: results.into_iter().take(top_n).collect(),
                     }),
                     Err(e) => {
                         tracing::warn!("Leaf search failed: {}", e);
@@ -120,11 +125,8 @@ pub async fn search(
         })
         .collect();
 
-    let sub_results: Vec<SubQueryResult> = join_all(search_tasks)
-        .await
-        .into_iter()
-        .flatten()
-        .collect();
+    let sub_results: Vec<SubQueryResult> =
+        join_all(search_tasks).await.into_iter().flatten().collect();
 
     if sub_results.is_empty() {
         output.info("No results found in sub-queries");
@@ -154,7 +156,14 @@ pub async fn search(
         None
     } else {
         output.status("Summarizing", "results with LLM");
-        match summarize_results(&llm_client, &query, &final_memories).await {
+        match summarize_results(
+            &llm_client,
+            &query,
+            &final_memories,
+            prompts.summarize.as_deref(),
+        )
+        .await
+        {
             Ok(text) => Some(text),
             Err(e) => {
                 tracing::warn!("LLM summarization failed: {}", e);

@@ -91,10 +91,7 @@ pub async fn search(options: SearchOptions) -> Result<()> {
     Ok(())
 }
 
-fn build_time_range(
-    after: Option<String>,
-    before: Option<String>,
-) -> Result<Option<TimeRange>> {
+fn build_time_range(after: Option<String>, before: Option<String>) -> Result<Option<TimeRange>> {
     if after.is_none() && before.is_none() {
         return Ok(None);
     }

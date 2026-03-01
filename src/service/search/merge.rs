@@ -13,23 +13,25 @@ pub fn merge_results(
     let mut id_map: HashMap<String, MergedResult> = HashMap::new();
 
     for sub_result in &sub_results {
-        let source_label = format!("{}:{}", sub_result.dimension.as_str(), sub_result.node_id);
+        let source_label = &sub_result.node_id;
 
         for memory in &sub_result.results {
             let score = memory.score.unwrap_or(0.0);
-            let entry = id_map.entry(memory.id.clone()).or_insert_with(|| MergedResult {
-                memory: memory.clone(),
-                sources: Vec::new(),
-                max_score: score,
-            });
+            let entry = id_map
+                .entry(memory.id.clone())
+                .or_insert_with(|| MergedResult {
+                    memory: memory.clone(),
+                    sources: Vec::new(),
+                    max_score: score,
+                });
 
             if score > entry.max_score {
                 entry.max_score = score;
                 entry.memory.score = Some(score);
-                entry.memory.score_type = memory.score_type.clone();
+                entry.memory.score_type = memory.score_type;
             }
 
-            if !entry.sources.contains(&source_label) {
+            if !entry.sources.contains(source_label) {
                 entry.sources.push(source_label.clone());
             }
         }
@@ -64,15 +66,14 @@ fn collect_guaranteed_results(
     let mut guaranteed_ids: HashSet<String> = HashSet::new();
 
     for sub_result in sub_results {
-        let source_label = format!("{}:{}", sub_result.dimension.as_str(), sub_result.node_id);
+        let source_label = &sub_result.node_id;
         let mut count = 0;
 
         for merged in sorted_merged {
             if count >= min_per_leaf {
                 break;
             }
-            if merged.sources.contains(&source_label)
-                && !guaranteed_ids.contains(&merged.memory.id)
+            if merged.sources.contains(source_label) && !guaranteed_ids.contains(&merged.memory.id)
             {
                 guaranteed_ids.insert(merged.memory.id.clone());
                 count += 1;

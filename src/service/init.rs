@@ -3,8 +3,8 @@ use anyhow::Result;
 use crate::config::{AppConfig, ProvidersConfig};
 use crate::ui::Output;
 use memo_local::{DatabaseMetadata, LocalStorageClient};
-use model_provider::create_embed_provider;
 use memo_types::{StorageBackend, StorageConfig};
+use model_provider::create_embed_provider;
 
 // === 公开接口 ===
 

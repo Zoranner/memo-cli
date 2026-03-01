@@ -2,24 +2,24 @@ use anyhow::Result;
 use futures::future::join_all;
 
 use crate::config::DecompositionConfig;
-use crate::llm::{decompose_query, LlmClient, SubQuery};
+use crate::llm::{decompose_query, LlmClient, SubQuery as LlmSubQuery};
 
-use super::types::{DecompositionTree, SearchDimension, TreeNode};
+use super::types::{DecompositionTree, TreeNode};
 
 /// BFS 递归拆解用户查询，构建拆解树
+///
+/// `strategy` 为用户自定义拆解策略段，传 `None` 使用内置五维策略。
 pub async fn build_decomposition_tree(
     original_query: &str,
     llm_client: &LlmClient,
     config: &DecompositionConfig,
+    strategy: Option<&str>,
 ) -> Result<DecompositionTree> {
     let mut tree = DecompositionTree::new();
 
-    // 当前层待拆解的节点：(node_id, query_text, level)
-    let mut current_level_queue: Vec<(Option<String>, String, usize)> = vec![(
-        None,
-        original_query.to_string(),
-        0,
-    )];
+    // 当前层待拆解的节点：(parent_id, query_text)
+    let mut current_level_queue: Vec<(Option<String>, String)> =
+        vec![(None, original_query.to_string())];
 
     let mut current_level = 0;
 
@@ -40,17 +40,16 @@ pub async fn build_decomposition_tree(
             current_level_queue.len()
         );
 
-        // 并行拆解当前层所有节点
         let decompose_tasks: Vec<_> = current_level_queue
             .iter()
-            .map(|(_, query, _)| decompose_query(llm_client, query))
+            .map(|(_, query)| decompose_query(llm_client, query, strategy))
             .collect();
 
         let results = join_all(decompose_tasks).await;
 
-        let mut next_level_queue: Vec<(Option<String>, String, usize)> = Vec::new();
+        let mut next_level_queue: Vec<(Option<String>, String)> = Vec::new();
 
-        for ((parent_id, _, level), result) in current_level_queue.iter().zip(results) {
+        for ((parent_id, _), result) in current_level_queue.iter().zip(results) {
             match result {
                 Ok(subqueries) => {
                     let subqueries = limit_children(subqueries, config.max_children);
@@ -58,8 +57,7 @@ pub async fn build_decomposition_tree(
                         let node_id = tree.alloc_id();
                         let node = TreeNode {
                             id: node_id.clone(),
-                            dimension: SearchDimension::from_str(&sq.dimension),
-                            query: sq.query.clone(),
+                            query: sq.question.clone(),
                             children: Vec::new(),
                         };
                         tree.add_node(node);
@@ -70,20 +68,16 @@ pub async fn build_decomposition_tree(
                             }
                         }
 
-                        if sq.needs_refinement
-                            && level + 1 < config.max_level
+                        if sq.need_expand
+                            && current_level + 1 < config.max_level
                             && tree.leaf_count() < config.max_total_leaves
                         {
-                            next_level_queue.push((Some(node_id), sq.query, level + 1));
+                            next_level_queue.push((Some(node_id), sq.question));
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "BFS level {} decompose failed: {}",
-                        current_level,
-                        e
-                    );
+                    tracing::warn!("BFS level {} decompose failed: {}", current_level, e);
                 }
             }
         }
@@ -101,6 +95,6 @@ pub async fn build_decomposition_tree(
     Ok(tree)
 }
 
-fn limit_children(subqueries: Vec<SubQuery>, max_children: usize) -> Vec<SubQuery> {
+fn limit_children(subqueries: Vec<LlmSubQuery>, max_children: usize) -> Vec<LlmSubQuery> {
     subqueries.into_iter().take(max_children).collect()
 }

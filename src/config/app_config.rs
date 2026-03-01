@@ -106,6 +106,24 @@ fn default_dedup_threshold() -> f32 {
     0.98
 }
 
+/// 提示词策略配置
+///
+/// 两个字段均为可选，不填则使用内置默认策略。
+/// 这里只需提供"策略内容"，即如何拆解问题或如何整合记忆的自然语言描述。
+///
+/// 系统会将策略内容嵌入内置框架模板中发送给 LLM：
+///   - 框架会负责角色设定、放置当前问题和记忆内容、要求 XML 输出格式
+///   - 用户无需也不应在策略段中重复描述问题或记忆内容
+///   - XML 输出格式由系统固定控制，用户无法通过策略段修改
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PromptsConfig {
+    /// 拆解策略（覆盖内置五维拆解策略，只需描述如何拆解问题，不要包含 XML 格式要求）
+    pub decompose: Option<String>,
+
+    /// 总结策略（覆盖内置总结策略，只需描述整合方式，不要重复问题或记忆内容）
+    pub summarize: Option<String>,
+}
+
 /// 应用配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
@@ -140,6 +158,10 @@ pub struct AppConfig {
     /// 多查询搜索配置
     #[serde(default)]
     pub multi_query: MultiQueryConfig,
+
+    /// 提示词配置（可选覆盖内置提示词）
+    #[serde(default)]
+    pub prompts: PromptsConfig,
 }
 
 fn default_search_limit() -> usize {
