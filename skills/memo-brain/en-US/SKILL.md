@@ -103,7 +103,7 @@ See [examples.md](examples.md) for more examples
 Vector search relies on semantic understanding; queries should include sufficient context:
 - ✅ Include **Context** (scenario) and **Intent** (goal): Describe your situation and what you want to solve
 - ✅ Use complete question sentences: Like asking an experienced colleague
-- ✅ Search automatically performs multi-layer recursive exploration
+- ✅ Search automatically decomposes the query into sub-questions via LLM, searches in parallel, and synthesizes a comprehensive answer
 - ❌ Don't just list keywords (e.g., "rust async trait")
 
 **Query construction:**
