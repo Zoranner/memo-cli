@@ -1,4 +1,3 @@
-mod decompose;
 mod engine;
 mod merge;
 mod multi;

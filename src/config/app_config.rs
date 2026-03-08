@@ -15,39 +15,21 @@ pub enum ConfigScope {
 /// 递归拆解配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DecompositionConfig {
-    /// 最大递归深度（默认: 3）
-    #[serde(default = "default_max_level")]
-    pub max_level: usize,
-
     /// 最大叶子节点数（默认: 12）
     #[serde(default = "default_max_total_leaves")]
     pub max_total_leaves: usize,
-
-    /// 每次拆解最多子节点数（默认: 4）
-    #[serde(default = "default_max_children")]
-    pub max_children: usize,
 }
 
 impl Default for DecompositionConfig {
     fn default() -> Self {
         Self {
-            max_level: default_max_level(),
             max_total_leaves: default_max_total_leaves(),
-            max_children: default_max_children(),
         }
     }
 }
 
-fn default_max_level() -> usize {
-    3
-}
-
 fn default_max_total_leaves() -> usize {
     12
-}
-
-fn default_max_children() -> usize {
-    4
 }
 
 /// 多查询搜索配置
@@ -112,12 +94,12 @@ fn default_dedup_threshold() -> f32 {
 /// 这里只需提供"策略内容"，即如何拆解问题或如何整合记忆的自然语言描述。
 ///
 /// 系统会将策略内容嵌入内置框架模板中发送给 LLM：
-///   - 框架会负责角色设定、放置当前问题和记忆内容、要求 XML 输出格式
+///   - 框架会负责角色设定、放置当前问题和记忆内容、要求 JSON 输出格式
 ///   - 用户无需也不应在策略段中重复描述问题或记忆内容
-///   - XML 输出格式由系统固定控制，用户无法通过策略段修改
+///   - JSON 输出格式由系统固定控制，用户无法通过策略段修改
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PromptsConfig {
-    /// 拆解策略（覆盖内置五维拆解策略，只需描述如何拆解问题，不要包含 XML 格式要求）
+    /// 拆解策略（覆盖内置五维拆解策略，只需描述如何拆解问题，不要包含 JSON 格式要求）
     pub decompose: Option<String>,
 
     /// 总结策略（覆盖内置总结策略，只需描述整合方式，不要重复问题或记忆内容）

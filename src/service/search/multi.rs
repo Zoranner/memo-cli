@@ -1,15 +1,15 @@
 use anyhow::Result;
 use futures::future::join_all;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::config::{AppConfig, ResolvedService};
-use crate::llm::{summarize_results, LlmClient};
+use crate::llm::{decompose_query_tree, summarize_results, LlmClient};
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{QueryResult, TimeRange};
 use model_provider::EmbedProvider;
 
-use super::decompose::build_decomposition_tree;
 use super::engine::{multi_layer_search, LayerSearchParams};
 use super::merge::merge_results;
 use super::types::SubQueryResult;
@@ -49,21 +49,21 @@ pub async fn search(
 
     let llm_client = LlmClient::from_resolved(&llm_config)?;
 
-    output.status(
-        "Decomposing",
-        &format!(
-            "query into sub-questions (max_level={})",
-            decomp_config.max_level
-        ),
-    );
-    let tree = build_decomposition_tree(
-        &query,
+    output.status("Decomposing", "query into sub-questions");
+    let trees = decompose_query_tree(
         &llm_client,
-        decomp_config,
+        &query,
         prompts.decompose.as_deref(),
     )
     .await?;
-    let leaves = tree.get_leaves();
+
+    let mut seen = HashSet::new();
+    let leaves: Vec<String> = trees
+        .iter()
+        .flat_map(|t| t.leaves())
+        .filter(|q| seen.insert(q.clone()))
+        .take(decomp_config.max_total_leaves)
+        .collect();
 
     if leaves.is_empty() {
         output.info("Decomposition produced no sub-questions");
@@ -81,9 +81,10 @@ pub async fn search(
 
     let search_tasks: Vec<_> = leaves
         .iter()
-        .map(|leaf| {
-            let leaf_query = leaf.query.clone();
-            let leaf_id = leaf.id.clone();
+        .enumerate()
+        .map(|(idx, leaf_query)| {
+            let leaf_query = leaf_query.clone();
+            let leaf_id = format!("leaf_{}", idx);
             let time_range = time_range.clone();
             let rerank_config = rerank_config.clone();
             let candidates_limit = mq_config.candidates_per_query;
