@@ -42,4 +42,4 @@
 
 mod output;
 
-pub use output::{Output, is_already_reported_root};
+pub use output::{is_already_reported_root, Output};

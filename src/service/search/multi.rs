@@ -50,12 +50,7 @@ pub async fn search(
     let llm_client = LlmClient::from_resolved(&llm_config)?;
 
     output.status("Decomposing", "query into sub-questions");
-    let trees = decompose_query_tree(
-        &llm_client,
-        &query,
-        prompts.decompose.as_deref(),
-    )
-    .await?;
+    let trees = decompose_query_tree(&llm_client, &query, prompts.decompose.as_deref()).await?;
 
     let mut seen = HashSet::new();
     let leaves: Vec<String> = trees
