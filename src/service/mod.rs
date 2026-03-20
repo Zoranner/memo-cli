@@ -1,6 +1,8 @@
 // 初始化
 pub mod init;
 
+pub mod context;
+
 mod storage_dim;
 
 // 核心操作

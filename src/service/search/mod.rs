@@ -1,16 +1,17 @@
 mod engine;
-mod merge;
 mod multi;
+mod subquery_merge;
 mod types;
 
 use anyhow::{Context, Result};
 use chrono::NaiveDateTime;
+use std::sync::Arc;
 
-use crate::config::{AppConfig, ProvidersConfig};
+use crate::config::ProvidersConfig;
+use crate::service::context::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
-use memo_types::{StorageBackend, StorageConfig, TimeRange};
-use model_provider::create_embed_provider;
+use memo_types::{StorageBackend, TimeRange};
 
 pub struct SearchOptions {
     pub query: String,
@@ -34,28 +35,22 @@ pub async fn search(options: SearchOptions) -> Result<()> {
     } = options;
     let output = Output::new();
 
-    let _initialized = crate::service::init::ensure_initialized().await?;
+    let (session, _) = open_local_embed_session(force_local, force_global).await?;
+    let LocalEmbedSession {
+        config,
+        storage,
+        embed_provider,
+        brain_path,
+    } = session;
 
-    let providers = ProvidersConfig::load()?;
-    let config = AppConfig::load_with_scope(force_local, force_global)?;
-
-    let embed_config = config.resolve_embedding(&providers)?;
-    let rerank_config = config.resolve_rerank(&providers)?;
-    let dimension = embed_config.require_dimension()?;
-    let provider_config = embed_config.to_provider_config(Some(dimension));
-    let embed_provider = create_embed_provider(&provider_config)?;
-
-    let brain_path = config.get_brain_path()?;
-    let storage_config = StorageConfig {
-        path: brain_path.to_string_lossy().to_string(),
-        dimension: embed_provider.dimension(),
-    };
-    let storage = LocalStorageClient::connect(&storage_config).await?;
+    let storage: Arc<LocalStorageClient> = Arc::new(storage);
     let record_count = storage.count().await?;
 
     output.database_info(&brain_path, record_count);
 
     let time_range = build_time_range(after, before)?;
+    let providers = ProvidersConfig::load()?;
+    let rerank_config = config.resolve_rerank(&providers)?;
     let llm_config = config.resolve_llm(&providers)?;
 
     let (results, summary) = multi::search(

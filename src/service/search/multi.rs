@@ -11,7 +11,7 @@ use memo_types::{QueryResult, TimeRange};
 use model_provider::{create_rerank_provider, EmbedProvider, RerankProvider};
 
 use super::engine::{multi_layer_search, LayerSearchParams};
-use super::merge::merge_results;
+use super::subquery_merge::merge_results;
 use super::types::SubQueryResult;
 
 pub struct MultiSearchOptions {
@@ -19,7 +19,7 @@ pub struct MultiSearchOptions {
     pub limit: usize,
     pub threshold: f32,
     pub time_range: Option<TimeRange>,
-    pub storage: LocalStorageClient,
+    pub storage: Arc<LocalStorageClient>,
     pub embed_provider: Box<dyn EmbedProvider>,
     pub rerank_config: ResolvedService,
     pub llm_config: ResolvedService,
@@ -105,11 +105,11 @@ pub async fn search(
 
                 let params = LayerSearchParams {
                     query_vector,
-                    query: &leaf_query,
+                    query: leaf_query.as_str(),
                     limit: candidates_limit,
                     threshold,
                     time_range,
-                    storage: &storage,
+                    storage: storage.as_ref(),
                     rerank,
                     output: &Output::silent(),
                 };

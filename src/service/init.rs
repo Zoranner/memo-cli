@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::config::{AppConfig, ProvidersConfig};
+use crate::service::storage_dim::resolve_storage_dimension;
 use crate::ui::Output;
 use memo_local::{DatabaseMetadata, LocalStorageClient};
 use memo_types::{StorageBackend, StorageConfig};
@@ -60,18 +61,18 @@ duplicate_threshold = 0.85
     let config = AppConfig::load_with_scope(local, !local)?;
     config.ensure_dirs()?;
 
-    // 加载 providers 并创建 embedding provider
+    // 加载 providers 并创建 embedding provider（维度与已有 metadata 对齐）
     let providers = ProvidersConfig::load()?;
+    let brain_path = config.get_brain_path()?;
+    let dimension = resolve_storage_dimension(&brain_path, &providers, &config)?;
     let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.require_dimension()?;
     let provider_config = embed_config.to_provider_config(Some(dimension));
-    let embed_provider = create_embed_provider(&provider_config)?;
+    let _ = create_embed_provider(&provider_config)?;
 
     // 确保 memories 表存在
-    let brain_path = config.get_brain_path()?;
     let storage_config = StorageConfig {
         path: brain_path.to_string_lossy().to_string(),
-        dimension: embed_provider.dimension(),
+        dimension,
     };
 
     let storage = LocalStorageClient::connect(&storage_config).await?;
@@ -83,8 +84,7 @@ duplicate_threshold = 0.85
         output.resource_action("Creating", "database", &table_path);
 
         // 创建元数据
-        let metadata =
-            DatabaseMetadata::new(embed_config.model.clone(), embed_provider.dimension());
+        let metadata = DatabaseMetadata::new(embed_config.model.clone(), dimension);
         metadata.save(&brain_path)?;
         output.resource_action("Creating", "metadata", &metadata_path);
     } else {
@@ -97,44 +97,3 @@ duplicate_threshold = 0.85
     Ok(())
 }
 
-// === 辅助函数 ===
-
-/// 自动初始化（静默模式）
-/// 确保数据库目录和表存在，不生成配置文件
-/// 返回是否进行了初始化
-pub async fn ensure_initialized() -> Result<bool> {
-    // 加载配置
-    let config = AppConfig::load()?;
-    let mut initialized = false;
-
-    // 确保必要的目录存在
-    config.ensure_dirs()?;
-
-    // 加载 providers 并创建 embedding provider
-    let providers = ProvidersConfig::load()?;
-    let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.require_dimension()?;
-    let provider_config = embed_config.to_provider_config(Some(dimension));
-    let embed_provider = create_embed_provider(&provider_config)?;
-
-    // 确保 memories 表存在
-    let brain_path = config.get_brain_path()?;
-    let storage_config = StorageConfig {
-        path: brain_path.to_string_lossy().to_string(),
-        dimension: embed_provider.dimension(),
-    };
-
-    let storage = LocalStorageClient::connect(&storage_config).await?;
-    if !storage.exists().await? {
-        storage.init().await?;
-
-        // 创建元数据
-        let metadata =
-            DatabaseMetadata::new(embed_config.model.clone(), embed_provider.dimension());
-        metadata.save(&brain_path)?;
-
-        initialized = true;
-    }
-
-    Ok(initialized)
-}

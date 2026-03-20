@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
 
-use crate::config::{AppConfig, ProvidersConfig};
+use crate::config::AppConfig;
+use crate::service::context::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
-use memo_local::LocalStorageClient;
-use memo_types::{StorageBackend, StorageConfig};
-use model_provider::create_embed_provider;
+use memo_types::StorageBackend;
 
 pub async fn update(
     id: &str,
@@ -15,24 +14,16 @@ pub async fn update(
 ) -> Result<()> {
     let output = Output::new();
 
-    // 加载 providers 和 app 配置
-    let providers = ProvidersConfig::load()?;
-    let config = AppConfig::load_with_scope(force_local, force_global)?;
+    let (
+        LocalEmbedSession {
+            storage,
+            embed_provider,
+            brain_path,
+            ..
+        },
+        _,
+    ) = open_local_embed_session(force_local, force_global).await?;
     let scope = AppConfig::get_scope_name(force_local, force_global);
-
-    // 解析 embedding 服务配置
-    let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.require_dimension()?;
-    let provider_config = embed_config.to_provider_config(Some(dimension));
-    let embed_provider = create_embed_provider(&provider_config)?;
-
-    // 创建存储客户端
-    let brain_path = config.get_brain_path()?;
-    let storage_config = StorageConfig {
-        path: brain_path.to_string_lossy().to_string(),
-        dimension: embed_provider.dimension(),
-    };
-    let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;
 
     output.database_info(&brain_path, record_count);

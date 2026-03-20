@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 
-use crate::config::{AppConfig, ProvidersConfig};
+use crate::config::AppConfig;
 use crate::parser::parse_markdown_file;
+use crate::service::context::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
-use memo_local::LocalStorageClient;
-use memo_types::{Memory, MemoryBuilder, StorageBackend, StorageConfig};
-use model_provider::{create_embed_provider, EmbedProvider};
+use memo_types::{Memory, MemoryBuilder, StorageBackend};
+use model_provider::EmbedProvider;
 use walkdir::WalkDir;
 
 // === 公开接口 ===
@@ -18,29 +18,21 @@ pub async fn embed(
     force_local: bool,
     force_global: bool,
 ) -> Result<()> {
-    // 自动初始化
-    let _initialized = crate::service::init::ensure_initialized().await?;
+    let (
+        LocalEmbedSession {
+            config,
+            storage,
+            embed_provider,
+            brain_path,
+        },
+        _,
+    ) = open_local_embed_session(force_local, force_global).await?;
 
     let output = Output::new();
-
-    // 加载 providers 和 app 配置
-    let providers = ProvidersConfig::load()?;
-    let config = AppConfig::load_with_scope(force_local, force_global)?;
     let scope = AppConfig::get_scope_name(force_local, force_global);
 
-    // 解析 embedding 服务配置
+    let providers = crate::config::ProvidersConfig::load()?;
     let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.require_dimension()?;
-    let provider_config = embed_config.to_provider_config(Some(dimension));
-    let embed_provider = create_embed_provider(&provider_config)?;
-
-    // 创建存储客户端
-    let brain_path = config.get_brain_path()?;
-    let storage_config = StorageConfig {
-        path: brain_path.to_string_lossy().to_string(),
-        dimension: embed_provider.dimension(),
-    };
-    let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;
 
     // 显示数据库信息（包含模型和维度）
@@ -105,7 +97,7 @@ pub async fn embed(
 /// 嵌入目录中的所有 markdown 文件
 async fn embed_directory(
     model: &dyn EmbedProvider,
-    storage: &LocalStorageClient,
+    storage: &dyn StorageBackend,
     dir_path: &std::path::Path,
     user_tags: Option<&Vec<String>>,
     force: bool,
@@ -150,7 +142,7 @@ async fn embed_directory(
 /// 嵌入单个 markdown 文件
 async fn embed_file(
     model: &dyn EmbedProvider,
-    storage: &LocalStorageClient,
+    storage: &dyn StorageBackend,
     file_path: &std::path::Path,
     user_tags: Option<&Vec<String>>,
     force: bool,
@@ -185,7 +177,7 @@ async fn embed_file(
 /// 嵌入纯文本字符串
 async fn embed_text(
     model: &dyn EmbedProvider,
-    storage: &LocalStorageClient,
+    storage: &dyn StorageBackend,
     text: &str,
     user_tags: Option<&Vec<String>>,
     force: bool,
@@ -220,7 +212,7 @@ async fn embed_text(
 /// 嵌入单个 section
 async fn embed_section(
     model: &dyn EmbedProvider,
-    storage: &LocalStorageClient,
+    storage: &dyn StorageBackend,
     section: memo_types::MemoSection,
     file_path: Option<&std::path::Path>,
     user_tags: Option<&Vec<String>>,
@@ -261,7 +253,7 @@ async fn embed_section(
 /// 检查重复记忆，如果发现则终止程序
 /// 返回 Ok(()) 表示无重复，可以继续嵌入
 async fn check_duplicate_and_abort_if_found(
-    storage: &LocalStorageClient,
+    storage: &dyn StorageBackend,
     vector: &[f32],
     threshold: f32,
     force: bool,
