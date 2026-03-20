@@ -1,11 +1,12 @@
 use anyhow::Result;
 use futures::future::join_all;
 use std::collections::HashSet;
+use std::sync::Arc;
 
-use crate::config::ResolvedService;
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{QueryResult, ScoreType, SearchConfig as MultiLayerSearchConfig, StorageBackend};
+use model_provider::RerankProvider;
 
 /// 多层搜索参数
 pub struct LayerSearchParams<'a> {
@@ -15,7 +16,7 @@ pub struct LayerSearchParams<'a> {
     pub threshold: f32,
     pub time_range: Option<memo_types::TimeRange>,
     pub storage: &'a LocalStorageClient,
-    pub rerank_config: &'a ResolvedService,
+    pub rerank: Arc<dyn RerankProvider>,
     pub output: &'a Output,
 }
 
@@ -28,7 +29,7 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
         threshold,
         time_range,
         storage,
-        rerank_config,
+        rerank,
         output,
     } = params;
 
@@ -132,14 +133,14 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
         current_layer_results = next_layer_results;
     }
 
-    apply_rerank(all_candidates, query, limit, rerank_config, output).await
+    apply_rerank(all_candidates, query, limit, rerank, output).await
 }
 
 async fn apply_rerank(
     all_candidates: Vec<QueryResult>,
     query: &str,
     limit: usize,
-    rerank_config: &ResolvedService,
+    rerank: Arc<dyn RerankProvider>,
     output: &Output,
 ) -> Result<Vec<QueryResult>> {
     if !should_use_rerank(&all_candidates, limit) {
@@ -157,12 +158,8 @@ async fn apply_rerank(
 
     output.status("Reranking", &format!("{} candidates", all_candidates.len()));
 
-    let rerank_provider_config = rerank_config.to_provider_config(None);
-    let rerank_provider = model_provider::create_rerank_provider(&rerank_provider_config)?;
     let documents: Vec<&str> = all_candidates.iter().map(|r| r.content.as_str()).collect();
-    let reranked = rerank_provider
-        .rerank(query, &documents, Some(limit))
-        .await?;
+    let reranked = rerank.rerank(query, &documents, Some(limit)).await?;
 
     let results = reranked
         .iter()

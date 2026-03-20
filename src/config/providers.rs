@@ -120,6 +120,16 @@ impl ResolvedService {
         self.extra.get(key).and_then(|v| v.as_integer())
     }
 
+    /// Embedding 服务在 `providers.toml` 中必须配置的向量维度
+    pub fn require_dimension(&self) -> Result<usize> {
+        self.get_int("dimension")
+            .filter(|&d| d > 0)
+            .map(|d| d as usize)
+            .context(
+                "Embedding service must set a positive integer 'dimension' in providers.toml (e.g. dimension = 1024)",
+            )
+    }
+
     /// 转换为 ProviderConfig
     pub fn to_provider_config(&self, dimension: Option<usize>) -> model_provider::ProviderConfig {
         model_provider::ProviderConfig {

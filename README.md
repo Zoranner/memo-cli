@@ -115,7 +115,7 @@ cp config.example.toml ~/.memo/config.toml
 | `search_limit` | ❌ | Maximum search results | `10` |
 | `similarity_threshold` | ❌ | Search similarity threshold (0-1) | `0.35` |
 | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
-| `[decomposition]` | ❌ | Query decomposition config: `max_level`, `max_total_leaves`, `max_children` | built-in defaults |
+| `[decomposition]` | ❌ | Query decomposition: currently only `max_total_leaves` (cap on leaf sub-queries used for search) | built-in defaults |
 | `[multi_query]` | ❌ | Search & merge config: `candidates_per_query`, `top_n_per_leaf`, `min_per_leaf`, `max_total_results` | built-in defaults |
 | `[prompts]` | ❌ | Custom LLM strategy prompts: `decompose`, `summarize` (strategy content only, not full prompt) | built-in 5D strategy |
 

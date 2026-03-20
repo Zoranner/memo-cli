@@ -183,7 +183,7 @@ memo search <query> [OPTIONS]
 搜索使用 LLM 驱动的多查询流水线：
 
 1. **查询拆解**
-   - LLM 将问题拆解为多个独立子问题（BFS，最多 `max_level` 层，最多 `max_total_leaves` 个叶子节点）
+   - LLM 返回子问题树；实现按广度优先收集叶子问题，最多保留 `max_total_leaves` 个用于检索（见 `[decomposition]`）
    - 默认策略：五维模型（核心、原因、方法、案例、注意）——可通过 `[prompts].decompose` 自定义
 
 2. **并行子查询搜索**
@@ -237,7 +237,7 @@ memo search "错误处理" --threshold 0.65 -n 30
 搜索先输出 LLM 综合总结，再展示来源记忆及相关性分数：
 
 ```
-  Decomposing query into sub-questions (max_level=3)
+  Decomposing query into sub-questions
    Decomposed 5 sub-questions
     Searching 5 sub-queries in parallel
       Merging results from 5 sub-queries

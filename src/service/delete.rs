@@ -1,6 +1,7 @@
 use anyhow::Result;
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, ProvidersConfig};
+use crate::service::storage_dim::resolve_storage_dimension;
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{StorageBackend, StorageConfig};
@@ -13,14 +14,15 @@ pub async fn delete(
 ) -> Result<()> {
     let output = Output::new();
 
+    let providers = ProvidersConfig::load()?;
     let config = AppConfig::load_with_scope(force_local, force_global)?;
     let scope = AppConfig::get_scope_name(force_local, force_global);
     let brain_path = config.get_brain_path()?;
+    let dimension = resolve_storage_dimension(&brain_path, &providers, &config)?;
 
-    // 创建存储客户端（delete 不需要 embedding）
     let storage_config = StorageConfig {
         path: brain_path.to_string_lossy().to_string(),
-        dimension: 1536, // 默认维度
+        dimension,
     };
     let storage = LocalStorageClient::connect(&storage_config).await?;
     let record_count = storage.count().await?;

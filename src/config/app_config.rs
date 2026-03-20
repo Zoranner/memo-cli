@@ -402,7 +402,6 @@ llm = "aliyun.llm"
         assert_eq!(config.search_limit, 10);
         assert_eq!(config.similarity_threshold, 0.35);
         assert_eq!(config.duplicate_threshold, 0.85);
-        assert_eq!(config.decomposition.max_level, 3);
         assert_eq!(config.decomposition.max_total_leaves, 12);
         assert_eq!(config.multi_query.max_total_results, 20);
     }
@@ -415,9 +414,7 @@ rerank = "aliyun.rerank"
 llm = "aliyun.llm"
 
 [decomposition]
-max_level = 2
 max_total_leaves = 8
-max_children = 3
 
 [multi_query]
 top_n_per_leaf = 3
@@ -425,9 +422,7 @@ top_n_per_leaf = 3
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(config.decomposition.max_level, 2);
         assert_eq!(config.decomposition.max_total_leaves, 8);
-        assert_eq!(config.decomposition.max_children, 3);
         assert_eq!(config.multi_query.top_n_per_leaf, 3);
     }
 }

@@ -22,12 +22,12 @@ pub async fn merge(
     let scope = AppConfig::get_scope_name(force_local, force_global);
 
     if ids.len() < 2 {
-        anyhow::bail!("Need at least 2 memory IDs to merge");
+        return Err(output.fail("Need at least 2 memory IDs to merge"));
     }
 
     // 解析 embedding 服务配置
     let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.get_int("dimension").unwrap() as usize;
+    let dimension = embed_config.require_dimension()?;
     let provider_config = embed_config.to_provider_config(Some(dimension));
     let embed_provider = create_embed_provider(&provider_config)?;
 

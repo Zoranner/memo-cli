@@ -27,7 +27,14 @@ fn main() {
     let args = cli::Cli::parse();
 
     // 统一创建 Tokio Runtime，避免重复创建
-    let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            let output = ui::Output::new();
+            output.error_report_str(&format!("Failed to create Tokio runtime: {}", e));
+            std::process::exit(1);
+        }
+    };
 
     let result = runtime.block_on(async {
         match args.command {
@@ -96,7 +103,9 @@ fn main() {
 
     if let Err(e) = result {
         let output = ui::Output::new();
-        output.error(&format!("{:#}", e));
+        if !ui::is_already_reported_root(&e) {
+            output.error_report(&e);
+        }
         std::process::exit(1);
     }
 }

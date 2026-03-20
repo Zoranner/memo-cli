@@ -8,7 +8,7 @@ use crate::llm::{decompose_query_tree, summarize_results, LlmClient};
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
 use memo_types::{QueryResult, TimeRange};
-use model_provider::EmbedProvider;
+use model_provider::{create_rerank_provider, EmbedProvider, RerankProvider};
 
 use super::engine::{multi_layer_search, LayerSearchParams};
 use super::merge::merge_results;
@@ -78,6 +78,8 @@ pub async fn search(
 
     let embed_provider: Arc<dyn EmbedProvider> = Arc::from(embed_provider);
     let storage = Arc::new(storage);
+    let rerank_pc = rerank_config.to_provider_config(None);
+    let rerank_shared: Arc<dyn RerankProvider> = Arc::from(create_rerank_provider(&rerank_pc)?);
 
     let search_tasks: Vec<_> = leaves
         .iter()
@@ -86,11 +88,11 @@ pub async fn search(
             let leaf_query = leaf_query.clone();
             let leaf_id = format!("leaf_{}", idx);
             let time_range = time_range.clone();
-            let rerank_config = rerank_config.clone();
             let candidates_limit = mq_config.candidates_per_query;
             let top_n = mq_config.top_n_per_leaf;
             let embed_provider = Arc::clone(&embed_provider);
             let storage = Arc::clone(&storage);
+            let rerank = Arc::clone(&rerank_shared);
 
             async move {
                 let query_vector = match embed_provider.encode(&leaf_query).await {
@@ -108,7 +110,7 @@ pub async fn search(
                     threshold,
                     time_range,
                     storage: &storage,
-                    rerank_config: &rerank_config,
+                    rerank,
                     output: &Output::silent(),
                 };
 

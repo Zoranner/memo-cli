@@ -41,7 +41,7 @@ pub async fn search(options: SearchOptions) -> Result<()> {
 
     let embed_config = config.resolve_embedding(&providers)?;
     let rerank_config = config.resolve_rerank(&providers)?;
-    let dimension = embed_config.get_int("dimension").unwrap() as usize;
+    let dimension = embed_config.require_dimension()?;
     let provider_config = embed_config.to_provider_config(Some(dimension));
     let embed_provider = create_embed_provider(&provider_config)?;
 

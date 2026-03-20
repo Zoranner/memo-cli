@@ -183,7 +183,7 @@ memo search <query> [OPTIONS]
 Search uses a multi-query pipeline powered by LLM:
 
 1. **Query Decomposition**
-   - LLM breaks the query into multiple independent sub-questions (BFS, up to `max_level` levels, up to `max_total_leaves` leaf nodes)
+   - LLM returns a sub-question tree; the implementation collects leaf questions (breadth-first) and keeps at most `max_total_leaves` (see `[decomposition]`)
    - Default strategy: five-dimensional model (core, why, how, case, note) — customizable via `[prompts].decompose`
 
 2. **Parallel Sub-Query Search**
@@ -237,7 +237,7 @@ memo search "error handling" --threshold 0.65 -n 30
 Search first displays the LLM-synthesized answer, then the source memories with relevance scores:
 
 ```
-  Decomposing query into sub-questions (max_level=3)
+  Decomposing query into sub-questions
    Decomposed 5 sub-questions
     Searching 5 sub-queries in parallel
       Merging results from 5 sub-queries

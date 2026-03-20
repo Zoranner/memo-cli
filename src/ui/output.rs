@@ -4,6 +4,24 @@ use std::path::Path;
 
 use memo_types::QueryResult;
 
+/// 已在业务层通过 [`Output::error`] / [`Output::error_report`] 向用户展示过的错误；
+/// 回到 `main` 时不应再次打印（但仍以非零退出码结束进程）。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AlreadyReported;
+
+impl std::fmt::Display for AlreadyReported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("error was already reported")
+    }
+}
+
+impl std::error::Error for AlreadyReported {}
+
+/// `main` 在打印顶层错误前调用：已由 [`Output::fail`] 等方式标记过的错误不再重复打印。
+pub fn is_already_reported_root(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<AlreadyReported>().is_some()
+}
+
 /// 命令行输出格式化工具
 /// 提供统一的 Cargo 风格输出
 pub struct Output {
@@ -209,12 +227,41 @@ impl Output {
     }
 
     /// 显示错误（红色，右对齐）
+    ///
+    /// 错误信息不受 `silent` 抑制，避免静默模式下丢失失败原因。
     pub fn error(&self, message: &str) {
         eprintln!(
             "{:>12} {}",
             Style::new().red().bold().apply_to("Error"),
             message
         );
+    }
+
+    /// 将 [`anyhow::Error`] 按 `{:#}` 格式化后通过 [`Output::error`] 输出（多行时首行带 Error 标签，其余行缩进）
+    pub fn error_report(&self, err: &anyhow::Error) {
+        self.error_report_str(&format!("{:#}", err));
+    }
+
+    /// 将整段错误文案按与 [`Output::error`] 一致的样式输出
+    pub fn error_report_str(&self, message: &str) {
+        let mut lines = message.lines();
+        let Some(first) = lines.next() else {
+            self.error("(unknown error)");
+            return;
+        };
+        self.error(first);
+        for line in lines {
+            if line.is_empty() {
+                continue;
+            }
+            eprintln!("{:>12} {}", "", self.dim.apply_to(line));
+        }
+    }
+
+    /// 输出单行错误后返回 [`AlreadyReported`]，供 `main` 识别并避免重复打印
+    pub fn fail(&self, message: &str) -> anyhow::Error {
+        self.error(message);
+        AlreadyReported.into()
     }
 
     // === 用户交互方法 ===

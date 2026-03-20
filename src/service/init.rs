@@ -38,6 +38,7 @@ pub async fn initialize(local: bool) -> Result<()> {
         // 创建配置文件
         let config_content = r#"# Memo 主配置文件
 # 服务配置（引用 providers.toml 中的服务）
+llm = "aliyun.llm"
 embedding = "aliyun.embed"
 rerank = "aliyun.rerank"
 
@@ -62,7 +63,7 @@ duplicate_threshold = 0.85
     // 加载 providers 并创建 embedding provider
     let providers = ProvidersConfig::load()?;
     let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.get_int("dimension").unwrap() as usize;
+    let dimension = embed_config.require_dimension()?;
     let provider_config = embed_config.to_provider_config(Some(dimension));
     let embed_provider = create_embed_provider(&provider_config)?;
 
@@ -112,7 +113,7 @@ pub async fn ensure_initialized() -> Result<bool> {
     // 加载 providers 并创建 embedding provider
     let providers = ProvidersConfig::load()?;
     let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.get_int("dimension").unwrap() as usize;
+    let dimension = embed_config.require_dimension()?;
     let provider_config = embed_config.to_provider_config(Some(dimension));
     let embed_provider = create_embed_provider(&provider_config)?;
 

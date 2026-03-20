@@ -2,6 +2,11 @@
 //!
 //! 提供统一的终端输出格式化工具，遵循 Cargo 风格的输出规范。
 //!
+//! ## 错误输出
+//!
+//! - 用户可见错误统一走 [`Output::error`] / [`Output::error_report`] / [`Output::error_report_str`]。
+//! - 业务层若已打印错误并需提前返回，使用 [`Output::fail`]（内含 [`AlreadyReported`]），`main` 会通过 [`is_already_reported_root`] 避免重复打印。
+//!
 //! ## 设计原则
 //!
 //! - **统一格式**: 所有输出都通过 Output 对象格式化，保持一致的视觉风格
@@ -37,4 +42,4 @@
 
 mod output;
 
-pub use output::Output;
+pub use output::{AlreadyReported, Output, is_already_reported_root};

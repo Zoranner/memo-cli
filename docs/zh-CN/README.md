@@ -115,7 +115,7 @@ cp config.example.toml ~/.memo/config.toml
 | `search_limit` | ❌ | 搜索结果数量上限 | `10` |
 | `similarity_threshold` | ❌ | 搜索相似度阈值（0-1） | `0.35` |
 | `duplicate_threshold` | ❌ | 重复检测相似度阈值（0-1） | `0.85` |
-| `[decomposition]` | ❌ | 查询拆解配置：`max_level`、`max_total_leaves`、`max_children` | 内置默认值 |
+| `[decomposition]` | ❌ | 查询拆解配置：目前仅 `max_total_leaves`（参与检索的叶子子问题数上限） | 内置默认值 |
 | `[multi_query]` | ❌ | 搜索合并配置：`candidates_per_query`、`top_n_per_leaf`、`min_per_leaf`、`max_total_results` | 内置默认值 |
 | `[prompts]` | ❌ | 自定义 LLM 策略提示词：`decompose`、`summarize`（只需提供策略内容，框架由系统控制） | 内置五维策略 |
 

@@ -30,7 +30,7 @@ pub async fn embed(
 
     // 解析 embedding 服务配置
     let embed_config = config.resolve_embedding(&providers)?;
-    let dimension = embed_config.get_int("dimension").unwrap() as usize;
+    let dimension = embed_config.require_dimension()?;
     let provider_config = embed_config.to_provider_config(Some(dimension));
     let embed_provider = create_embed_provider(&provider_config)?;
 
@@ -318,9 +318,9 @@ async fn check_duplicate_and_abort_if_found(
         }
 
         output.note("Or use --force to add anyway (not recommended)");
-        output.error("Embedding cancelled due to similar memories");
-
-        std::process::exit(1);
+        return Err(output.fail(
+            "Embedding cancelled: similar memories found above threshold (use `memo update` / `memo merge`, or `--force` to add anyway)",
+        ));
     }
 
     Ok(())

@@ -1,6 +1,8 @@
 // 初始化
 pub mod init;
 
+mod storage_dim;
+
 // 核心操作
 pub mod embed;
 pub mod list;
