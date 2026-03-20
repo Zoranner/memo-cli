@@ -1,6 +1,6 @@
 //! 按 CLI 作用域打开配置与本地 Lance 存储；可选再挂载 Embedding Provider。
 //!
-//! `open_local_brain` 仅连接存储（用于 clear 等无需向量化 API 的操作）。
+//! `open_local_brain` 仅连接存储（用于 clear / list / delete 等无需向量化 API 的操作）。
 //! `open_local_embed_session` 在 brain 就绪后创建 embed provider，供 embed / search / merge 等使用。
 
 use anyhow::Result;
