@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::collections::HashSet;
 
 use crate::config::AppConfig;
-use crate::service::context::{open_local_embed_session, LocalEmbedSession};
+use crate::service::session::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
 use memo_types::{Memory, MemoryBuilder, StorageBackend};
 
@@ -34,28 +34,19 @@ pub async fn merge(
 
     output.database_info(&brain_path, record_count);
 
-    // 验证所有记忆是否存在，并收集信息
     output.status("Collecting", &format!("{} memories", ids.len()));
 
     let mut all_tags = HashSet::new();
     let mut earliest_created_at = None;
 
     for id in &ids {
-        let query_result = storage
-            .find_by_id(id)
-            .await?
-            .with_context(|| format!("Memory not found with ID: {}", id))?;
-
-        // 合并 tags（自动去重）
-        all_tags.extend(query_result.tags);
-
-        // 获取完整的记忆以访问 created_at
         let memory = storage
             .find_memory_by_id(id)
             .await?
-            .with_context(|| format!("Failed to get full memory: {}", id))?;
+            .with_context(|| format!("Memory not found with ID: {}", id))?;
 
-        // 找到最早的 created_at
+        all_tags.extend(memory.tags);
+
         match earliest_created_at {
             None => earliest_created_at = Some(memory.created_at),
             Some(current) => {
@@ -66,18 +57,15 @@ pub async fn merge(
         }
     }
 
-    // 使用用户提供的 tags 或合并后的 tags
     let final_tags: Vec<String> = if let Some(user_tags) = tags {
         user_tags
     } else {
         all_tags.into_iter().collect()
     };
 
-    // 编码合并后的内容
     output.status("Encoding", "merged content");
     let vector = embed_provider.encode(&content).await?;
 
-    // 插入合并后的新记忆（保留最早的 created_at）
     output.status("Merging", &format!("{} memories", ids.len()));
 
     let mut new_memory = Memory::new(MemoryBuilder {
@@ -87,14 +75,12 @@ pub async fn merge(
         source_file: None,
     });
 
-    // 保留最早的 created_at
     if let Some(earliest) = earliest_created_at {
         new_memory.created_at = earliest;
     }
 
     storage.insert(new_memory).await?;
 
-    // 删除旧记忆
     for id in &ids {
         storage.delete(id).await?;
     }

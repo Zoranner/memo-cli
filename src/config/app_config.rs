@@ -237,18 +237,20 @@ impl AppConfig {
     pub fn load_with_scope(force_local: bool, force_global: bool) -> Result<Self> {
         Self::validate_scope_flags(force_local, force_global)?;
 
+        if !force_local && !force_global {
+            return Self::load();
+        }
+
         let scope = if force_local {
             ConfigScope::Local
-        } else if force_global {
-            ConfigScope::Global
         } else {
-            ConfigScope::Auto
+            ConfigScope::Global
         };
 
         Self::load_with_scope_internal(scope)
     }
 
-    /// 加载配置：优先本地配置，其次全局配置
+    /// 加载配置：优先本地配置，其次全局配置（与 `load_with_scope(false, false)` 相同）
     pub fn load() -> Result<Self> {
         Self::load_with_scope_internal(ConfigScope::Auto)
     }

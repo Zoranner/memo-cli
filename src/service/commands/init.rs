@@ -1,16 +1,10 @@
 use anyhow::Result;
 
-use crate::config::{AppConfig, ProvidersConfig};
-use crate::service::storage_dim::resolve_storage_dimension;
+use crate::config::AppConfig;
+use crate::service::session::open_local_embed_session;
 use crate::ui::Output;
-use memo_local::{DatabaseMetadata, LocalStorageClient};
-use memo_types::{StorageBackend, StorageConfig};
-use model_provider::create_embed_provider;
-
-// === 公开接口 ===
 
 /// 显式初始化（带用户反馈）
-/// local: true 表示在本地目录初始化，false 表示在全局目录初始化
 pub async fn initialize(local: bool) -> Result<()> {
     let output = Output::new();
     let config_dir = AppConfig::get_memo_dir(local);
@@ -18,13 +12,10 @@ pub async fn initialize(local: bool) -> Result<()> {
     let providers_path = AppConfig::global_memo_dir().join("providers.toml");
     let location = AppConfig::get_scope_name(local, false);
 
-    // 创建配置目录
     std::fs::create_dir_all(&config_dir)?;
 
-    // 检查 providers.toml（只在全局目录）
     if !providers_path.exists() {
         output.resource_action("Creating", "providers config template", &providers_path);
-        // 注意：这里只创建示例，用户需要手动填写 API keys
         output.note("Please create providers.toml from providers.example.toml");
         output.info(&format!(
             "Example: cp providers.example.toml {}",
@@ -32,11 +23,9 @@ pub async fn initialize(local: bool) -> Result<()> {
         ));
     }
 
-    // 如果配置文件已存在，提示用户
     if config_path.exists() {
         output.resource_action("Found", "config", &config_path);
     } else {
-        // 创建配置文件
         let config_content = r#"# Memo 主配置文件
 # 服务配置（引用 providers.toml 中的服务）
 llm = "aliyun.llm"
@@ -52,40 +41,17 @@ duplicate_threshold = 0.85
         std::fs::write(&config_path, config_content)?;
         output.resource_action("Creating", "config", &config_path);
 
-        // 提示用户配置
         output.note("Please edit the config file to set your preferred services");
         output.info(&format!("Config file: {}", config_path.display()));
     }
 
-    // 加载配置并确保目录存在
-    let config = AppConfig::load_with_scope(local, !local)?;
-    config.ensure_dirs()?;
-
-    // 加载 providers 并创建 embedding provider（维度与已有 metadata 对齐）
-    let providers = ProvidersConfig::load()?;
-    let brain_path = config.get_brain_path()?;
-    let dimension = resolve_storage_dimension(&brain_path, &providers, &config)?;
-    let embed_config = config.resolve_embedding(&providers)?;
-    let provider_config = embed_config.to_provider_config(Some(dimension));
-    let _ = create_embed_provider(&provider_config)?;
-
-    // 确保 memories 表存在
-    let storage_config = StorageConfig {
-        path: brain_path.to_string_lossy().to_string(),
-        dimension,
-    };
-
-    let storage = LocalStorageClient::connect(&storage_config).await?;
+    let (session, created) = open_local_embed_session(local, !local).await?;
+    let brain_path = session.brain_path;
     let table_path = brain_path.join("memories.lance");
     let metadata_path = brain_path.join("metadata.json");
 
-    if !storage.exists().await? {
-        storage.init().await?;
+    if created {
         output.resource_action("Creating", "database", &table_path);
-
-        // 创建元数据
-        let metadata = DatabaseMetadata::new(embed_config.model.clone(), dimension);
-        metadata.save(&brain_path)?;
         output.resource_action("Creating", "metadata", &metadata_path);
     } else {
         output.resource_action("Found", "database", &table_path);
@@ -96,4 +62,3 @@ duplicate_threshold = 0.85
 
     Ok(())
 }
-

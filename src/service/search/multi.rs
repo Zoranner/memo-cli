@@ -77,7 +77,6 @@ pub async fn search(
     );
 
     let embed_provider: Arc<dyn EmbedProvider> = Arc::from(embed_provider);
-    let storage = Arc::new(storage);
     let rerank_pc = rerank_config.to_provider_config(None);
     let rerank_shared: Arc<dyn RerankProvider> = Arc::from(create_rerank_provider(&rerank_pc)?);
 

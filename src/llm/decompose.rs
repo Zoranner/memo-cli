@@ -149,10 +149,10 @@ fn extract_from_code_fence(output: &str) -> Option<String> {
     let fence_start = output.find("```")?;
     let after_fence = &output[fence_start + 3..];
 
-    let after_lang = if after_fence.starts_with("json") {
-        after_fence[4..].trim_start_matches(|c: char| c == '\n' || c == '\r' || c == ' ')
+    let after_lang = if let Some(rest) = after_fence.strip_prefix("json") {
+        rest.trim_start_matches(['\n', '\r', ' '])
     } else {
-        after_fence.trim_start_matches(|c: char| c == '\n' || c == '\r' || c == ' ')
+        after_fence.trim_start_matches(['\n', '\r', ' '])
     };
 
     let close = after_lang.find("```")?;

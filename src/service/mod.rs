@@ -1,17 +1,16 @@
-// 初始化
-pub mod init;
+//! 业务用例层：`commands` 为 CLI 子命令实现，`session` 统一打开本地 brain 与可选的 Embedding 客户端。
 
-pub mod context;
-
+mod commands;
 mod storage_dim;
+mod time_range;
 
-// 核心操作
-pub mod embed;
-pub mod list;
 pub mod search;
+pub mod session;
 
-// 记忆管理
-pub mod clear;
-pub mod delete;
-pub mod merge;
-pub mod update;
+pub use commands::clear;
+pub use commands::delete;
+pub use commands::embed;
+pub use commands::init;
+pub use commands::list;
+pub use commands::merge;
+pub use commands::update;

@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::config::AppConfig;
-use crate::service::context::{open_local_embed_session, LocalEmbedSession};
+use crate::service::session::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
 use memo_types::StorageBackend;
 
@@ -26,16 +26,13 @@ pub async fn delete(
 
     output.database_info(&brain_path, record_count);
 
-    // 显示警告信息
     output.warning(&format!("this will permanently delete memory {}", id));
 
-    // 确认操作
     if !skip_confirm && !output.confirm("yes")? {
         output.info("Operation cancelled");
         return Ok(());
     }
 
-    // 删除记忆
     output.begin_operation("Deleting", &format!("memory {}", id));
     storage.delete(id).await?;
 
