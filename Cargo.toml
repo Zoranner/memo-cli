@@ -1,6 +1,6 @@
 [package]
 name = "memo-cli"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["Zoranner"]
 description = "Vector-based memo system with semantic search"
