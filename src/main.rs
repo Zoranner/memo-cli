@@ -9,7 +9,6 @@ mod ui;
 
 // Infrastructure
 mod llm;
-mod parser;
 
 // Business logic
 mod service;

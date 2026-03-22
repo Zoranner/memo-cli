@@ -1,12 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::config::AppConfig;
-use crate::parser::parse_markdown_file;
 use crate::service::session::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
 use memo_types::{Memory, MemoryBuilder, StorageBackend};
 use model_provider::EmbedProvider;
-use walkdir::WalkDir;
 
 pub async fn embed(
     input: String,
@@ -42,122 +40,17 @@ pub async fn embed(
 
     let duplicate_threshold = dup_threshold.unwrap_or(config.duplicate_threshold);
 
-    let expanded_input = shellexpand::tilde(&input).to_string();
-    let input_path = std::path::Path::new(&expanded_input);
-
-    if input_path.exists() {
-        if input_path.is_dir() {
-            embed_directory(
-                &*embed_provider,
-                &storage,
-                input_path,
-                user_tags.as_ref(),
-                force,
-                duplicate_threshold,
-            )
-            .await?;
-        } else if input_path.is_file() {
-            embed_file(
-                &*embed_provider,
-                &storage,
-                input_path,
-                user_tags.as_ref(),
-                force,
-                duplicate_threshold,
-            )
-            .await?;
-        }
-    } else {
-        embed_text(
-            &*embed_provider,
-            &storage,
-            &input,
-            user_tags.as_ref(),
-            force,
-            duplicate_threshold,
-        )
-        .await?;
-    }
+    embed_text(
+        &*embed_provider,
+        &storage,
+        &input,
+        user_tags.as_ref(),
+        force,
+        duplicate_threshold,
+    )
+    .await?;
 
     output.finish("embedding", scope);
-
-    Ok(())
-}
-
-async fn embed_directory(
-    model: &dyn EmbedProvider,
-    storage: &dyn StorageBackend,
-    dir_path: &std::path::Path,
-    user_tags: Option<&Vec<String>>,
-    force: bool,
-    duplicate_threshold: f32,
-) -> Result<()> {
-    let output = Output::new();
-    let mut total_files = 0;
-    let mut total_sections = 0;
-
-    for entry in WalkDir::new(dir_path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-    {
-        total_files += 1;
-        let file_path = entry.path();
-
-        let sections = parse_markdown_file(file_path)
-            .with_context(|| format!("Failed to parse file: {}", file_path.display()))?;
-
-        for section in sections {
-            output.status("Embedding", &file_path.display().to_string());
-            embed_section(
-                model,
-                storage,
-                section,
-                Some(file_path),
-                user_tags,
-                force,
-                duplicate_threshold,
-            )
-            .await?;
-            total_sections += 1;
-        }
-    }
-
-    output.stats(&[("files", total_files), ("sections", total_sections)]);
-
-    Ok(())
-}
-
-async fn embed_file(
-    model: &dyn EmbedProvider,
-    storage: &dyn StorageBackend,
-    file_path: &std::path::Path,
-    user_tags: Option<&Vec<String>>,
-    force: bool,
-    duplicate_threshold: f32,
-) -> Result<()> {
-    let output = Output::new();
-
-    let sections = parse_markdown_file(file_path)
-        .with_context(|| format!("Failed to parse file: {}", file_path.display()))?;
-
-    let total_sections = sections.len();
-
-    for section in sections {
-        output.status("Embedding", &file_path.display().to_string());
-        embed_section(
-            model,
-            storage,
-            section,
-            Some(file_path),
-            user_tags,
-            force,
-            duplicate_threshold,
-        )
-        .await?;
-    }
-
-    output.stats(&[("sections", total_sections)]);
 
     Ok(())
 }
@@ -189,41 +82,6 @@ async fn embed_text(
     storage.insert(memory).await?;
 
     output.status("Embedded", "text");
-
-    Ok(())
-}
-
-async fn embed_section(
-    model: &dyn EmbedProvider,
-    storage: &dyn StorageBackend,
-    section: memo_types::MemoSection,
-    file_path: Option<&std::path::Path>,
-    user_tags: Option<&Vec<String>>,
-    force: bool,
-    duplicate_threshold: f32,
-) -> Result<()> {
-    let normalized = normalize_for_embedding(&section.content);
-    let embedding = model.encode(&normalized).await?;
-
-    check_duplicate_and_abort_if_found(storage, &embedding, duplicate_threshold, force).await?;
-
-    let mut tags = section.metadata.tags;
-    if let Some(user_tags) = user_tags {
-        for tag in user_tags {
-            if !tags.contains(tag) {
-                tags.push(tag.clone());
-            }
-        }
-    }
-
-    let memory = Memory::new(MemoryBuilder {
-        content: section.content,
-        tags,
-        vector: embedding,
-        source_file: file_path.map(|p| p.to_string_lossy().to_string()),
-    });
-
-    storage.insert(memory).await?;
 
     Ok(())
 }

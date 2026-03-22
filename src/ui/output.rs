@@ -149,16 +149,6 @@ impl Output {
         eprintln!();
     }
 
-    /// 显示统计信息
-    /// 格式: "             12 files, 45 sections"
-    pub fn stats(&self, items: &[(&str, usize)]) {
-        let parts: Vec<String> = items
-            .iter()
-            .map(|(name, count)| format!("{} {}", count, name))
-            .collect();
-        eprintln!("{:>12} {}", "", self.dim.apply_to(parts.join(", ")));
-    }
-
     // === 结果显示方法 ===
 
     /// 显示搜索结果（列表格式，带相似度分数）

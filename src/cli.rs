@@ -17,9 +17,9 @@ pub enum Commands {
         local: bool,
     },
 
-    #[command(about = "Embed text or markdown file to vector database")]
+    #[command(about = "Embed text to vector database")]
     Embed {
-        /// Text string, markdown file path, or directory path to embed
+        /// Text string to embed
         input: String,
 
         /// Tags for the memory (comma-separated, e.g., "rust,cli,important")

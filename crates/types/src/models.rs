@@ -62,18 +62,6 @@ impl Memory {
     }
 }
 
-/// Markdown 解析相关（非数据库）
-#[derive(Debug, Clone)]
-pub struct MemoSection {
-    pub content: String,
-    pub metadata: MemoMetadata,
-}
-
-#[derive(Debug, Clone)]
-pub struct MemoMetadata {
-    pub tags: Vec<String>,
-}
-
 /// Multi-layer search configuration
 #[derive(Debug, Clone)]
 pub struct SearchConfig {

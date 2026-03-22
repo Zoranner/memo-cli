@@ -26,11 +26,8 @@ dialoguer = "0.11"
 console = "0.15"
 
 # 文件处理
-walkdir = "2"
-regex = "1"
 toml = "0.8"
 dirs = "5"
-shellexpand = "3"
 once_cell = "1"
 
 # 日志
@@ -45,6 +42,7 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
 async-trait = "0.1"
+
 [profile.dev]
 # 开发时快速编译（默认配置，显式声明便于理解）
 opt-level = 0
