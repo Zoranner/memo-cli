@@ -7,14 +7,29 @@ description: Manages and retrieves contextual memories across conversations usin
 
 Record and retrieve valuable knowledge using vector database semantic search.
 
-**⚠️ Important: All commands require network access (for embedding API). When using Shell tool, set `required_permissions: ["network"]` or `["all"]`.**
+**⚠️ Shell Tool Parameters:**
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `required_permissions` | `["network"]` | All commands need network access (calling embedding/LLM APIs) |
+| `block_until_ms` | `120000` | `search` command takes 1-2 minutes (LLM query decomposition + multiple retrievals + synthesis), recommend 2-minute timeout |
+
+**Example:**
+
+```json
+{
+  "command": "memo search \"...\" -n 10",
+  "required_permissions": ["network"],
+  "block_until_ms": 120000
+}
+```
 
 ## Quick Reference
 
 | Command | Purpose | Example |
 |---------|---------|---------|
 | `memo embed <text>` | Record memory | `memo embed "Context:... Action:..." --tags rust,cli` |
-| `memo search <query>` | Search memories | `memo search "how to fix MySQL timeout" -n 10` |
+| `memo search <query>` | Search memories | `memo search "how to fix MySQL timeout"` |
 | `memo update <id>` | Update memory | `memo update abc123 --content "..." --tags rust` |
 | `memo merge <ids>...` | Merge memories | `memo merge id1 id2 --content "..." --tags rust` |
 | `memo delete <id>` | Delete memory | `memo delete abc123 --force` |
@@ -110,9 +125,9 @@ Vector search relies on semantic understanding; queries should include sufficien
 
 | Intent Type | Query Construction | Example |
 |-------------|-------------------|---------|
-| Scenario Replay | Context + Symptoms + Problem | `memo search "MySQL connection keeps timing out after deploying to Alibaba Cloud, how to troubleshoot" -n 10` |
-| Decision Recall | Context + Requirements + Decision Point | `memo search "memo-brain needs local embedded vector database, why choose LanceDB" -n 10` |
-| Knowledge Query | Use Case + Technical Point | `memo search "Rust project needs async methods in traits, how to implement" -n 10` |
+| Scenario Replay | Context + Symptoms + Problem | `memo search "MySQL connection keeps timing out after deploying to Alibaba Cloud, how to troubleshoot"` |
+| Decision Recall | Context + Requirements + Decision Point | `memo search "memo-brain needs local embedded vector database, why choose LanceDB"` |
+| Knowledge Query | Use Case + Technical Point | `memo search "Rust project needs async methods in traits, how to implement"` |
 
 **Comparison examples:**
 
@@ -122,8 +137,8 @@ memo search "why choose LanceDB"
 memo search "MySQL timeout"
 
 # ✅ Queries with context and intent
-memo search "memo-brain needs local embedded vector database, why choose LanceDB" -n 10
-memo search "MySQL connection keeps timing out after deploying to Alibaba Cloud, how to troubleshoot" -n 10
+memo search "memo-brain needs local embedded vector database, why choose LanceDB"
+memo search "MySQL connection keeps timing out after deploying to Alibaba Cloud, how to troubleshoot"
 ```
 
 ### Handling Duplicate Memories
@@ -176,9 +191,9 @@ Use multi-dimensional tags for classification and filtering (3-6 tags optimal):
 
 | Scenario | Command Example |
 |----------|-----------------|
-| Recent memories | `memo search "database optimization" --after 2026-01-20 -n 10` |
-| Time range | `memo search "project progress" --after 2026-01-01 --before 2026-01-31 -n 10` |
-| With time filtering | `memo search "recent bugs" --after 2026-01-25 -n 15` |
+| Recent memories | `memo search "what database optimization work have I done recently" --after 2026-01-20 -n 10` |
+| Time range | `memo search "what was the project progress and main issues in January" --after 2026-01-01 --before 2026-01-31` |
+| With time filtering | `memo search "what bugs did I fix in the past week and how did I solve them" --after 2026-01-25 -n 15` |
 
 ---
 
