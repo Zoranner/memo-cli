@@ -4367,12 +4367,15 @@ checksum = "dce6dd36094cac388f119d2e9dc82dc730ef91c32a6222170d630e5414b956e6"
 name = "model-provider"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
+ "base64",
+ "bytes",
+ "futures",
  "regex",
  "reqwest",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
