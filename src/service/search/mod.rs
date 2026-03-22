@@ -51,7 +51,8 @@ pub async fn search(options: SearchOptions) -> Result<()> {
 
     let time_range = parse_cli_time_range(after, before)?;
     let rerank_config = config.resolve_rerank(&providers)?;
-    let llm_config = config.resolve_llm(&providers)?;
+    let decompose_llm_config = config.resolve_decompose_llm(&providers)?;
+    let summarize_llm_config = config.resolve_summarize_llm(&providers)?;
 
     let (results, summary) = multi::search(
         multi::MultiSearchOptions {
@@ -62,7 +63,8 @@ pub async fn search(options: SearchOptions) -> Result<()> {
             storage,
             embed_provider,
             rerank_config,
-            llm_config,
+            decompose_llm_config,
+            summarize_llm_config,
             app_config: config,
         },
         &output,

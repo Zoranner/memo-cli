@@ -22,7 +22,8 @@ pub struct MultiSearchOptions {
     pub storage: Arc<LocalStorageClient>,
     pub embed_provider: Box<dyn EmbedProvider>,
     pub rerank_config: ResolvedService,
-    pub llm_config: ResolvedService,
+    pub decompose_llm_config: ResolvedService,
+    pub summarize_llm_config: ResolvedService,
     pub app_config: AppConfig,
 }
 
@@ -39,25 +40,33 @@ pub async fn search(
         storage,
         embed_provider,
         rerank_config,
-        llm_config,
+        decompose_llm_config,
+        summarize_llm_config,
         app_config,
     } = options;
 
-    let decomp_config = &app_config.decomposition;
-    let mq_config = &app_config.multi_query;
-    let prompts = &app_config.prompts;
+    let decomp_config = &app_config.decompose;
+    let merge_config = &app_config.merge;
+    let search_config = &app_config.search;
 
-    let llm_client = LlmClient::from_resolved(&llm_config)?;
+    let decompose_llm_client = LlmClient::from_resolved(&decompose_llm_config)?;
+    let summarize_llm_client = LlmClient::from_resolved(&summarize_llm_config)?;
+
+    // 获取拆解策略提示词
+    let decompose_strategy = decomp_config.strategy_prompt.as_deref();
+
+    // 获取总结策略提示词
+    let summarize_strategy = app_config.summarize.strategy_prompt.as_deref();
 
     output.status("Decomposing", "query into sub-questions");
-    let trees = decompose_query_tree(&llm_client, &query, prompts.decompose.as_deref()).await?;
+    let trees = decompose_query_tree(&decompose_llm_client, &query, decompose_strategy).await?;
 
     let mut seen = HashSet::new();
     let leaves: Vec<String> = trees
         .iter()
         .flat_map(|t| t.leaves())
         .filter(|q| seen.insert(q.clone()))
-        .take(decomp_config.max_total_leaves)
+        .take(decomp_config.max_leaves)
         .collect();
 
     if leaves.is_empty() {
@@ -82,11 +91,14 @@ pub async fn search(
             let leaf_query = leaf_query.clone();
             let leaf_id = format!("leaf_{}", idx);
             let time_range = time_range.clone();
-            let candidates_limit = mq_config.candidates_per_query;
-            let top_n = mq_config.top_n_per_leaf;
+            let candidates_limit = merge_config.candidates_per_query;
+            let top_n = merge_config.results_per_leaf;
             let embed_provider = Arc::clone(&embed_provider);
             let storage = Arc::clone(&storage);
             let rerank = Arc::clone(&rerank_shared);
+            let max_depth = search_config.max_depth;
+            let branch_limit = search_config.branch_limit;
+            let require_tag_overlap = search_config.require_tag_overlap;
 
             async move {
                 let query_vector = match embed_provider.encode(&leaf_query).await {
@@ -106,6 +118,9 @@ pub async fn search(
                     storage: storage.as_ref(),
                     rerank,
                     output: &Output::silent(),
+                    max_depth,
+                    branch_limit,
+                    require_tag_overlap,
                 };
 
                 match multi_layer_search(params).await {
@@ -134,9 +149,9 @@ pub async fn search(
         "Merging",
         &format!("results from {} sub-queries", sub_results.len()),
     );
-    let merged = merge_results(sub_results, mq_config);
+    let merged = merge_results(sub_results, merge_config);
 
-    let result_limit = limit.min(mq_config.max_total_results);
+    let result_limit = limit.min(merge_config.max_results);
     let final_memories: Vec<QueryResult> = merged
         .iter()
         .take(result_limit)
@@ -153,14 +168,7 @@ pub async fn search(
         None
     } else {
         output.status("Summarizing", "results with LLM");
-        match summarize_results(
-            &llm_client,
-            &query,
-            &final_memories,
-            prompts.summarize.as_deref(),
-        )
-        .await
-        {
+        match summarize_results(&summarize_llm_client, &query, &final_memories, summarize_strategy).await {
             Ok(text) => Some(text),
             Err(e) => {
                 tracing::debug!("LLM summarization failed: {}", e);

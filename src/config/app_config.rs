@@ -12,57 +12,164 @@ pub enum ConfigScope {
     Global,
 }
 
-/// 递归拆解配置
+// ============================================
+// 嵌入配置
+// ============================================
+
+/// 嵌入配置（记录记忆时）
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DecompositionConfig {
-    /// 最大叶子节点数（默认: 12）
-    #[serde(default = "default_max_total_leaves")]
-    pub max_total_leaves: usize,
+pub struct EmbedConfig {
+    /// Embedding 服务引用
+    pub embedding_provider: String,
+
+    /// 重复检测阈值（0.0-1.0，默认: 0.85）
+    #[serde(default = "default_duplicate_threshold")]
+    pub duplicate_threshold: f32,
 }
 
-impl Default for DecompositionConfig {
+impl Default for EmbedConfig {
     fn default() -> Self {
         Self {
-            max_total_leaves: default_max_total_leaves(),
+            embedding_provider: String::new(),
+            duplicate_threshold: default_duplicate_threshold(),
         }
     }
 }
 
-fn default_max_total_leaves() -> usize {
+fn default_duplicate_threshold() -> f32 {
+    0.85
+}
+
+// ============================================
+// 搜索配置
+// ============================================
+
+/// 搜索配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SearchConfig {
+    /// Rerank 服务引用
+    pub rerank_provider: String,
+
+    /// LLM 服务引用（默认用于拆解和总结）
+    pub llm_provider: String,
+
+    /// 返回结果数量上限（默认: 10）
+    #[serde(default = "default_results_limit")]
+    pub results_limit: usize,
+
+    /// 向量搜索相似度阈值（0.0-1.0，默认: 0.35）
+    #[serde(default = "default_similarity_threshold")]
+    pub similarity_threshold: f32,
+
+    /// 多层搜索深度（默认: 5，设为 1 禁用多层扩展）
+    #[serde(default = "default_max_depth")]
+    pub max_depth: usize,
+
+    /// 每层扩展分支数（默认: 5）
+    #[serde(default = "default_branch_limit")]
+    pub branch_limit: usize,
+
+    /// 扩展时是否要求标签重叠（默认: true）
+    #[serde(default = "default_require_tag_overlap")]
+    pub require_tag_overlap: bool,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            rerank_provider: String::new(),
+            llm_provider: String::new(),
+            results_limit: default_results_limit(),
+            similarity_threshold: default_similarity_threshold(),
+            max_depth: default_max_depth(),
+            branch_limit: default_branch_limit(),
+            require_tag_overlap: default_require_tag_overlap(),
+        }
+    }
+}
+
+fn default_results_limit() -> usize {
+    10
+}
+
+fn default_similarity_threshold() -> f32 {
+    0.35
+}
+
+fn default_max_depth() -> usize {
+    5
+}
+
+fn default_branch_limit() -> usize {
+    5
+}
+
+fn default_require_tag_overlap() -> bool {
+    true
+}
+
+// ============================================
+// 搜索 > 拆解配置
+// ============================================
+
+/// 拆解配置
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DecomposeConfig {
+    /// LLM 服务引用（可选，覆盖 search.llm_provider）
+    pub llm_provider: Option<String>,
+
+    /// 最大叶子数（默认: 12）
+    #[serde(default = "default_max_leaves")]
+    pub max_leaves: usize,
+
+    /// 拆解策略提示词（可选，覆盖内置策略）
+    pub strategy_prompt: Option<String>,
+}
+
+impl Default for DecomposeConfig {
+    fn default() -> Self {
+        Self {
+            llm_provider: None,
+            max_leaves: default_max_leaves(),
+            strategy_prompt: None,
+        }
+    }
+}
+
+fn default_max_leaves() -> usize {
     12
 }
 
-/// 多查询搜索配置
+// ============================================
+// 搜索 > 合并配置
+// ============================================
+
+/// 合并配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MultiQueryConfig {
-    /// 每个子问题的候选数量（默认: 50）
+pub struct MergeConfig {
+    /// 每个查询的候选数（默认: 50）
     #[serde(default = "default_candidates_per_query")]
     pub candidates_per_query: usize,
 
-    /// 每个叶子节点重排后保留数量（默认: 5）
-    #[serde(default = "default_top_n_per_leaf")]
-    pub top_n_per_leaf: usize,
+    /// 每个叶子的结果数（默认: 5）
+    #[serde(default = "default_results_per_leaf")]
+    pub results_per_leaf: usize,
 
-    /// 每个叶子节点至少保留记忆数（默认: 3）
-    #[serde(default = "default_min_per_leaf")]
-    pub min_per_leaf: usize,
+    /// 最大结果数（默认: 20）
+    #[serde(default = "default_max_results")]
+    pub max_results: usize,
 
-    /// 最终返回的总记忆数（默认: 20）
-    #[serde(default = "default_max_total_results")]
-    pub max_total_results: usize,
-
-    /// 去重相似度阈值（默认: 0.98，预留未来内容级去重）
+    /// 去重阈值（0.0-1.0，默认: 0.98）
     #[serde(default = "default_dedup_threshold")]
     pub dedup_threshold: f32,
 }
 
-impl Default for MultiQueryConfig {
+impl Default for MergeConfig {
     fn default() -> Self {
         Self {
             candidates_per_query: default_candidates_per_query(),
-            top_n_per_leaf: default_top_n_per_leaf(),
-            min_per_leaf: default_min_per_leaf(),
-            max_total_results: default_max_total_results(),
+            results_per_leaf: default_results_per_leaf(),
+            max_results: default_max_results(),
             dedup_threshold: default_dedup_threshold(),
         }
     }
@@ -72,15 +179,11 @@ fn default_candidates_per_query() -> usize {
     50
 }
 
-fn default_top_n_per_leaf() -> usize {
+fn default_results_per_leaf() -> usize {
     5
 }
 
-fn default_min_per_leaf() -> usize {
-    3
-}
-
-fn default_max_total_results() -> usize {
+fn default_max_results() -> usize {
     20
 }
 
@@ -88,23 +191,23 @@ fn default_dedup_threshold() -> f32 {
     0.98
 }
 
-/// 提示词策略配置
-///
-/// 两个字段均为可选，不填则使用内置默认策略。
-/// 这里只需提供"策略内容"，即如何拆解问题或如何整合记忆的自然语言描述。
-///
-/// 系统会将策略内容嵌入内置框架模板中发送给 LLM：
-///   - 框架会负责角色设定、放置当前问题和记忆内容、要求 JSON 输出格式
-///   - 用户无需也不应在策略段中重复描述问题或记忆内容
-///   - JSON 输出格式由系统固定控制，用户无法通过策略段修改
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-pub struct PromptsConfig {
-    /// 拆解策略（覆盖内置五维拆解策略，只需描述如何拆解问题，不要包含 JSON 格式要求）
-    pub decompose: Option<String>,
+// ============================================
+// 搜索 > 总结配置
+// ============================================
 
-    /// 总结策略（覆盖内置总结策略，只需描述整合方式，不要重复问题或记忆内容）
-    pub summarize: Option<String>,
+/// 总结配置
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct SummarizeConfig {
+    /// LLM 服务引用（可选，覆盖 search.llm_provider）
+    pub llm_provider: Option<String>,
+
+    /// 总结策略提示词（可选，覆盖内置策略）
+    pub strategy_prompt: Option<String>,
 }
+
+// ============================================
+// 应用配置
+// ============================================
 
 /// 应用配置
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -112,50 +215,25 @@ pub struct AppConfig {
     /// 数据库路径（可选，默认: ~/.memo/brain 或 ./.memo/brain）
     pub brain_path: Option<PathBuf>,
 
-    /// Embedding 服务引用（如 "aliyun.embed"）
-    pub embedding: String,
-
-    /// Rerank 服务引用（如 "aliyun.rerank"）
-    pub rerank: String,
-
-    /// LLM 服务引用（如 "aliyun.llm"）
-    pub llm: String,
-
-    /// 搜索结果数量上限（默认: 10）
-    #[serde(default = "default_search_limit")]
-    pub search_limit: usize,
-
-    /// 第一层搜索阈值（0.0-1.0，默认: 0.35）
-    #[serde(default = "default_similarity_threshold")]
-    pub similarity_threshold: f32,
-
-    /// 重复检测相似度阈值（0.0-1.0，默认: 0.85）
-    #[serde(default = "default_duplicate_threshold")]
-    pub duplicate_threshold: f32,
-
-    /// 递归拆解配置
+    /// 嵌入配置
     #[serde(default)]
-    pub decomposition: DecompositionConfig,
+    pub embed: EmbedConfig,
 
-    /// 多查询搜索配置
+    /// 搜索配置
     #[serde(default)]
-    pub multi_query: MultiQueryConfig,
+    pub search: SearchConfig,
 
-    /// 提示词配置（可选覆盖内置提示词）
+    /// 拆解配置
     #[serde(default)]
-    pub prompts: PromptsConfig,
-}
+    pub decompose: DecomposeConfig,
 
-fn default_search_limit() -> usize {
-    10
-}
+    /// 合并配置
+    #[serde(default)]
+    pub merge: MergeConfig,
 
-fn default_similarity_threshold() -> f32 {
-    0.35
-}
-
-fn default_duplicate_threshold() -> f32 {
-    0.85
+    /// 总结配置
+    #[serde(default)]
+    pub summarize: SummarizeConfig,
 }
 
 impl AppConfig {
@@ -176,16 +254,13 @@ impl AppConfig {
     /// 检查本地配置是否存在
     /// 注意：如果当前目录是用户主目录，则不认为是本地配置
     pub fn has_local_config() -> bool {
-        // 获取当前目录
         let current_dir = match std::env::current_dir() {
             Ok(dir) => dir,
             Err(_) => return false,
         };
 
-        // 获取全局 .memo 目录的父目录（用户主目录）
         let global_parent = Self::global_memo_dir().parent().map(|p| p.to_path_buf());
 
-        // 如果当前目录就是用户主目录，不应该被当作本地配置
         if let Some(home) = global_parent {
             let current_canonical = current_dir.canonicalize().unwrap_or(current_dir.clone());
             let home_canonical = home.canonicalize().unwrap_or(home);
@@ -195,11 +270,10 @@ impl AppConfig {
             }
         }
 
-        // 检查本地配置文件是否存在
         Self::local_memo_dir().join("config.toml").exists()
     }
 
-    /// 验证作用域标志（不能同时指定 local 和 global）
+    /// 验证作用域标志
     pub fn validate_scope_flags(local: bool, global: bool) -> Result<()> {
         if local && global {
             anyhow::bail!("Cannot specify both --local and --global, please choose one");
@@ -208,7 +282,6 @@ impl AppConfig {
     }
 
     /// 获取当前作用域名称
-    /// 返回 "local" 或 "global"
     pub fn get_scope_name(force_local: bool, force_global: bool) -> &'static str {
         if force_local {
             "local"
@@ -230,10 +303,7 @@ impl AppConfig {
         }
     }
 
-    /// 加载配置：根据 local/global 标志或优先级加载
-    /// - local = true: 强制使用本地配置
-    /// - global = true: 强制使用全局配置
-    /// - 两者都为 false: 优先本地配置，其次全局配置
+    /// 加载配置
     pub fn load_with_scope(force_local: bool, force_global: bool) -> Result<Self> {
         Self::validate_scope_flags(force_local, force_global)?;
 
@@ -250,7 +320,7 @@ impl AppConfig {
         Self::load_with_scope_internal(scope)
     }
 
-    /// 加载配置：优先本地配置，其次全局配置（与 `load_with_scope(false, false)` 相同）
+    /// 加载配置：优先本地配置
     pub fn load() -> Result<Self> {
         Self::load_with_scope_internal(ConfigScope::Auto)
     }
@@ -259,7 +329,6 @@ impl AppConfig {
     fn load_with_scope_internal(scope: ConfigScope) -> Result<Self> {
         match scope {
             ConfigScope::Auto => {
-                // 优先本地配置
                 if Self::has_local_config() {
                     Self::load_from_path(&Self::local_memo_dir().join("config.toml"), true)
                 } else {
@@ -290,15 +359,11 @@ impl AppConfig {
         let mut config: Self = toml::from_str(&content)
             .with_context(|| format!("Failed to parse config: {}", path.display()))?;
 
-        // 本地配置强制使用本地 brain 路径
         if is_local {
             config.brain_path = Some(Self::local_memo_dir().join("brain"));
         }
 
         tracing::debug!("Loaded app config from: {}", path.display());
-        tracing::debug!("Embedding: {}", config.embedding);
-        tracing::debug!("Rerank: {}", config.rerank);
-
         Ok(config)
     }
 
@@ -326,42 +391,35 @@ impl AppConfig {
     /// 解析 embedding 服务配置
     pub fn resolve_embedding(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
         providers
-            .get_service(&self.embedding)
-            .with_context(|| format!("Failed to resolve embedding service: {}", self.embedding))
+            .get_service(&self.embed.embedding_provider)
+            .with_context(|| format!("Failed to resolve embedding service: {}", self.embed.embedding_provider))
     }
 
     /// 解析 rerank 服务配置
     pub fn resolve_rerank(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
         providers
-            .get_service(&self.rerank)
-            .with_context(|| format!("Failed to resolve rerank service: {}", self.rerank))
+            .get_service(&self.search.rerank_provider)
+            .with_context(|| format!("Failed to resolve rerank service: {}", self.search.rerank_provider))
     }
 
-    /// 解析 LLM 服务配置
-    pub fn resolve_llm(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
+    /// 解析拆解用的 LLM 服务配置
+    pub fn resolve_decompose_llm(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
+        let llm_provider = self.decompose.llm_provider
+            .as_ref()
+            .unwrap_or(&self.search.llm_provider);
         providers
-            .get_service(&self.llm)
-            .with_context(|| format!("Failed to resolve LLM service: {}", self.llm))
+            .get_service(llm_provider)
+            .with_context(|| format!("Failed to resolve decompose LLM service: {}", llm_provider))
     }
 
-    /// 保存配置到全局目录
-    #[allow(dead_code)]
-    pub fn save(&self) -> Result<()> {
-        let global_memo_dir = Self::global_memo_dir();
-        std::fs::create_dir_all(&global_memo_dir).with_context(|| {
-            format!(
-                "Failed to create global memo directory: {}",
-                global_memo_dir.display()
-            )
-        })?;
-
-        let config_path = global_memo_dir.join("config.toml");
-        let content = toml::to_string_pretty(self).with_context(|| "Failed to serialize config")?;
-
-        std::fs::write(&config_path, content)
-            .with_context(|| format!("Failed to write config file: {}", config_path.display()))?;
-
-        Ok(())
+    /// 解析总结用的 LLM 服务配置
+    pub fn resolve_summarize_llm(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
+        let llm_provider = self.summarize.llm_provider
+            .as_ref()
+            .unwrap_or(&self.search.llm_provider);
+        providers
+            .get_service(llm_provider)
+            .with_context(|| format!("Failed to resolve summarize LLM service: {}", llm_provider))
     }
 }
 
@@ -372,59 +430,71 @@ mod tests {
     #[test]
     fn test_parse_app_config() {
         let toml_str = r#"
-embedding = "aliyun.embed"
-rerank = "aliyun.rerank"
-llm = "aliyun.llm"
-
-search_limit = 10
-similarity_threshold = 0.35
+[embed]
+embedding_provider = "aliyun.embed"
 duplicate_threshold = 0.85
+
+[search]
+rerank_provider = "aliyun.rerank"
+llm_provider = "aliyun.llm"
+results_limit = 10
+similarity_threshold = 0.35
+max_depth = 5
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(config.embedding, "aliyun.embed");
-        assert_eq!(config.rerank, "aliyun.rerank");
-        assert_eq!(config.llm, "aliyun.llm");
-        assert_eq!(config.search_limit, 10);
-        assert_eq!(config.similarity_threshold, 0.35);
-        assert_eq!(config.duplicate_threshold, 0.85);
+        assert_eq!(config.embed.embedding_provider, "aliyun.embed");
+        assert_eq!(config.embed.duplicate_threshold, 0.85);
+        assert_eq!(config.search.rerank_provider, "aliyun.rerank");
+        assert_eq!(config.search.llm_provider, "aliyun.llm");
+        assert_eq!(config.search.results_limit, 10);
+        assert_eq!(config.search.similarity_threshold, 0.35);
+        assert_eq!(config.search.max_depth, 5);
     }
 
     #[test]
     fn test_default_values() {
         let toml_str = r#"
-embedding = "aliyun.embed"
-rerank = "aliyun.rerank"
-llm = "aliyun.llm"
+[embed]
+embedding_provider = "aliyun.embed"
+
+[search]
+rerank_provider = "aliyun.rerank"
+llm_provider = "aliyun.llm"
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(config.search_limit, 10);
-        assert_eq!(config.similarity_threshold, 0.35);
-        assert_eq!(config.duplicate_threshold, 0.85);
-        assert_eq!(config.decomposition.max_total_leaves, 12);
-        assert_eq!(config.multi_query.max_total_results, 20);
+        assert_eq!(config.search.results_limit, 10);
+        assert_eq!(config.search.similarity_threshold, 0.35);
+        assert_eq!(config.embed.duplicate_threshold, 0.85);
+        assert_eq!(config.decompose.max_leaves, 12);
+        assert_eq!(config.merge.max_results, 20);
     }
 
     #[test]
-    fn test_decomposition_config() {
+    fn test_decompose_config() {
         let toml_str = r#"
-embedding = "aliyun.embed"
-rerank = "aliyun.rerank"
-llm = "aliyun.llm"
+[embed]
+embedding_provider = "aliyun.embed"
 
-[decomposition]
-max_total_leaves = 8
+[search]
+rerank_provider = "aliyun.rerank"
+llm_provider = "aliyun.llm"
 
-[multi_query]
-top_n_per_leaf = 3
+[decompose]
+max_leaves = 8
+strategy_prompt = "按三维模型拆解"
+
+[merge]
+results_per_leaf = 3
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(config.decomposition.max_total_leaves, 8);
-        assert_eq!(config.multi_query.top_n_per_leaf, 3);
+        assert_eq!(config.decompose.max_leaves, 8);
+        assert_eq!(config.decompose.strategy_prompt, Some("按三维模型拆解".to_string()));
+        assert_eq!(config.merge.results_per_leaf, 3);
     }
 }

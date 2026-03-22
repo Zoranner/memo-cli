@@ -7,5 +7,5 @@ pub mod models;
 pub mod storage;
 
 // Re-export commonly used types
-pub use models::{Memory, MemoryBuilder, QueryResult, ScoreType, SearchConfig, TimeRange};
+pub use models::{Memory, MemoryBuilder, QueryResult, ScoreType, TimeRange};
 pub use storage::{StorageBackend, StorageConfig};

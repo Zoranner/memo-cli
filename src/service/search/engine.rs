@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::ui::Output;
 use memo_local::LocalStorageClient;
-use memo_types::{QueryResult, ScoreType, SearchConfig as MultiLayerSearchConfig, StorageBackend};
+use memo_types::{QueryResult, ScoreType, StorageBackend};
 use model_provider::RerankProvider;
 
 /// 多层搜索参数
@@ -18,6 +18,9 @@ pub struct LayerSearchParams<'a> {
     pub storage: &'a LocalStorageClient,
     pub rerank: Arc<dyn RerankProvider>,
     pub output: &'a Output,
+    pub max_depth: usize,
+    pub branch_limit: usize,
+    pub require_tag_overlap: bool,
 }
 
 /// 执行多层向量搜索 + 智能重排序，返回最终结果列表
@@ -31,12 +34,16 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
         storage,
         rerank,
         output,
+        max_depth,
+        branch_limit,
+        require_tag_overlap,
     } = params;
 
     let max_nodes = if limit < 10 { 50 } else { limit * 10 };
-    let search_config = MultiLayerSearchConfig::new(threshold, max_nodes);
-    let thresholds = search_config.generate_thresholds();
-    let max_layers = thresholds.len().min(search_config.max_depth);
+
+    // 生成阈值序列
+    let thresholds = generate_thresholds(threshold, max_depth);
+    let max_layers = thresholds.len();
 
     let mut visited = HashSet::new();
     let mut all_candidates = Vec::new();
@@ -45,7 +52,7 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
     let mut current_layer_results = storage
         .search_by_vector(
             query_vector,
-            search_config.branch_limit,
+            branch_limit,
             thresholds[0],
             time_range.clone(),
         )
@@ -61,8 +68,7 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
         }
     }
 
-    for (layer_index, &layer_threshold) in
-        thresholds.iter().enumerate().skip(1).take(max_layers - 1)
+    for (layer_index, &layer_threshold) in thresholds.iter().enumerate().skip(1).take(max_layers - 1)
     {
         if all_candidates.len() >= max_nodes || current_layer_results.is_empty() {
             break;
@@ -75,8 +81,6 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
             .map(|result| {
                 let result_id = result.id.clone();
                 let time_range = time_range.clone();
-                let branch_limit = search_config.branch_limit;
-                let require_tag_overlap = search_config.require_tag_overlap;
 
                 async move {
                     let memory = storage.find_memory_by_id(&result_id).await?;
@@ -195,5 +199,41 @@ fn should_use_rerank(candidates: &[QueryResult], limit: usize) -> bool {
         1..=15 if avg_score > 0.80 => false,
         16..=25 if avg_score > 0.85 => false,
         _ => true,
+    }
+}
+
+/// 根据起始阈值和最大深度生成各层阈值
+fn generate_thresholds(first_threshold: f32, max_depth: usize) -> Vec<f32> {
+    let mut thresholds = vec![first_threshold];
+    let mut current = first_threshold;
+
+    for _ in 1..max_depth {
+        let increment = calculate_increment(current);
+        let next = current + increment;
+
+        if next > 0.95 {
+            if 0.95 - current >= 0.03 {
+                thresholds.push(0.95);
+            }
+            break;
+        }
+
+        thresholds.push(next);
+        current = next;
+    }
+
+    thresholds
+}
+
+/// 自适应增量计算
+fn calculate_increment(current_threshold: f32) -> f32 {
+    if current_threshold < 0.65 {
+        0.10
+    } else if current_threshold < 0.75 {
+        0.07
+    } else if current_threshold < 0.85 {
+        0.05
+    } else {
+        0.03
     }
 }

@@ -38,7 +38,7 @@ pub async fn embed(
         embed_provider.dimension(),
     );
 
-    let duplicate_threshold = dup_threshold.unwrap_or(config.duplicate_threshold);
+    let duplicate_threshold = dup_threshold.unwrap_or(config.embed.duplicate_threshold);
 
     embed_text(
         &*embed_provider,
