@@ -4118,6 +4118,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
+name = "lmkit"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "bytes",
+ "futures",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4267,9 +4283,9 @@ dependencies = [
  "dialoguer",
  "dirs 5.0.1",
  "futures",
+ "lmkit",
  "memo-local",
  "memo-types",
- "model-provider",
  "once_cell",
  "reqwest",
  "serde",
@@ -4359,22 +4375,6 @@ name = "mock_instant"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dce6dd36094cac388f119d2e9dc82dc730ef91c32a6222170d630e5414b956e6"
-
-[[package]]
-name = "model-provider"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64",
- "bytes",
- "futures",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
-]
 
 [[package]]
 name = "moka"

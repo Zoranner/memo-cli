@@ -392,19 +392,31 @@ impl AppConfig {
     pub fn resolve_embedding(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
         providers
             .get_service(&self.embed.embedding_provider)
-            .with_context(|| format!("Failed to resolve embedding service: {}", self.embed.embedding_provider))
+            .with_context(|| {
+                format!(
+                    "Failed to resolve embedding service: {}",
+                    self.embed.embedding_provider
+                )
+            })
     }
 
     /// 解析 rerank 服务配置
     pub fn resolve_rerank(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
         providers
             .get_service(&self.search.rerank_provider)
-            .with_context(|| format!("Failed to resolve rerank service: {}", self.search.rerank_provider))
+            .with_context(|| {
+                format!(
+                    "Failed to resolve rerank service: {}",
+                    self.search.rerank_provider
+                )
+            })
     }
 
     /// 解析拆解用的 LLM 服务配置
     pub fn resolve_decompose_llm(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
-        let llm_provider = self.decompose.llm_provider
+        let llm_provider = self
+            .decompose
+            .llm_provider
             .as_ref()
             .unwrap_or(&self.search.llm_provider);
         providers
@@ -414,7 +426,9 @@ impl AppConfig {
 
     /// 解析总结用的 LLM 服务配置
     pub fn resolve_summarize_llm(&self, providers: &ProvidersConfig) -> Result<ResolvedService> {
-        let llm_provider = self.summarize.llm_provider
+        let llm_provider = self
+            .summarize
+            .llm_provider
             .as_ref()
             .unwrap_or(&self.search.llm_provider);
         providers
@@ -494,7 +508,10 @@ results_per_leaf = 3
         let config: AppConfig = toml::from_str(toml_str).unwrap();
 
         assert_eq!(config.decompose.max_leaves, 8);
-        assert_eq!(config.decompose.strategy_prompt, Some("按三维模型拆解".to_string()));
+        assert_eq!(
+            config.decompose.strategy_prompt,
+            Some("按三维模型拆解".to_string())
+        );
         assert_eq!(config.merge.results_per_leaf, 3);
     }
 }

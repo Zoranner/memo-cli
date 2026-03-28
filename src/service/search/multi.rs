@@ -6,9 +6,9 @@ use std::sync::Arc;
 use crate::config::{AppConfig, ResolvedService};
 use crate::llm::{decompose_query_tree, summarize_results, LlmClient};
 use crate::ui::Output;
+use lmkit::{create_rerank_provider, EmbedProvider, RerankProvider};
 use memo_local::LocalStorageClient;
 use memo_types::{QueryResult, TimeRange};
-use model_provider::{create_rerank_provider, EmbedProvider, RerankProvider};
 
 use super::engine::{multi_layer_search, LayerSearchParams};
 use super::subquery_merge::merge_results;
@@ -168,7 +168,14 @@ pub async fn search(
         None
     } else {
         output.status("Summarizing", "results with LLM");
-        match summarize_results(&summarize_llm_client, &query, &final_memories, summarize_strategy).await {
+        match summarize_results(
+            &summarize_llm_client,
+            &query,
+            &final_memories,
+            summarize_strategy,
+        )
+        .await
+        {
             Ok(text) => Some(text),
             Err(e) => {
                 tracing::debug!("LLM summarization failed: {}", e);

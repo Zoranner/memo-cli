@@ -14,7 +14,7 @@ path = "src/main.rs"
 # 本地依赖（从 crates/ 引用）
 memo-types = { path = "crates/types" }
 memo-local = { path = "crates/local" }
-model-provider = { path = "crates/providers", features = ["full"] }
+lmkit = { path = "crates/lmkit", features = ["full"] }
 
 # HTTP 客户端（用于 embedding API）
 # 使用 rustls-tls 替代 OpenSSL，支持 musl 静态编译

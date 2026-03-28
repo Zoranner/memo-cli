@@ -7,9 +7,9 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::config::{AppConfig, ProvidersConfig, ResolvedService};
+use lmkit::{create_embed_provider, EmbedProvider};
 use memo_local::{DatabaseMetadata, LocalStorageClient};
 use memo_types::{StorageBackend, StorageConfig};
-use model_provider::{create_embed_provider, EmbedProvider};
 
 use super::storage_dim::resolve_storage_dimension;
 

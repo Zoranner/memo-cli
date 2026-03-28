@@ -131,11 +131,11 @@ impl ResolvedService {
     }
 
     /// 转换为 ProviderConfig
-    pub fn to_provider_config(&self, dimension: Option<usize>) -> model_provider::ProviderConfig {
+    pub fn to_provider_config(&self, dimension: Option<usize>) -> lmkit::ProviderConfig {
         use std::str::FromStr;
-        let provider = model_provider::Provider::from_str(&self.provider_name)
-            .unwrap_or(model_provider::Provider::OpenAI);
-        model_provider::ProviderConfig {
+        let provider =
+            lmkit::Provider::from_str(&self.provider_name).unwrap_or(lmkit::Provider::OpenAI);
+        lmkit::ProviderConfig {
             provider,
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),

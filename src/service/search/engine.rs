@@ -4,9 +4,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::ui::Output;
+use lmkit::RerankProvider;
 use memo_local::LocalStorageClient;
 use memo_types::{QueryResult, ScoreType, StorageBackend};
-use model_provider::RerankProvider;
 
 /// 多层搜索参数
 pub struct LayerSearchParams<'a> {
@@ -68,7 +68,8 @@ pub async fn multi_layer_search(params: LayerSearchParams<'_>) -> Result<Vec<Que
         }
     }
 
-    for (layer_index, &layer_threshold) in thresholds.iter().enumerate().skip(1).take(max_layers - 1)
+    for (layer_index, &layer_threshold) in
+        thresholds.iter().enumerate().skip(1).take(max_layers - 1)
     {
         if all_candidates.len() >= max_nodes || current_layer_results.is_empty() {
             break;

@@ -3,8 +3,8 @@ use anyhow::Result;
 use crate::config::AppConfig;
 use crate::service::session::{open_local_embed_session, LocalEmbedSession};
 use crate::ui::Output;
+use lmkit::EmbedProvider;
 use memo_types::{Memory, MemoryBuilder, StorageBackend};
-use model_provider::EmbedProvider;
 
 pub async fn embed(
     input: String,

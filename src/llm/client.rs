@@ -1,5 +1,5 @@
 use anyhow::Result;
-use model_provider::{create_chat_provider, ChatProvider};
+use lmkit::{create_chat_provider, ChatProvider};
 
 use crate::config::ResolvedService;
 

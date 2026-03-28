@@ -5,10 +5,7 @@ use crate::config::MergeConfig;
 use super::types::{MergedResult, SubQueryResult};
 
 /// 将多个子查询结果树形合并去重，返回最终结果列表
-pub fn merge_results(
-    sub_results: Vec<SubQueryResult>,
-    config: &MergeConfig,
-) -> Vec<MergedResult> {
+pub fn merge_results(sub_results: Vec<SubQueryResult>, config: &MergeConfig) -> Vec<MergedResult> {
     // 第一步：按 memory.id 去重，同一记忆保留最高分，记录所有来源
     let mut id_map: HashMap<String, MergedResult> = HashMap::new();
 
