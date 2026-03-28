@@ -1,3 +1,3 @@
-[submodule "crates/providers"]
-	path = crates/providers
-	url = https://github.com/Zoranner/model-provider.git
+[submodule "crates/lmkit"]
+	path = crates/lmkit
+	url = https://github.com/Zoranner/lmkit-rs.git
