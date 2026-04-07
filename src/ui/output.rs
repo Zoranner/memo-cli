@@ -216,7 +216,16 @@ impl Output {
                 first_line.to_string()
             };
 
-            // 序号宽度固定 4 列 "[N] "，对齐后续字段
+            // 计算标题缩进：与 ID 列起始位置对齐
+            // 格式："{[N]} {[S:0.00]} {id} ..."，ID 前的偏移 = [N].len + 1 + score.len + 1
+            let index_len = format!("[{}]", i + 1).len();
+            let score_plain_len = if result.score.is_some() {
+                "[V:0.00]".len()
+            } else {
+                0
+            };
+            let id_offset = index_len + 1 + score_plain_len + 1;
+
             println!(
                 "{} {} {} {}{}",
                 self.dim.apply_to(format!("[{}]", i + 1)),
@@ -225,7 +234,7 @@ impl Output {
                 self.dim.apply_to(format!("({})", date)),
                 tags_part
             );
-            println!("{:>6}{}", "", truncated);
+            println!("{}{}", " ".repeat(id_offset), truncated);
         }
     }
 

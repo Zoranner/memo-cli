@@ -48,16 +48,10 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
     let decompose_strategy = decomp_config.strategy_prompt.as_deref();
     let decompose_llm_client = LlmClient::from_resolved(&decompose_llm_config)?;
 
-    output.status("Decomposing", "query into sub-questions");
+    output.status("Decomposing", "query into sub-queries");
     let t_decompose = Instant::now();
 
-    // 并发：decompose + 原始 query embed，节省一次串行网络等待
-    let (trees_result, original_vec_result) = tokio::join!(
-        decompose_query_tree(&decompose_llm_client, &query, decompose_strategy),
-        embed_provider.encode(&query)
-    );
-    let trees = trees_result?;
-    let original_vec = original_vec_result.ok();
+    let trees = decompose_query_tree(&decompose_llm_client, &query, decompose_strategy).await?;
 
     let mut seen = HashSet::new();
     let queries: Vec<String> = trees
@@ -68,13 +62,13 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         .collect();
 
     if queries.is_empty() {
-        output.info("Decomposition produced no sub-questions");
+        output.info("Decomposition produced no sub-queries");
         return Ok(Vec::new());
     }
 
     output.status_timed(
         "Decomposed",
-        &format!("{} sub-questions", queries.len()),
+        &format!("{} sub-queries", queries.len()),
         t_decompose.elapsed(),
     );
     output.sub_query_tree(&render_tree_lines(&trees));
@@ -86,14 +80,6 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
     let candidates_limit = merge_config.candidates_per_query;
     let top_n = merge_config.results_per_query;
 
-    // 如果原始 query 不在子问题中，将其作为额外一路加入（使用已有向量，无需额外 embed）
-    let original_query = if !queries.contains(&query) {
-        original_vec.map(|v| (query.clone(), v))
-    } else {
-        None
-    };
-
-    let total_queries = queries.len() + original_query.as_ref().map_or(0, |_| 1);
     let t_search = Instant::now();
 
     // 子问题搜索任务（需要 embed）
@@ -133,26 +119,12 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         })
         .collect();
 
-    let mut sub_results: Vec<SubQueryResult> =
+    let sub_results: Vec<SubQueryResult> =
         join_all(query_tasks).await.into_iter().flatten().collect();
-
-    // 原始 query 额外一路（向量已有，直接搜索）
-    if let Some((_orig_query, orig_vec)) = original_query {
-        match storage
-            .search_by_vector(orig_vec, candidates_limit, threshold, time_range.clone())
-            .await
-        {
-            Ok(results) => sub_results.push(SubQueryResult {
-                node_id: "original".to_string(),
-                results: results.into_iter().take(top_n).collect::<Vec<_>>(),
-            }),
-            Err(e) => tracing::debug!("Original query search failed: {}", e),
-        }
-    }
 
     output.status_timed(
         "Searched",
-        &format!("{} sub-queries in parallel", total_queries),
+        &format!("{} sub-queries in parallel", queries.len()),
         t_search.elapsed(),
     );
 
@@ -171,7 +143,7 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         .collect();
     output.status_timed(
         "Merged",
-        &format!("results from {} sub-queries", total_queries),
+        &format!("results from {} sub-queries", queries.len()),
         t_merge.elapsed(),
     );
 
