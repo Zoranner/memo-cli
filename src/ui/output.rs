@@ -43,16 +43,6 @@ impl Output {
         }
     }
 
-    /// 静默模式：所有 status 类输出被抑制，仅保留结果输出
-    pub fn silent() -> Self {
-        Self {
-            green: Style::new().green().bold(),
-            bold: Style::new().bold(),
-            dim: Style::new().dim(),
-            silent: true,
-        }
-    }
-
     // === 状态和进度显示方法 ===
 
     /// 显示状态消息（如 "Loading model", "Embedding text" 等）
@@ -179,11 +169,21 @@ impl Output {
         }
     }
 
-    /// 显示 LLM 生成的综合回答（输出到 stdout，前后各一个空行）
-    pub fn llm_answer(&self, text: &str) {
+    /// 流式打印 LLM 生成的综合回答，逐 token 输出到 stdout
+    pub async fn llm_answer_stream(&self, stream: lmkit::ChatStream) {
+        use futures::StreamExt;
+        use std::io::Write;
         println!();
-        println!("{}", text);
-        println!();
+        let mut stream = stream;
+        while let Some(chunk) = stream.next().await {
+            if let Ok(c) = chunk {
+                if let Some(delta) = c.delta {
+                    print!("{}", delta);
+                    let _ = std::io::stdout().flush();
+                }
+            }
+        }
+        println!("\n");
     }
 
     // === 消息提示方法 ===

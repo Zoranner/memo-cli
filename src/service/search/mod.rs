@@ -6,6 +6,7 @@ mod types;
 use anyhow::Result;
 use std::sync::Arc;
 
+use crate::llm::{summarize_results_stream, LlmClient};
 use crate::service::session::{open_local_embed_session, LocalEmbedSession};
 use crate::service::time_range::parse_cli_time_range;
 use crate::ui::Output;
@@ -53,8 +54,9 @@ pub async fn search(options: SearchOptions) -> Result<()> {
     let rerank_config = config.resolve_rerank(&providers)?;
     let decompose_llm_config = config.resolve_decompose_llm(&providers)?;
     let summarize_llm_config = config.resolve_summarize_llm(&providers)?;
+    let summarize_strategy_owned = config.summarize.strategy_prompt.clone();
 
-    let (results, summary) = multi::search(
+    let results = multi::search(
         multi::MultiSearchOptions {
             query: query.clone(),
             limit,
@@ -64,7 +66,6 @@ pub async fn search(options: SearchOptions) -> Result<()> {
             embed_provider,
             rerank_config,
             decompose_llm_config,
-            summarize_llm_config,
             app_config: config,
         },
         &output,
@@ -78,10 +79,23 @@ pub async fn search(options: SearchOptions) -> Result<()> {
         ));
         output.note("Try lowering the threshold with -t/--threshold option");
     } else {
-        if let Some(text) = &summary {
-            output.llm_answer(text);
-        }
+        // 先展示搜索结果，用户立即看到
         output.search_results(&results);
+
+        // 再流式输出 LLM 总结
+        let summarize_client = LlmClient::from_resolved(&summarize_llm_config)?;
+        output.status("Summarizing", "results with LLM");
+        match summarize_results_stream(
+            &summarize_client,
+            &query,
+            &results,
+            summarize_strategy_owned.as_deref(),
+        )
+        .await
+        {
+            Ok(stream) => output.llm_answer_stream(stream).await,
+            Err(e) => tracing::debug!("LLM summarization failed: {}", e),
+        }
     }
 
     Ok(())

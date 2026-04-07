@@ -1,5 +1,5 @@
 use anyhow::Result;
-use lmkit::{create_chat_provider, ChatProvider};
+use lmkit::{create_chat_provider, ChatProvider, ChatStream};
 
 use crate::config::ResolvedService;
 
@@ -17,5 +17,9 @@ impl LlmClient {
 
     pub async fn chat(&self, prompt: &str) -> Result<String> {
         self.inner.chat(prompt).await.map_err(Into::into)
+    }
+
+    pub async fn chat_stream(&self, prompt: &str) -> Result<ChatStream> {
+        self.inner.chat_stream(prompt).await.map_err(Into::into)
     }
 }
