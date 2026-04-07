@@ -60,21 +60,21 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
     let original_vec = original_vec_result.ok();
 
     let mut seen = HashSet::new();
-    let leaves: Vec<String> = trees
+    let queries: Vec<String> = trees
         .iter()
-        .flat_map(|t| t.leaves())
+        .flat_map(|t| t.queries())
         .filter(|q| seen.insert(q.clone()))
-        .take(decomp_config.max_leaves)
+        .take(decomp_config.max_queries)
         .collect();
 
-    if leaves.is_empty() {
+    if queries.is_empty() {
         output.info("Decomposition produced no sub-questions");
         return Ok(Vec::new());
     }
 
     output.status_timed(
         "Decomposed",
-        &format!("{} sub-questions", leaves.len()),
+        &format!("{} sub-questions", queries.len()),
         t_decompose.elapsed(),
     );
     output.sub_query_tree(&render_tree_lines(&trees));
@@ -84,34 +84,34 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
     let rerank_shared: Arc<dyn RerankProvider> = Arc::from(create_rerank_provider(&rerank_pc)?);
 
     let candidates_limit = merge_config.candidates_per_query;
-    let top_n = merge_config.results_per_leaf;
+    let top_n = merge_config.results_per_query;
 
-    // 如果原始 query 不在叶节点中，将其作为额外一路加入（使用已有向量，无需额外 embed）
-    let original_query_as_leaf = if !leaves.contains(&query) {
+    // 如果原始 query 不在子问题中，将其作为额外一路加入（使用已有向量，无需额外 embed）
+    let original_query = if !queries.contains(&query) {
         original_vec.map(|v| (query.clone(), v))
     } else {
         None
     };
 
-    let total_queries = leaves.len() + original_query_as_leaf.as_ref().map_or(0, |_| 1);
+    let total_queries = queries.len() + original_query.as_ref().map_or(0, |_| 1);
     let t_search = Instant::now();
 
-    // 叶节点搜索任务（需要 embed）
-    let leaf_tasks: Vec<_> = leaves
+    // 子问题搜索任务（需要 embed）
+    let query_tasks: Vec<_> = queries
         .iter()
         .enumerate()
-        .map(|(idx, leaf_query)| {
-            let leaf_query = leaf_query.clone();
-            let leaf_id = format!("leaf_{}", idx);
+        .map(|(idx, sub_query)| {
+            let sub_query = sub_query.clone();
+            let query_id = format!("query_{}", idx);
             let time_range = time_range.clone();
             let embed_provider = Arc::clone(&embed_provider);
             let storage = Arc::clone(&storage);
 
             async move {
-                let query_vector = match embed_provider.encode(&leaf_query).await {
+                let query_vector = match embed_provider.encode(&sub_query).await {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::debug!("Failed to encode leaf query '{}': {}", leaf_query, e);
+                        tracing::debug!("Failed to encode sub-query '{}': {}", sub_query, e);
                         return None;
                     }
                 };
@@ -121,11 +121,11 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
                     .await
                 {
                     Ok(results) => Some(SubQueryResult {
-                        node_id: leaf_id,
+                        node_id: query_id,
                         results: results.into_iter().take(top_n).collect::<Vec<_>>(),
                     }),
                     Err(e) => {
-                        tracing::debug!("Leaf search failed: {}", e);
+                        tracing::debug!("Sub-query search failed: {}", e);
                         None
                     }
                 }
@@ -134,10 +134,10 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         .collect();
 
     let mut sub_results: Vec<SubQueryResult> =
-        join_all(leaf_tasks).await.into_iter().flatten().collect();
+        join_all(query_tasks).await.into_iter().flatten().collect();
 
     // 原始 query 额外一路（向量已有，直接搜索）
-    if let Some((_orig_query, orig_vec)) = original_query_as_leaf {
+    if let Some((_orig_query, orig_vec)) = original_query {
         match storage
             .search_by_vector(orig_vec, candidates_limit, threshold, time_range.clone())
             .await

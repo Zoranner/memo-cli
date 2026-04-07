@@ -60,18 +60,6 @@ pub struct SearchConfig {
     /// 向量搜索相似度阈值（0.0-1.0，默认: 0.35）
     #[serde(default = "default_similarity_threshold")]
     pub similarity_threshold: f32,
-
-    /// 多层搜索深度（默认: 5，设为 1 禁用多层扩展）
-    #[serde(default = "default_max_depth")]
-    pub max_depth: usize,
-
-    /// 每层扩展分支数（默认: 5）
-    #[serde(default = "default_branch_limit")]
-    pub branch_limit: usize,
-
-    /// 扩展时是否要求标签重叠（默认: true）
-    #[serde(default = "default_require_tag_overlap")]
-    pub require_tag_overlap: bool,
 }
 
 impl Default for SearchConfig {
@@ -81,9 +69,6 @@ impl Default for SearchConfig {
             llm_provider: String::new(),
             results_limit: default_results_limit(),
             similarity_threshold: default_similarity_threshold(),
-            max_depth: default_max_depth(),
-            branch_limit: default_branch_limit(),
-            require_tag_overlap: default_require_tag_overlap(),
         }
     }
 }
@@ -96,18 +81,6 @@ fn default_similarity_threshold() -> f32 {
     0.35
 }
 
-fn default_max_depth() -> usize {
-    5
-}
-
-fn default_branch_limit() -> usize {
-    5
-}
-
-fn default_require_tag_overlap() -> bool {
-    true
-}
-
 // ============================================
 // 搜索 > 拆解配置
 // ============================================
@@ -118,9 +91,9 @@ pub struct DecomposeConfig {
     /// LLM 服务引用（可选，覆盖 search.llm_provider）
     pub llm_provider: Option<String>,
 
-    /// 最大叶子数（默认: 12）
-    #[serde(default = "default_max_leaves")]
-    pub max_leaves: usize,
+    /// 最大子问题数（默认: 12）
+    #[serde(default = "default_max_queries")]
+    pub max_queries: usize,
 
     /// 拆解策略提示词（可选，覆盖内置策略）
     pub strategy_prompt: Option<String>,
@@ -130,13 +103,13 @@ impl Default for DecomposeConfig {
     fn default() -> Self {
         Self {
             llm_provider: None,
-            max_leaves: default_max_leaves(),
+            max_queries: default_max_queries(),
             strategy_prompt: None,
         }
     }
 }
 
-fn default_max_leaves() -> usize {
+fn default_max_queries() -> usize {
     12
 }
 
@@ -151,9 +124,9 @@ pub struct MergeConfig {
     #[serde(default = "default_candidates_per_query")]
     pub candidates_per_query: usize,
 
-    /// 每个叶子的结果数（默认: 5）
-    #[serde(default = "default_results_per_leaf")]
-    pub results_per_leaf: usize,
+    /// 每个子问题的结果数（默认: 5）
+    #[serde(default = "default_results_per_query")]
+    pub results_per_query: usize,
 
     /// 最大结果数（默认: 20）
     #[serde(default = "default_max_results")]
@@ -168,7 +141,7 @@ impl Default for MergeConfig {
     fn default() -> Self {
         Self {
             candidates_per_query: default_candidates_per_query(),
-            results_per_leaf: default_results_per_leaf(),
+            results_per_query: default_results_per_query(),
             max_results: default_max_results(),
             dedup_threshold: default_dedup_threshold(),
         }
@@ -179,7 +152,7 @@ fn default_candidates_per_query() -> usize {
     50
 }
 
-fn default_results_per_leaf() -> usize {
+fn default_results_per_query() -> usize {
     5
 }
 
@@ -453,7 +426,6 @@ rerank_provider = "aliyun.rerank"
 llm_provider = "aliyun.llm"
 results_limit = 10
 similarity_threshold = 0.35
-max_depth = 5
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
@@ -464,7 +436,6 @@ max_depth = 5
         assert_eq!(config.search.llm_provider, "aliyun.llm");
         assert_eq!(config.search.results_limit, 10);
         assert_eq!(config.search.similarity_threshold, 0.35);
-        assert_eq!(config.search.max_depth, 5);
     }
 
     #[test]
@@ -483,7 +454,7 @@ llm_provider = "aliyun.llm"
         assert_eq!(config.search.results_limit, 10);
         assert_eq!(config.search.similarity_threshold, 0.35);
         assert_eq!(config.embed.duplicate_threshold, 0.85);
-        assert_eq!(config.decompose.max_leaves, 12);
+        assert_eq!(config.decompose.max_queries, 12);
         assert_eq!(config.merge.max_results, 20);
     }
 
@@ -498,20 +469,20 @@ rerank_provider = "aliyun.rerank"
 llm_provider = "aliyun.llm"
 
 [decompose]
-max_leaves = 8
+max_queries = 8
 strategy_prompt = "按三维模型拆解"
 
 [merge]
-results_per_leaf = 3
+results_per_query = 3
         "#;
 
         let config: AppConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(config.decompose.max_leaves, 8);
+        assert_eq!(config.decompose.max_queries, 8);
         assert_eq!(
             config.decompose.strategy_prompt,
             Some("按三维模型拆解".to_string())
         );
-        assert_eq!(config.merge.results_per_leaf, 3);
+        assert_eq!(config.merge.results_per_query, 3);
     }
 }

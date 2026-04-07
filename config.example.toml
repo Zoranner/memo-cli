@@ -22,12 +22,6 @@ llm_provider = "aliyun.llm"
 results_limit = 10
 # 向量搜索相似度阈值（0.0-1.0）
 similarity_threshold = 0.35
-# 多层搜索深度（1 = 禁用多层扩展）
-max_depth = 5
-# 每层扩展分支数
-branch_limit = 5
-# 扩展时是否要求标签重叠
-require_tag_overlap = true
 
 # ============================================
 # 搜索 > 拆解配置
@@ -35,8 +29,8 @@ require_tag_overlap = true
 [decompose]
 # LLM 服务引用（可选，覆盖 search.llm_provider）
 # llm_provider = "openai.llm"
-# 最大叶子节点数
-max_leaves = 12
+# 最大子问题数
+max_queries = 12
 # 拆解策略提示词（可选，覆盖内置策略）
 # strategy_prompt = "按以下五维模型拆解：core, why, how, case, note"
 
@@ -46,8 +40,8 @@ max_leaves = 12
 [merge]
 # 每个子问题召回候选数
 candidates_per_query = 50
-# 每个叶子保留数
-results_per_leaf = 5
+# 每个子问题保留数
+results_per_query = 5
 # 最终返回最大结果数
 max_results = 20
 # 去重阈值（0.0-1.0）
@@ -58,6 +52,8 @@ dedup_threshold = 0.98
 # ============================================
 [summarize]
 # LLM 服务引用（可选，覆盖 search.llm_provider）
-# llm_provider = "openai.llm"
+# 同一供应商可以在 providers.toml 中定义多个服务（名称自定义），分别用于不同场景
+# 例如：search.llm_provider = "aliyun.llm"（能力强），summarize.llm_provider = "aliyun.llm_flash"（速度快）
+# llm_provider = "aliyun.llm_flash"
 # 总结策略提示词（可选，覆盖内置策略）
 # strategy_prompt = "请综合多条记忆，给出简洁、结构化的回答..."
