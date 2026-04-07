@@ -5,6 +5,7 @@ mod types;
 
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::llm::{summarize_results_stream, LlmClient};
 use crate::service::session::{open_local_embed_session, LocalEmbedSession};
@@ -56,6 +57,8 @@ pub async fn search(options: SearchOptions) -> Result<()> {
     let summarize_llm_config = config.resolve_summarize_llm(&providers)?;
     let summarize_strategy_owned = config.summarize.strategy_prompt.clone();
 
+    let t_total = Instant::now();
+
     let results = multi::search(
         multi::MultiSearchOptions {
             query: query.clone(),
@@ -78,25 +81,29 @@ pub async fn search(options: SearchOptions) -> Result<()> {
             threshold
         ));
         output.note("Try lowering the threshold with -t/--threshold option");
-    } else {
-        // 先展示搜索结果，用户立即看到
-        output.search_results(&results);
-
-        // 再流式输出 LLM 总结
-        let summarize_client = LlmClient::from_resolved(&summarize_llm_config)?;
-        output.status("Summarizing", "results with LLM");
-        match summarize_results_stream(
-            &summarize_client,
-            &query,
-            &results,
-            summarize_strategy_owned.as_deref(),
-        )
-        .await
-        {
-            Ok(stream) => output.llm_answer_stream(stream).await,
-            Err(e) => tracing::debug!("LLM summarization failed: {}", e),
-        }
+        output.finished(t_total.elapsed());
+        return Ok(());
     }
+
+    // 先流式输出 LLM 总结（用户立即开始阅读）
+    let summarize_client = LlmClient::from_resolved(&summarize_llm_config)?;
+    output.status("Summarizing", "results with LLM");
+    match summarize_results_stream(
+        &summarize_client,
+        &query,
+        &results,
+        summarize_strategy_owned.as_deref(),
+    )
+    .await
+    {
+        Ok(stream) => output.llm_answer_stream(stream).await,
+        Err(e) => tracing::debug!("LLM summarization failed: {}", e),
+    }
+
+    // 总结结束后，以引用格式展示原始记录
+    output.search_results_brief(&results);
+
+    output.finished(t_total.elapsed());
 
     Ok(())
 }

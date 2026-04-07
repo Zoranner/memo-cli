@@ -110,7 +110,7 @@ async fn check_duplicate_and_abort_if_found(
             threshold
         ));
 
-        output.search_results(&similar_memories);
+        output.search_results_brief(&similar_memories);
 
         match similar_memories.len() {
             1 => {

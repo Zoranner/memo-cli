@@ -2,8 +2,10 @@ use anyhow::Result;
 use futures::future::join_all;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::config::{AppConfig, ResolvedService};
+use crate::llm::decompose::SubQueryTree;
 use crate::llm::{decompose_query_tree, LlmClient};
 use crate::ui::Output;
 use lmkit::{create_rerank_provider, EmbedProvider, RerankProvider};
@@ -47,6 +49,7 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
     let decompose_llm_client = LlmClient::from_resolved(&decompose_llm_config)?;
 
     output.status("Decomposing", "query into sub-questions");
+    let t_decompose = Instant::now();
 
     // 并发：decompose + 原始 query embed，节省一次串行网络等待
     let (trees_result, original_vec_result) = tokio::join!(
@@ -69,7 +72,12 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         return Ok(Vec::new());
     }
 
-    output.status("Decomposed", &format!("{} sub-questions", leaves.len()));
+    output.status_timed(
+        "Decomposed",
+        &format!("{} sub-questions", leaves.len()),
+        t_decompose.elapsed(),
+    );
+    output.sub_query_tree(&render_tree_lines(&trees));
 
     let embed_provider: Arc<dyn EmbedProvider> = Arc::from(embed_provider);
     let rerank_pc = rerank_config.to_provider_config(None);
@@ -85,13 +93,8 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         None
     };
 
-    output.status(
-        "Searching",
-        &format!(
-            "{} sub-queries in parallel",
-            leaves.len() + original_query_as_leaf.as_ref().map_or(0, |_| 1)
-        ),
-    );
+    let total_queries = leaves.len() + original_query_as_leaf.as_ref().map_or(0, |_| 1);
+    let t_search = Instant::now();
 
     // 叶节点搜索任务（需要 embed）
     let leaf_tasks: Vec<_> = leaves
@@ -147,32 +150,54 @@ pub async fn search(options: MultiSearchOptions, output: &Output) -> Result<Vec<
         }
     }
 
+    output.status_timed(
+        "Searched",
+        &format!("{} sub-queries in parallel", total_queries),
+        t_search.elapsed(),
+    );
+
     if sub_results.is_empty() {
         output.info("No results found in sub-queries");
         return Ok(Vec::new());
     }
 
-    output.status(
-        "Merging",
-        &format!("results from {} sub-queries", sub_results.len()),
-    );
+    let t_merge = Instant::now();
     let merged = merge_results(sub_results, merge_config);
-
     let result_limit = limit.min(merge_config.max_results);
     let candidates: Vec<QueryResult> = merged
         .into_iter()
         .take(merge_config.max_results)
         .map(|m| m.memory)
         .collect();
+    output.status_timed(
+        "Merged",
+        &format!("results from {} sub-queries", total_queries),
+        t_merge.elapsed(),
+    );
 
     // 全局一次 rerank（替代原来每个叶节点各自 rerank）
     let final_memories =
         apply_rerank(candidates, &query, result_limit, rerank_shared, output).await?;
 
-    output.status(
-        "Results",
-        &format!("{} results from multi-query search", final_memories.len()),
-    );
+    output.status("Found", &format!("{} results", final_memories.len()));
 
     Ok(final_memories)
+}
+
+/// 将子查询树渲染为带缩进符号的字符串列表
+fn render_tree_lines(trees: &[SubQueryTree]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (i, tree) in trees.iter().enumerate() {
+        render_node(tree, "", i == trees.len() - 1, &mut lines);
+    }
+    lines
+}
+
+fn render_node(node: &SubQueryTree, prefix: &str, is_last: bool, lines: &mut Vec<String>) {
+    let connector = if is_last { "└─ " } else { "├─ " };
+    lines.push(format!("{}{}{}", prefix, connector, node.question));
+    let child_prefix = format!("{}{}", prefix, if is_last { "   " } else { "│  " });
+    for (i, child) in node.children.iter().enumerate() {
+        render_node(child, &child_prefix, i == node.children.len() - 1, lines);
+    }
 }

@@ -1,8 +1,9 @@
 use console::Style;
 use std::io::{self, Write};
 use std::path::Path;
+use std::time::Duration;
 
-use memo_types::QueryResult;
+use memo_types::{QueryResult, ScoreType};
 
 /// 已在业务层通过 [`Output::error`] / [`Output::error_report`] 向用户展示过的错误；
 /// 回到 `main` 时不应再次打印（但仍以非零退出码结束进程）。
@@ -54,6 +55,30 @@ impl Output {
         eprintln!("{:>12} {}", self.green.apply_to(action), target);
     }
 
+    /// 带耗时的状态消息，格式: "  Decomposed 12 sub-questions [3.2s]"
+    pub fn status_timed(&self, action: &str, target: &str, elapsed: Duration) {
+        if self.silent {
+            return;
+        }
+        eprintln!(
+            "{:>12} {} {}",
+            self.green.apply_to(action),
+            target,
+            self.dim
+                .apply_to(format!("[{:.1}s]", elapsed.as_secs_f32()))
+        );
+    }
+
+    /// 显示子查询树（紧跟 Decomposed 状态行之后）
+    pub fn sub_query_tree(&self, lines: &[String]) {
+        if self.silent {
+            return;
+        }
+        for line in lines {
+            eprintln!("{:>12} {}", "", line);
+        }
+    }
+
     /// 开始执行操作的状态消息（会在前面自动添加空行）
     /// 用于标记一个新操作的开始，例如用户确认后的实际执行
     pub fn begin_operation(&self, action: &str, target: &str) {
@@ -77,6 +102,19 @@ impl Output {
             self.green.apply_to("Finished"),
             action,
             scope
+        );
+    }
+
+    /// 显示总耗时，格式: "    Finished in 6.2s"
+    pub fn finished(&self, elapsed: Duration) {
+        if self.silent {
+            return;
+        }
+        eprintln!();
+        eprintln!(
+            "{:>12} in {:.1}s",
+            self.green.apply_to("Finished"),
+            elapsed.as_secs_f32()
         );
     }
 
@@ -141,15 +179,53 @@ impl Output {
 
     // === 结果显示方法 ===
 
-    /// 显示搜索结果（列表格式，带相似度分数）
-    pub fn search_results(&self, results: &[QueryResult]) {
+    /// 显示搜索结果（引用格式，[N] score id date tags + 内容首行）
+    pub fn search_results_brief(&self, results: &[QueryResult]) {
+        println!();
         for (i, result) in results.iter().enumerate() {
-            self.display_result_item_list(result);
+            let score_part = if let Some(s) = result.score {
+                let prefix = match result.score_type {
+                    Some(ScoreType::Rerank) => "R",
+                    Some(ScoreType::Vector) | None => "V",
+                };
+                self.green
+                    .apply_to(format!("[{}:{:.2}]", prefix, s))
+                    .to_string()
+            } else {
+                String::new()
+            };
 
-            // 只在非最后一个结果后添加空行分隔
-            if i < results.len() - 1 {
-                println!();
-            }
+            let date = chrono::DateTime::from_timestamp_millis(result.updated_at)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+
+            let tags_part = if result.tags.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " {}",
+                    self.dim.apply_to(format!("[{}]", result.tags.join(", ")))
+                )
+            };
+
+            // 首行内容，最多 100 个字符
+            let first_line = result.content.lines().next().unwrap_or("").trim();
+            let truncated: String = if first_line.chars().count() > 100 {
+                format!("{}...", first_line.chars().take(100).collect::<String>())
+            } else {
+                first_line.to_string()
+            };
+
+            // 序号宽度固定 4 列 "[N] "，对齐后续字段
+            println!(
+                "{} {} {} {}{}",
+                self.dim.apply_to(format!("[{}]", i + 1)),
+                score_part,
+                self.bold.apply_to(&result.id),
+                self.dim.apply_to(format!("({})", date)),
+                tags_part
+            );
+            println!("{:>6}{}", "", truncated);
         }
     }
 

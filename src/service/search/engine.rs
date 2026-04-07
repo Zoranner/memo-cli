@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::ui::Output;
 use lmkit::RerankProvider;
@@ -26,10 +27,17 @@ pub async fn apply_rerank(
         return Ok(sorted);
     }
 
-    output.status("Reranking", &format!("{} candidates", all_candidates.len()));
+    let candidate_count = all_candidates.len();
+    let t_rerank = Instant::now();
 
     let documents: Vec<&str> = all_candidates.iter().map(|r| r.content.as_str()).collect();
     let reranked = rerank.rerank(query, &documents, Some(limit)).await?;
+
+    output.status_timed(
+        "Reranked",
+        &format!("{} candidates", candidate_count),
+        t_rerank.elapsed(),
+    );
 
     let results = reranked
         .iter()
