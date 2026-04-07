@@ -56,13 +56,15 @@ After `memo init`, you need to configure providers:
 cp providers.example.toml ~/.memo/providers.toml
 
 # Edit providers.toml with your API keys
-#    - Add your Alibaba Cloud / Zhipu AI / OpenAI API keys
+#    - Add your API keys for OpenAI / Ollama / Aliyun / ZhipuAI etc.
 #    - Configure services (embedding, rerank, llm)
 
 # Edit config.toml to select services
-#    embedding = "aliyun.embed"
-#    rerank = "aliyun.rerank"
-#    llm = "aliyun.llm"
+#    [embed]
+#    embedding_provider = "aliyun.embed"
+#    [search]
+#    rerank_provider = "aliyun.rerank"
+#    llm_provider = "aliyun.llm"
 ```
 
 See `providers.example.toml` and `config.example.toml` for complete examples.
@@ -234,36 +236,35 @@ memo search "error handling" --threshold 0.65 -n 30
 
 ### Output Example
 
-Search first displays the LLM-synthesized answer, then the source memories with relevance scores:
+Search first displays the source memories with relevance scores, then streams the LLM-synthesized answer:
 
 ```
-  Decomposing query into sub-questions
-   Decomposed 5 sub-questions
-    Searching 5 sub-queries in parallel
-      Merging results from 5 sub-queries
-      Results 3 results from multi-query search
-  Summarizing results with LLM
+ Decomposing query into sub-queries
+  Decomposed 5 sub-queries [3.2s]
+             ├─ What are async trait patterns in Rust?
+             │  ├─ How does async-trait crate work?
+             │  └─ What are the limitations of async fn in traits?
+             ├─ Why can't Rust use async fn in traits directly?
+             └─ What are common async error handling patterns?
+    Searched 5 sub-queries in parallel [1.8s]
+     Merged results from 5 sub-queries [0.0s]
+    Ranking 3 candidates with rerank model
+      Found 2 results
+
+[1] [R:0.89] a1b2c3d4-e5f6-7890-abcd-ef1234567890 (2026-01-27 10:30) [rust, async, trait]
+             Rust async patterns - async-trait usage guide
+[2] [R:0.85] b2c3d4e5-f6a7-8901-bcde-f12345678901 (2026-01-26 14:20) [rust, async, error]
+             Async error handling - Result<T, E> usage
+
+ Summarizing results with LLM
 
 For async trait patterns in Rust, use the `async-trait` crate. Add `#[async_trait]`
-to both the trait definition and all implementations. This is because Rust's type
-system cannot represent the return type of async fn in traits directly...
-
-[R:0.89] a1b2c3d4-e5f6-7890-abcd-ef1234567890 (2026-01-27 10:30) [rust, async, trait]
-         Rust async patterns - async-trait usage guide
-         
-         Context: Using async fn directly in traits causes compilation errors
-         Solution: Use #[async_trait] macro on trait definitions and implementations
-
-[R:0.85] b2c3d4e5-f6a7-8901-bcde-f12345678901 (2026-01-26 14:20) [rust, async, error]
-         Async error handling - Result<T, E> usage
-
-[V:0.82] f9a8b7c6-d5e4-3210-fedc-ba9876543210 (2026-01-26 15:45) [rust, error]
-         Rust error handling best practices
+to both the trait definition and all implementations...
 ```
 
 **Score Prefixes:**
 - `R:` = Rerank score (more accurate, semantically re-ordered)
-- `V:` = Vector similarity score (from embedding model)
+- `V:` = Vector similarity score (rerank skipped)
 
 ---
 

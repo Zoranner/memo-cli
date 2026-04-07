@@ -56,13 +56,15 @@ memo init --local
 cp providers.example.toml ~/.memo/providers.toml
 
 # 编辑 providers.toml 填入你的 API 密钥
-#    - 添加阿里云 / 智谱 AI / OpenAI 的 API 密钥
+#    - 添加 OpenAI / Ollama / 阿里云 / 智谱 AI 等的 API 密钥
 #    - 配置服务（embedding、rerank、llm）
 
 # 编辑 config.toml 选择要使用的服务
-#    embedding = "aliyun.embed"
-#    rerank = "aliyun.rerank"
-#    llm = "aliyun.llm"
+#    [embed]
+#    embedding_provider = "aliyun.embed"
+#    [search]
+#    rerank_provider = "aliyun.rerank"
+#    llm_provider = "aliyun.llm"
 ```
 
 完整的示例请参见 `providers.example.toml` 和 `config.example.toml`。
@@ -234,36 +236,35 @@ memo search "错误处理" --threshold 0.65 -n 30
 
 ### 输出示例
 
-搜索先输出 LLM 综合总结，再展示来源记忆及相关性分数：
+搜索先展示来源记忆及相关性分数，再流式输出 LLM 综合总结：
 
 ```
-  Decomposing query into sub-questions
-   Decomposed 5 sub-questions
-    Searching 5 sub-queries in parallel
-      Merging results from 5 sub-queries
-      Results 3 results from multi-query search
-  Summarizing results with LLM
+ Decomposing query into sub-queries
+  Decomposed 5 sub-queries [3.2s]
+             ├─ Rust 中的异步 trait 模式有哪些？
+             │  ├─ async-trait crate 是如何工作的？
+             │  └─ async fn 在 trait 中有哪些限制？
+             ├─ 为什么 Rust 不能直接在 trait 中使用 async fn？
+             └─ 常见的异步错误处理模式有哪些？
+    Searched 5 sub-queries in parallel [1.8s]
+     Merged results from 5 sub-queries [0.0s]
+    Ranking 3 candidates with rerank model
+      Found 2 results
+
+[1] [R:0.89] a1b2c3d4-e5f6-7890-abcd-ef1234567890 (2026-01-27 10:30) [rust, async, trait]
+             Rust 异步模式 - async-trait 使用指南
+[2] [R:0.85] b2c3d4e5-f6a7-8901-bcde-f12345678901 (2026-01-26 14:20) [rust, async, error]
+             异步错误处理 - Result<T, E> 使用
+
+ Summarizing results with LLM
 
 在 Rust 的 trait 中使用 async fn，需要借助 `async-trait` crate。
-在 trait 定义和所有 impl 块上都需要添加 `#[async_trait]` 宏。
-这是因为 Rust 的类型系统无法直接表示 trait 中 async fn 的返回类型...
-
-[R:0.89] a1b2c3d4-e5f6-7890-abcd-ef1234567890 (2026-01-27 10:30) [rust, async, trait]
-         Rust 异步模式 - async-trait 使用指南
-         
-         背景：在 trait 中直接使用 async fn 会导致编译错误
-         方案：使用 #[async_trait] 宏修饰 trait 定义和实现
-
-[R:0.85] b2c3d4e5-f6a7-8901-bcde-f12345678901 (2026-01-26 14:20) [rust, async, error]
-         异步错误处理 - Result<T, E> 使用
-
-[V:0.82] f9a8b7c6-d5e4-3210-fedc-ba9876543210 (2026-01-26 15:45) [rust, error]
-         Rust 错误处理最佳实践
+在 trait 定义和所有 impl 块上都需要添加 `#[async_trait]` 宏...
 ```
 
 **分数前缀：**
 - `R:` = 重排序分数（更准确，语义重新排序）
-- `V:` = 向量相似度分数（来自嵌入模型）
+- `V:` = 向量相似度分数（跳过 rerank 时显示）
 
 ---
 

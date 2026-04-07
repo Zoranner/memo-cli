@@ -107,17 +107,23 @@ cp config.example.toml ~/.memo/config.toml
 
 ### Configuration Parameters
 
-| Parameter | Required | Description | Default |
-|-----------|:--------:|-------------|---------|
-| `embedding` | ✅ | Embedding service reference (e.g., `aliyun.embed`) | - |
-| `rerank` | ✅ | Rerank service reference (e.g., `aliyun.rerank`) | - |
-| `llm` | ✅ | LLM service reference for query decomposition & summarization (e.g., `aliyun.llm`) | - |
-| `search_limit` | ❌ | Maximum search results | `10` |
-| `similarity_threshold` | ❌ | Search similarity threshold (0-1) | `0.35` |
-| `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
-| `[decomposition]` | ❌ | Query decomposition: currently only `max_total_leaves` (cap on leaf sub-queries used for search) | built-in defaults |
-| `[multi_query]` | ❌ | Search & merge config: `candidates_per_query`, `top_n_per_leaf`, `min_per_leaf`, `max_total_results` | built-in defaults |
-| `[prompts]` | ❌ | Custom LLM strategy prompts: `decompose`, `summarize` (strategy content only, not full prompt) | built-in 5D strategy |
+| Section | Parameter | Required | Description | Default |
+|---------|-----------|:--------:|-------------|---------|
+| `[embed]` | `embedding_provider` | ✅ | Embedding service reference (e.g., `aliyun.embed`) | - |
+| `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
+| `[search]` | `rerank_provider` | ✅ | Rerank service reference (e.g., `aliyun.rerank`) | - |
+| `[search]` | `llm_provider` | ✅ | Default LLM for decompose & summarize (e.g., `aliyun.llm`) | - |
+| `[search]` | `results_limit` | ❌ | Maximum search results | `10` |
+| `[search]` | `similarity_threshold` | ❌ | Vector search similarity threshold (0-1) | `0.35` |
+| `[decompose]` | `llm_provider` | ❌ | LLM override for decompose (overrides `search.llm_provider`) | - |
+| `[decompose]` | `max_queries` | ❌ | Maximum number of sub-queries | `12` |
+| `[decompose]` | `strategy_prompt` | ❌ | Custom decompose strategy prompt | built-in 5D strategy |
+| `[merge]` | `candidates_per_query` | ❌ | Candidates retrieved per sub-query | `50` |
+| `[merge]` | `results_per_query` | ❌ | Results kept per sub-query before merge | `5` |
+| `[merge]` | `max_results` | ❌ | Maximum final results after merge | `20` |
+| `[merge]` | `dedup_threshold` | ❌ | Deduplication threshold (0-1) | `0.98` |
+| `[summarize]` | `llm_provider` | ❌ | LLM override for summarize (overrides `search.llm_provider`) | - |
+| `[summarize]` | `strategy_prompt` | ❌ | Custom summarize strategy prompt | built-in strategy |
 
 ---
 

@@ -107,17 +107,23 @@ cp config.example.toml ~/.memo/config.toml
 
 ### 配置参数
 
-| 参数 | 必填 | 说明 | 默认值 |
-|------|:----:|------|--------|
-| `embedding` | ✅ | Embedding 服务引用（如 `aliyun.embed`） | - |
-| `rerank` | ✅ | Rerank 服务引用（如 `aliyun.rerank`） | - |
-| `llm` | ✅ | LLM 服务引用，用于查询拆解和结果总结（如 `aliyun.llm`） | - |
-| `search_limit` | ❌ | 搜索结果数量上限 | `10` |
-| `similarity_threshold` | ❌ | 搜索相似度阈值（0-1） | `0.35` |
-| `duplicate_threshold` | ❌ | 重复检测相似度阈值（0-1） | `0.85` |
-| `[decomposition]` | ❌ | 查询拆解配置：目前仅 `max_total_leaves`（参与检索的叶子子问题数上限） | 内置默认值 |
-| `[multi_query]` | ❌ | 搜索合并配置：`candidates_per_query`、`top_n_per_leaf`、`min_per_leaf`、`max_total_results` | 内置默认值 |
-| `[prompts]` | ❌ | 自定义 LLM 策略提示词：`decompose`、`summarize`（只需提供策略内容，框架由系统控制） | 内置五维策略 |
+| 节 | 参数 | 必填 | 说明 | 默认值 |
+|----|------|:----:|------|--------|
+| `[embed]` | `embedding_provider` | ✅ | Embedding 服务引用（如 `aliyun.embed`） | - |
+| `[embed]` | `duplicate_threshold` | ❌ | 重复检测相似度阈值（0-1） | `0.85` |
+| `[search]` | `rerank_provider` | ✅ | Rerank 服务引用（如 `aliyun.rerank`） | - |
+| `[search]` | `llm_provider` | ✅ | 默认 LLM，用于拆解和总结（如 `aliyun.llm`） | - |
+| `[search]` | `results_limit` | ❌ | 搜索结果数量上限 | `10` |
+| `[search]` | `similarity_threshold` | ❌ | 向量搜索相似度阈值（0-1） | `0.35` |
+| `[decompose]` | `llm_provider` | ❌ | 拆解专用 LLM（覆盖 `search.llm_provider`） | - |
+| `[decompose]` | `max_queries` | ❌ | 最大子查询数 | `12` |
+| `[decompose]` | `strategy_prompt` | ❌ | 自定义拆解策略提示词 | 内置五维策略 |
+| `[merge]` | `candidates_per_query` | ❌ | 每个子查询召回候选数 | `50` |
+| `[merge]` | `results_per_query` | ❌ | 合并前每个子查询保留结果数 | `5` |
+| `[merge]` | `max_results` | ❌ | 合并后最终结果数上限 | `20` |
+| `[merge]` | `dedup_threshold` | ❌ | 去重阈值（0-1） | `0.98` |
+| `[summarize]` | `llm_provider` | ❌ | 总结专用 LLM（覆盖 `search.llm_provider`） | - |
+| `[summarize]` | `strategy_prompt` | ❌ | 自定义总结策略提示词 | 内置策略 |
 
 ---
 
