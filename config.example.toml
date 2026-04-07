@@ -1,59 +1,59 @@
-# Memo 配置文件示例
-# 复制此文件到 ~/.memo/config.toml 并根据需要修改
+# Memo configuration example
+# Copy this file to ~/.memo/config.toml and modify as needed
 
 # ============================================
-# 嵌入配置（记录记忆时）
+# Embed configuration (when recording memories)
 # ============================================
 [embed]
-# Embedding 服务引用
+# Embedding service reference
 embedding_provider = "aliyun.embed"
-# 重复检测阈值（0.0-1.0）
+# Duplicate detection threshold (0.0-1.0)
 duplicate_threshold = 0.85
 
 # ============================================
-# 搜索配置
+# Search configuration
 # ============================================
 [search]
-# Rerank 服务引用
+# Rerank service reference
 rerank_provider = "aliyun.rerank"
-# LLM 服务引用（默认用于拆解和总结）
+# LLM service reference (default for decompose and summarize)
 llm_provider = "aliyun.llm"
-# 返回结果数量上限
+# Maximum number of results to return
 results_limit = 10
-# 向量搜索相似度阈值（0.0-1.0）
+# Vector search similarity threshold (0.0-1.0)
 similarity_threshold = 0.35
 
 # ============================================
-# 搜索 > 拆解配置
+# Search > Decompose configuration
 # ============================================
 [decompose]
-# LLM 服务引用（可选，覆盖 search.llm_provider）
+# LLM service reference (optional, overrides search.llm_provider)
 # llm_provider = "openai.llm"
-# 最大子问题数
+# Maximum number of sub-queries
 max_queries = 12
-# 拆解策略提示词（可选，覆盖内置策略）
-# strategy_prompt = "按以下五维模型拆解：core, why, how, case, note"
+# Decompose strategy prompt (optional, overrides built-in strategy)
+# strategy_prompt = "Decompose using the five-dimension model: core, why, how, case, note"
 
 # ============================================
-# 搜索 > 合并配置
+# Search > Merge configuration
 # ============================================
 [merge]
-# 每个子问题召回候选数
+# Number of candidates to retrieve per sub-query
 candidates_per_query = 50
-# 每个子问题保留数
+# Number of results to keep per sub-query
 results_per_query = 5
-# 最终返回最大结果数
+# Maximum number of final results
 max_results = 20
-# 去重阈值（0.0-1.0）
+# Deduplication threshold (0.0-1.0)
 dedup_threshold = 0.98
 
 # ============================================
-# 搜索 > 总结配置
+# Search > Summarize configuration
 # ============================================
 [summarize]
-# LLM 服务引用（可选，覆盖 search.llm_provider）
-# 同一供应商可以在 providers.toml 中定义多个服务（名称自定义），分别用于不同场景
-# 例如：search.llm_provider = "aliyun.llm"（能力强），summarize.llm_provider = "aliyun.llm_flash"（速度快）
+# LLM service reference (optional, overrides search.llm_provider)
+# You can define multiple services per provider in providers.toml (with custom names)
+# e.g. search.llm_provider = "aliyun.llm" (more capable), summarize.llm_provider = "aliyun.llm_flash" (faster)
 # llm_provider = "aliyun.llm_flash"
-# 总结策略提示词（可选，覆盖内置策略）
-# strategy_prompt = "请综合多条记忆，给出简洁、结构化的回答..."
+# Summarize strategy prompt (optional, overrides built-in strategy)
+# strategy_prompt = "Synthesize the memories and provide a concise, structured answer..."
