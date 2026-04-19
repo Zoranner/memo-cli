@@ -1,0 +1,119 @@
+use std::path::Path;
+
+use anyhow::{Context, Result};
+use tantivy::{
+    collector::TopDocs,
+    directory::MmapDirectory,
+    doc,
+    query::QueryParser,
+    schema::{Field, Schema, SchemaBuilder, TantivyDocument, Value, STORED, STRING, TEXT},
+    Index, IndexReader, IndexSettings, IndexWriter, ReloadPolicy, Term,
+};
+
+#[derive(Debug, Clone)]
+pub struct TextHit {
+    pub id: String,
+    pub score: f32,
+}
+
+pub struct TextIndex {
+    index: Index,
+    reader: IndexReader,
+    writer: IndexWriter,
+    id_field: Field,
+    kind_field: Field,
+    layer_field: Field,
+    body_field: Field,
+}
+
+impl TextIndex {
+    pub fn open(path: &Path) -> Result<Self> {
+        std::fs::create_dir_all(path)?;
+        let schema = schema();
+        let directory = MmapDirectory::open(path)?;
+        let index = Index::open(directory.clone())
+            .or_else(|_| Index::create(directory, schema.clone(), IndexSettings::default()))
+            .context("failed to open/create tantivy index")?;
+        let reader = index
+            .reader_builder()
+            .reload_policy(ReloadPolicy::Manual)
+            .try_into()?;
+        let writer = index.writer(20_000_000)?;
+        let id_field = schema.get_field("id")?;
+        let kind_field = schema.get_field("kind")?;
+        let layer_field = schema.get_field("layer")?;
+        let body_field = schema.get_field("body")?;
+
+        Ok(Self {
+            index,
+            reader,
+            writer,
+            id_field,
+            kind_field,
+            layer_field,
+            body_field,
+        })
+    }
+
+    pub fn upsert_document(&mut self, id: &str, kind: &str, layer: &str, body: &str) -> Result<()> {
+        self.writer
+            .delete_term(Term::from_field_text(self.id_field, id));
+        self.writer.add_document(doc!(
+            self.id_field => id.to_string(),
+            self.kind_field => kind.to_string(),
+            self.layer_field => layer.to_string(),
+            self.body_field => body.to_string(),
+        ))?;
+        self.writer.commit()?;
+        self.reader.reload()?;
+        Ok(())
+    }
+
+    pub fn rebuild(&mut self, documents: &[(String, String, String, String)]) -> Result<usize> {
+        self.writer.delete_all_documents()?;
+        for (id, kind, layer, body) in documents {
+            self.writer.add_document(doc!(
+                self.id_field => id.clone(),
+                self.kind_field => kind.clone(),
+                self.layer_field => layer.clone(),
+                self.body_field => body.clone(),
+            ))?;
+        }
+        self.writer.commit()?;
+        self.reader.reload()?;
+        Ok(documents.len())
+    }
+
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<TextHit>> {
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let searcher = self.reader.searcher();
+        let parser = QueryParser::for_index(&self.index, vec![self.body_field]);
+        let query = parser.parse_query(query)?;
+        let docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+
+        let mut hits = Vec::new();
+        for (score, address) in docs {
+            let doc: TantivyDocument = searcher.doc(address)?;
+            let id = doc
+                .get_first(self.id_field)
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string();
+            hits.push(TextHit { id, score });
+        }
+
+        Ok(hits)
+    }
+}
+
+fn schema() -> Schema {
+    let mut builder = SchemaBuilder::default();
+    builder.add_text_field("id", STRING | STORED);
+    builder.add_text_field("kind", STRING | STORED);
+    builder.add_text_field("layer", STRING | STORED);
+    builder.add_text_field("body", TEXT | STORED);
+    builder.build()
+}
