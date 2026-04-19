@@ -4,8 +4,9 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use memo_model_api::{EmbeddingProvider, ExtractionProvider, RerankProvider};
 use serde::{Deserialize, Serialize};
+
+use crate::{EmbeddingProvider, ExtractionProvider, RerankProvider};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum MemoryLayer {

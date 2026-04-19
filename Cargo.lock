@@ -1161,24 +1161,13 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
- "memo-model-api",
  "rusqlite",
  "serde",
  "serde_json",
  "tantivy",
  "tempfile",
- "thiserror",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "memo-model-api"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "serde",
- "thiserror",
 ]
 
 [[package]]

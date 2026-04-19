@@ -8,7 +8,6 @@ license = "GPL-3.0-only"
 [workspace]
 members = [
     "crates/engine",
-    "crates/model-api",
     "crates/lmkit",
 ]
 resolver = "2"

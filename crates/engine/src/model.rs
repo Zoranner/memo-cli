@@ -1,12 +1,5 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum ModelError {
-    #[error("provider error: {0}")]
-    Provider(String),
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExtractedEntity {

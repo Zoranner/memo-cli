@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::{Context, Result};
 use chrono::Utc;
-use memo_model_api::{ExtractedEntity, ExtractedFact};
 use tracing::debug;
 
 use crate::{
@@ -18,6 +17,7 @@ use crate::{
         RebuildReport, RebuildScope, RetrieveReason, RetrieveRequest, RetrieveResult,
     },
     vector_index::VectorIndex,
+    ExtractedEntity, ExtractedFact,
 };
 
 pub type Engine = MemoryEngine;

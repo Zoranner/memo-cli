@@ -2,10 +2,10 @@ use std::{path::Path, sync::Arc};
 
 use anyhow::Result;
 use memo_engine::{
-    ConsolidationTrigger, EngineConfig, EntityInput, EpisodeInput, ExtractionSource, FactInput,
-    MemoryEngine, MemoryLayer, MemoryRecord, RetrieveReason, RetrieveRequest,
+    ConsolidationTrigger, EmbeddingProvider, EngineConfig, EntityInput, EpisodeInput,
+    ExtractionSource, FactInput, MemoryEngine, MemoryLayer, MemoryRecord, RetrieveReason,
+    RetrieveRequest,
 };
-use memo_model_api::EmbeddingProvider;
 use tempfile::TempDir;
 
 #[derive(Clone)]
