@@ -382,6 +382,13 @@ impl MemoryEngine {
             report.promoted_to_l2 += self.promote_episode_cluster_to_l2(&episode_id)?;
         }
 
+        for entity_id in self.db.eligible_entity_ids_for_l2_by_support()? {
+            self.db
+                .update_layer("entity", &entity_id, MemoryLayer::L2)?;
+            report.promoted_to_l2 += 1;
+        }
+
+        report.promoted_to_l2 += self.promote_supported_fact_clusters_to_l2()?;
         report.invalidated_records += self.invalidate_conflicting_facts()?;
         let (archived_duplicates, promoted_supported) = self.merge_supported_fact_clusters()?;
         report.archived_records += archived_duplicates;
@@ -422,6 +429,42 @@ impl MemoryEngine {
             }
         }
         Ok(archived)
+    }
+
+    fn promote_supported_fact_clusters_to_l2(&self) -> Result<usize> {
+        let fact_ids = self.db.eligible_fact_ids_for_l2_by_support()?;
+        let mut promoted = 0;
+        let mut promoted_edges = HashSet::new();
+
+        for fact_id in fact_ids {
+            let fact = match self.db.get_memory(&fact_id)? {
+                Some(MemoryRecord::Fact(fact)) => fact,
+                _ => continue,
+            };
+            self.db.update_layer("fact", &fact.id, MemoryLayer::L2)?;
+            promoted += 1;
+
+            if let (Some(subject_entity_id), Some(object_entity_id), Some(source_episode_id)) = (
+                fact.subject_entity_id.as_deref(),
+                fact.object_entity_id.as_deref(),
+                fact.source_episode_id.as_deref(),
+            ) {
+                for edge_id in self.db.matching_edge_ids_for_source(
+                    subject_entity_id,
+                    &fact.predicate,
+                    object_entity_id,
+                    source_episode_id,
+                    &[MemoryLayer::L1],
+                )? {
+                    if promoted_edges.insert(edge_id.clone()) {
+                        self.db.update_layer("edge", &edge_id, MemoryLayer::L2)?;
+                        promoted += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(promoted)
     }
 
     fn invalidate_conflicting_facts(&self) -> Result<usize> {

@@ -451,6 +451,62 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
 }
 
 #[test]
+fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice joined the design review today.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice sent the updated roadmap tonight.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.promoted_to_l2 >= 1);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity after support-based consolidation");
+
+    assert_eq!(entity.layer, MemoryLayer::L2);
+    Ok(())
+}
+
+#[test]
 fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

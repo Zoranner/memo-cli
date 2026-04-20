@@ -794,6 +794,60 @@ impl Database {
         Ok(ids)
     }
 
+    pub fn eligible_entity_ids_for_l2_by_support(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT e.id
+             FROM entities e
+             WHERE e.layer = 'L1'
+               AND e.archived_at IS NULL
+               AND e.invalidated_at IS NULL
+               AND (
+                    SELECT COUNT(DISTINCT support_episode_id)
+                    FROM (
+                        SELECT m.episode_id AS support_episode_id
+                        FROM mentions m
+                        WHERE m.entity_id = e.id
+                        UNION
+                        SELECT f.source_episode_id AS support_episode_id
+                        FROM facts f
+                        WHERE (f.subject_entity_id = e.id OR f.object_entity_id = e.id)
+                          AND f.source_episode_id IS NOT NULL
+                    )
+               ) >= 2",
+        )?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn eligible_fact_ids_for_l2_by_support(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT f.id
+             FROM facts f
+             JOIN (
+                SELECT LOWER(TRIM(subject_text)) AS subject_key,
+                       LOWER(TRIM(predicate)) AS predicate_key,
+                       LOWER(TRIM(object_text)) AS object_key
+                FROM facts
+                WHERE layer = 'L1'
+                  AND archived_at IS NULL
+                  AND invalidated_at IS NULL
+                  AND source_episode_id IS NOT NULL
+                GROUP BY LOWER(TRIM(subject_text)), LOWER(TRIM(predicate)), LOWER(TRIM(object_text))
+                HAVING COUNT(DISTINCT source_episode_id) >= 2
+             ) supported
+               ON LOWER(TRIM(f.subject_text)) = supported.subject_key
+              AND LOWER(TRIM(f.predicate)) = supported.predicate_key
+              AND LOWER(TRIM(f.object_text)) = supported.object_key
+             WHERE f.layer = 'L1'
+               AND f.archived_at IS NULL
+               AND f.invalidated_at IS NULL",
+        )?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     pub fn related_ids_for_episode(&self, kind: &str, episode_id: &str) -> Result<Vec<String>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let sql = match kind {
