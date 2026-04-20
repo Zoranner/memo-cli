@@ -10,7 +10,7 @@ use lmkit::{Provider, ProviderConfig};
 use memo_engine::{EngineConfig, ExtractionProvider};
 
 use crate::lmkit_adapter::LmkitEmbeddingAdapter;
-use crate::lmkit_extraction_adapter::LmkitExtractionAdapter;
+use crate::lmkit_extraction_adapter::{ExtractionCleanupOptions, LmkitExtractionAdapter};
 
 const CONFIG_TEMPLATE: &str = include_str!("templates/config.toml");
 const PROVIDERS_TEMPLATE: &str = include_str!("templates/providers.toml");
@@ -24,6 +24,8 @@ struct EmbedConfig {
 #[derive(Debug, Default)]
 struct ExtractConfig {
     extraction_provider: Option<String>,
+    min_confidence: Option<f32>,
+    normalize_predicates: Option<bool>,
 }
 
 #[derive(Debug, Default)]
@@ -75,7 +77,10 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
 
     if let Some(provider_ref) = file_config.extract.extraction_provider.as_deref() {
         let provider_config = load_provider_config(&data_dir, provider_ref, "extraction")?;
-        let adapter = LmkitExtractionAdapter::new(provider_config)?;
+        let adapter = LmkitExtractionAdapter::new_with_options(
+            provider_config,
+            extraction_cleanup_options(&file_config.extract),
+        )?;
         engine_config = engine_config.with_extraction_provider(Arc::new(adapter));
     }
 
@@ -102,8 +107,18 @@ pub(crate) fn build_extraction_provider(
     };
 
     let provider_config = load_provider_config(&data_dir, provider_ref, "extraction")?;
-    let adapter = LmkitExtractionAdapter::new(provider_config)?;
+    let adapter = LmkitExtractionAdapter::new_with_options(
+        provider_config,
+        extraction_cleanup_options(&file_config.extract),
+    )?;
     Ok(Some(Arc::new(adapter)))
+}
+
+fn extraction_cleanup_options(config: &ExtractConfig) -> ExtractionCleanupOptions {
+    ExtractionCleanupOptions {
+        min_confidence: config.min_confidence.unwrap_or(0.5),
+        normalize_predicates: config.normalize_predicates.unwrap_or(true),
+    }
 }
 
 pub(crate) fn initialize_data_dir(data_dir: &Path) -> Result<InitReport> {
@@ -211,11 +226,18 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
                 }
                 _ => {}
             },
-            Some("extract") => {
-                if key == "extraction_provider" {
+            Some("extract") => match key {
+                "extraction_provider" => {
                     config.extract.extraction_provider = Some(parse_string(value)?.to_string());
                 }
-            }
+                "min_confidence" => {
+                    config.extract.min_confidence = Some(value.parse::<f32>()?);
+                }
+                "normalize_predicates" => {
+                    config.extract.normalize_predicates = Some(parse_bool(value)?);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -304,6 +326,14 @@ fn parse_string(value: &str) -> Result<&str> {
         .with_context(|| format!("expected quoted string, got `{value}`"))
 }
 
+fn parse_bool(value: &str) -> Result<bool> {
+    match value.trim() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => anyhow::bail!("expected bool, got `{value}`"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -377,7 +407,7 @@ mod tests {
         let temp = TempDir::new()?;
         fs::write(
             temp.path().join("config.toml"),
-            "[extract]\nextraction_provider = \"openai.extract\"\n",
+            "[extract]\nextraction_provider = \"openai.extract\"\nmin_confidence = 0.7\nnormalize_predicates = false\n",
         )?;
         fs::write(
             temp.path().join("providers.toml"),

@@ -9,3 +9,7 @@ duplicate_threshold = 0.85
 [extract]
 # Reference format: <provider>.<service>
 extraction_provider = "openai.extract"
+# Drop noisy provider results below this threshold.
+min_confidence = 0.5
+# Convert extracted predicates like "Lives In" to snake_case.
+normalize_predicates = true
