@@ -212,6 +212,7 @@ impl MemoryEngine {
             entities: merge_entities(input.entities.clone(), extraction.entities),
             facts: merge_facts(input.facts.clone(), extraction.facts),
             source_episode_id: input.source_episode_id.clone(),
+            session_id: input.session_id.clone(),
             confidence: input.confidence,
         })
     }
@@ -541,10 +542,15 @@ impl MemoryEngine {
         let mut archived = 0;
         let mut promoted = 0;
         for facts in groups.into_values() {
-            let distinct_sources = facts
-                .iter()
-                .filter_map(|fact| fact.source_episode_id.as_deref())
-                .collect::<HashSet<_>>();
+            let mut distinct_sources = HashSet::new();
+            for fact in &facts {
+                let Some(episode_id) = fact.source_episode_id.as_deref() else {
+                    continue;
+                };
+                if let Some(scope_key) = self.db.support_scope_key_for_episode(episode_id)? {
+                    distinct_sources.insert(scope_key);
+                }
+            }
             if distinct_sources.len() < 2 {
                 continue;
             }

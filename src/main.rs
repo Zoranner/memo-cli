@@ -32,6 +32,8 @@ enum Command {
         content: String,
         #[arg(long, default_value = "L1")]
         layer: String,
+        #[arg(long)]
+        session: Option<String>,
         #[arg(long = "entity")]
         entities: Vec<String>,
         #[arg(long = "fact")]
@@ -107,6 +109,7 @@ fn main() -> Result<()> {
                 Command::Ingest {
                     content,
                     layer,
+                    session,
                     entities,
                     facts,
                     dry_run,
@@ -117,6 +120,7 @@ fn main() -> Result<()> {
                         entities: parse_entities(&entities)?,
                         facts: parse_facts(&facts)?,
                         source_episode_id: None,
+                        session_id: session,
                         confidence: 0.85,
                     };
                     if dry_run {

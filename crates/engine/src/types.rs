@@ -166,6 +166,8 @@ pub struct EpisodeInput {
     #[serde(default)]
     pub facts: Vec<FactInput>,
     pub source_episode_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
     #[serde(default = "default_confidence")]
     pub confidence: f32,
 }
@@ -177,6 +179,7 @@ pub struct IngestPreview {
     pub entities: Vec<EntityInput>,
     pub facts: Vec<FactInput>,
     pub source_episode_id: Option<String>,
+    pub session_id: Option<String>,
     pub confidence: f32,
 }
 
@@ -187,6 +190,7 @@ pub struct EpisodeRecord {
     pub layer: MemoryLayer,
     pub confidence: f32,
     pub source_episode_id: Option<String>,
+    pub session_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_seen_at: DateTime<Utc>,

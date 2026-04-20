@@ -37,8 +37,8 @@ impl Database {
         let vector_json = vector.map(vec_to_json).transpose()?;
         conn.execute(
             "INSERT INTO episodes
-             (id, content, normalized_content, layer, confidence, source_episode_id, created_at, updated_at, last_seen_at, hit_count, vector_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7, 0, ?8)",
+             (id, content, normalized_content, layer, confidence, source_episode_id, session_id, created_at, updated_at, last_seen_at, hit_count, vector_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?8, 0, ?9)",
             params![
                 id,
                 input.content,
@@ -46,6 +46,7 @@ impl Database {
                 input.layer.as_str(),
                 input.confidence,
                 input.source_episode_id,
+                input.session_id,
                 now,
                 vector_json
             ],
@@ -253,7 +254,7 @@ impl Database {
     pub fn get_episode(&self, id: &str) -> Result<Option<EpisodeRecord>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.query_row(
-            "SELECT id, content, layer, confidence, source_episode_id, created_at, updated_at, last_seen_at,
+            "SELECT id, content, layer, confidence, source_episode_id, session_id, created_at, updated_at, last_seen_at,
                     archived_at, invalidated_at, hit_count
              FROM episodes WHERE id = ?1 LIMIT 1",
             params![id],
@@ -803,14 +804,16 @@ impl Database {
                AND e.archived_at IS NULL
                AND e.invalidated_at IS NULL
                AND (
-                    SELECT COUNT(DISTINCT support_episode_id)
+                    SELECT COUNT(DISTINCT support_scope_id)
                     FROM (
-                        SELECT m.episode_id AS support_episode_id
+                        SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id
                         FROM mentions m
+                        JOIN episodes ep ON ep.id = m.episode_id
                         WHERE m.entity_id = e.id
                         UNION
-                        SELECT f.source_episode_id AS support_episode_id
+                        SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id
                         FROM facts f
+                        JOIN episodes ep ON ep.id = f.source_episode_id
                         WHERE (f.subject_entity_id = e.id OR f.object_entity_id = e.id)
                           AND f.source_episode_id IS NOT NULL
                     )
@@ -830,12 +833,13 @@ impl Database {
                        LOWER(TRIM(predicate)) AS predicate_key,
                        LOWER(TRIM(object_text)) AS object_key
                 FROM facts
-                WHERE layer = 'L1'
-                  AND archived_at IS NULL
-                  AND invalidated_at IS NULL
-                  AND source_episode_id IS NOT NULL
+                JOIN episodes ep ON ep.id = facts.source_episode_id
+                WHERE facts.layer = 'L1'
+                  AND facts.archived_at IS NULL
+                  AND facts.invalidated_at IS NULL
+                  AND facts.source_episode_id IS NOT NULL
                 GROUP BY LOWER(TRIM(subject_text)), LOWER(TRIM(predicate)), LOWER(TRIM(object_text))
-                HAVING COUNT(DISTINCT source_episode_id) >= 2
+                HAVING COUNT(DISTINCT COALESCE(ep.session_id, ep.id)) >= 2
              ) supported
                ON LOWER(TRIM(f.subject_text)) = supported.subject_key
               AND LOWER(TRIM(f.predicate)) = supported.predicate_key
@@ -978,6 +982,17 @@ impl Database {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    pub fn support_scope_key_for_episode(&self, episode_id: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        conn.query_row(
+            "SELECT COALESCE(session_id, id) FROM episodes WHERE id = ?1 LIMIT 1",
+            params![episode_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
     pub fn eligible_ids_for_l3(&self, kind: &str) -> Result<Vec<String>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let table = table_for_kind(kind)?;
@@ -1013,6 +1028,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             layer TEXT NOT NULL,
             confidence REAL NOT NULL,
             source_episode_id TEXT NULL,
+            session_id TEXT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             last_seen_at INTEGER NOT NULL,
@@ -1133,6 +1149,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
     ensure_column(conn, "facts", "valid_to", "INTEGER NULL")?;
     ensure_column(conn, "edges", "valid_from", "INTEGER NULL")?;
     ensure_column(conn, "edges", "valid_to", "INTEGER NULL")?;
+    ensure_column(conn, "episodes", "session_id", "TEXT NULL")?;
     Ok(())
 }
 
@@ -1143,12 +1160,13 @@ fn map_episode(row: &rusqlite::Row<'_>) -> rusqlite::Result<EpisodeRecord> {
         layer: parse_layer(row.get::<_, String>(2)?, 2)?,
         confidence: row.get(3)?,
         source_episode_id: row.get(4)?,
-        created_at: ts_to_dt(row.get(5)?),
-        updated_at: ts_to_dt(row.get(6)?),
-        last_seen_at: ts_to_dt(row.get(7)?),
-        archived_at: row.get::<_, Option<i64>>(8)?.map(ts_to_dt),
-        invalidated_at: row.get::<_, Option<i64>>(9)?.map(ts_to_dt),
-        hit_count: row.get::<_, i64>(10)?.max(0) as u64,
+        session_id: row.get(5)?,
+        created_at: ts_to_dt(row.get(6)?),
+        updated_at: ts_to_dt(row.get(7)?),
+        last_seen_at: ts_to_dt(row.get(8)?),
+        archived_at: row.get::<_, Option<i64>>(9)?.map(ts_to_dt),
+        invalidated_at: row.get::<_, Option<i64>>(10)?.map(ts_to_dt),
+        hit_count: row.get::<_, i64>(11)?.max(0) as u64,
     })
 }
 
@@ -1403,6 +1421,7 @@ mod tests {
         let conn = Connection::open(&db_path)?;
 
         for (table, column) in [
+            ("episodes", "session_id"),
             ("facts", "valid_from"),
             ("facts", "valid_to"),
             ("edges", "valid_from"),

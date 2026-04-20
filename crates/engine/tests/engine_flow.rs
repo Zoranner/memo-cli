@@ -105,6 +105,7 @@ fn preview_ingest_merges_provider_and_manual_inputs() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -137,6 +138,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
         }],
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
     drop(engine);
@@ -170,6 +172,7 @@ fn bm25_query_hits_episode() -> Result<()> {
         entities: Vec::new(),
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -201,6 +204,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         entities: Vec::new(),
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -255,6 +259,7 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -288,6 +293,7 @@ fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
         entities: Vec::new(),
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -316,6 +322,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         entities: Vec::new(),
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
     let second = engine.ingest_episode(EpisodeInput {
@@ -324,6 +331,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         entities: Vec::new(),
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -402,6 +410,7 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -467,6 +476,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
         }],
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: Some("session-a".to_string()),
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -481,6 +491,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
         }],
         facts: Vec::new(),
         source_episode_id: None,
+        session_id: Some("session-b".to_string()),
         confidence: 0.9,
     })?;
 
@@ -537,6 +548,7 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -566,6 +578,7 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -595,6 +608,63 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
 
     assert_eq!(fact_count, 1);
     assert_eq!(edge_count, 1);
+    Ok(())
+}
+
+#[test]
+fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice joined the design review today.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice sent the updated roadmap tonight.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        confidence: 0.9,
+    })?;
+
+    let _ = engine.consolidate(ConsolidationTrigger::Manual)?;
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity after same-session consolidation");
+
+    assert_eq!(entity.layer, MemoryLayer::L1);
     Ok(())
 }
 
@@ -630,6 +700,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: Some("session-a".to_string()),
         confidence: 0.9,
     })?;
 
@@ -673,6 +744,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: Some("session-b".to_string()),
         confidence: 0.9,
     })?;
 
@@ -766,6 +838,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -810,6 +883,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -880,6 +954,7 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -909,6 +984,7 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
             source: ExtractionSource::Manual,
         }],
         source_episode_id: None,
+        session_id: None,
         confidence: 0.9,
     })?;
 
@@ -943,5 +1019,94 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
     assert_eq!(facts[0].object_text, "Paris");
     assert_eq!(facts[0].layer, MemoryLayer::L3);
     assert_eq!(edges.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice currently lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.8,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice has been based in Paris for years.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        confidence: 0.9,
+    })?;
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert_eq!(report.promoted_to_l3, 0);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let facts = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(!facts.is_empty());
+    assert!(facts.iter().all(|fact| fact.layer != MemoryLayer::L3));
     Ok(())
 }
