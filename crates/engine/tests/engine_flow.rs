@@ -370,3 +370,273 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let _ = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 5,
+        deep: false,
+    })?;
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.promoted_to_l2 >= 3);
+
+    match engine.inspect_memory(&episode_id)? {
+        MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
+        other => panic!("expected episode record, got {other:?}"),
+    }
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = result
+        .results
+        .iter()
+        .find(|item| matches!(&item.memory, MemoryRecord::Entity(entity) if entity.canonical_name == "Alice"))
+        .expect("expected Alice entity after consolidation");
+    match &entity.memory {
+        MemoryRecord::Entity(record) => assert_eq!(record.layer, MemoryLayer::L2),
+        other => panic!("expected entity record, got {other:?}"),
+    }
+
+    let fact = result
+        .results
+        .iter()
+        .find(
+            |item| matches!(&item.memory, MemoryRecord::Fact(fact) if fact.predicate == "lives_in"),
+        )
+        .expect("expected fact after consolidation");
+    match &fact.memory {
+        MemoryRecord::Fact(record) => assert_eq!(record.layer, MemoryLayer::L2),
+        other => panic!("expected fact record, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.archived_records >= 3);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let fact_count = result
+        .results
+        .iter()
+        .filter(
+            |item| matches!(&item.memory, MemoryRecord::Fact(fact) if fact.predicate == "lives_in"),
+        )
+        .count();
+    let edge_count = result
+        .results
+        .iter()
+        .filter(
+            |item| matches!(&item.memory, MemoryRecord::Edge(edge) if edge.predicate == "lives_in"),
+        )
+        .count();
+
+    assert_eq!(fact_count, 1);
+    assert_eq!(edge_count, 1);
+    Ok(())
+}
+
+#[test]
+fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.7,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in London.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "London".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "London".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.invalidated_records >= 2);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let live_facts = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => {
+                Some(fact.object_text.as_str())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let live_edges = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => {
+                Some(edge.object_entity_id.as_str())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(live_facts, vec!["London"]);
+    assert_eq!(live_edges.len(), 1);
+    Ok(())
+}

@@ -659,6 +659,24 @@ impl Database {
         Ok(())
     }
 
+    pub fn invalidate_record(&self, kind: &str, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let table = table_for_kind(kind)?;
+        let now = now_ts();
+        let sql = format!(
+            "UPDATE {} SET invalidated_at = ?2, updated_at = ?2 WHERE id = ?1",
+            table
+        );
+        conn.execute(&sql, params![id, now])?;
+        conn.execute(
+            "UPDATE memory_layers
+             SET status = 'invalidated', updated_at = ?2
+             WHERE memory_id = ?1 AND memory_kind = ?3",
+            params![id, now, kind],
+        )?;
+        Ok(())
+    }
+
     pub fn record_index_state(
         &self,
         name: &str,
@@ -764,6 +782,97 @@ impl Database {
         let rows = stmt.query_map([], |row| row.get(0))?;
         let ids = rows.collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(ids)
+    }
+
+    pub fn related_ids_for_episode(&self, kind: &str, episode_id: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let sql = match kind {
+            "entity" => {
+                "SELECT id FROM entities
+                 WHERE source_episode_id = ?1
+                   AND layer = 'L1'
+                   AND archived_at IS NULL
+                   AND invalidated_at IS NULL"
+            }
+            "fact" => {
+                "SELECT id FROM facts
+                 WHERE source_episode_id = ?1
+                   AND layer = 'L1'
+                   AND archived_at IS NULL
+                   AND invalidated_at IS NULL"
+            }
+            "edge" => {
+                "SELECT id FROM edges
+                 WHERE source_episode_id = ?1
+                   AND layer = 'L1'
+                   AND archived_at IS NULL
+                   AND invalidated_at IS NULL"
+            }
+            _ => anyhow::bail!("unsupported related episode kind: {}", kind),
+        };
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![episode_id], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn active_facts_in_layers(&self, layers: &[MemoryLayer]) -> Result<Vec<FactRecord>> {
+        if layers.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let placeholders = (1..=layers.len())
+            .map(|index| format!("?{}", index))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id, subject_entity_id, subject_text, predicate, object_entity_id, object_text,
+                    layer, confidence, source_episode_id, created_at, updated_at, archived_at, invalidated_at, hit_count
+             FROM facts
+             WHERE archived_at IS NULL
+               AND invalidated_at IS NULL
+               AND layer IN ({})",
+            placeholders
+        );
+        let params = layers.iter().map(|layer| layer.as_str());
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params), map_fact)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn matching_edge_ids(
+        &self,
+        subject_entity_id: &str,
+        predicate: &str,
+        object_entity_id: &str,
+        layers: &[MemoryLayer],
+    ) -> Result<Vec<String>> {
+        if layers.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let placeholders = (4..=layers.len() + 3)
+            .map(|index| format!("?{}", index))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id FROM edges
+             WHERE subject_entity_id = ?1
+               AND predicate = ?2
+               AND object_entity_id = ?3
+               AND archived_at IS NULL
+               AND invalidated_at IS NULL
+               AND layer IN ({})",
+            placeholders
+        );
+        let mut args = vec![
+            subject_entity_id.to_string(),
+            predicate.to_string(),
+            object_entity_id.to_string(),
+        ];
+        args.extend(layers.iter().map(|layer| layer.as_str().to_string()));
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn eligible_ids_for_l3(&self, kind: &str) -> Result<Vec<String>> {

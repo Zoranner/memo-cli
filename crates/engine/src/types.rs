@@ -385,6 +385,7 @@ pub struct ConsolidationReport {
     pub promoted_to_l2: usize,
     pub promoted_to_l3: usize,
     pub archived_records: usize,
+    pub invalidated_records: usize,
     pub jobs_created: usize,
 }
 

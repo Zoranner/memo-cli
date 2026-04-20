@@ -369,9 +369,9 @@ impl MemoryEngine {
 
         for group in self.db.duplicate_l1_episode_groups()? {
             if let Some(primary) = group.first() {
-                self.db.update_layer("episode", primary, MemoryLayer::L2)?;
-                report.promoted_to_l2 += 1;
+                report.promoted_to_l2 += self.promote_episode_cluster_to_l2(primary)?;
                 for duplicate in group.iter().skip(1) {
+                    report.archived_records += self.archive_episode_cluster(duplicate)?;
                     self.db.archive_record("episode", duplicate)?;
                     report.archived_records += 1;
                 }
@@ -379,10 +379,10 @@ impl MemoryEngine {
         }
 
         for episode_id in self.db.eligible_episode_ids_for_l2()? {
-            self.db
-                .update_layer("episode", &episode_id, MemoryLayer::L2)?;
-            report.promoted_to_l2 += 1;
+            report.promoted_to_l2 += self.promote_episode_cluster_to_l2(&episode_id)?;
         }
+
+        report.invalidated_records += self.invalidate_conflicting_facts()?;
 
         for kind in ["episode", "entity", "fact"] {
             for id in self.db.eligible_ids_for_l3(kind)? {
@@ -394,6 +394,87 @@ impl MemoryEngine {
         let _ = self.db.complete_consolidation_jobs()?;
         self.refresh_l3_cache()?;
         Ok(report)
+    }
+
+    fn promote_episode_cluster_to_l2(&self, episode_id: &str) -> Result<usize> {
+        let mut promoted = 0;
+        self.db
+            .update_layer("episode", episode_id, MemoryLayer::L2)?;
+        promoted += 1;
+        for kind in ["entity", "fact", "edge"] {
+            for id in self.db.related_ids_for_episode(kind, episode_id)? {
+                self.db.update_layer(kind, &id, MemoryLayer::L2)?;
+                promoted += 1;
+            }
+        }
+        Ok(promoted)
+    }
+
+    fn archive_episode_cluster(&self, episode_id: &str) -> Result<usize> {
+        let mut archived = 0;
+        for kind in ["fact", "edge"] {
+            for id in self.db.related_ids_for_episode(kind, episode_id)? {
+                self.db.archive_record(kind, &id)?;
+                archived += 1;
+            }
+        }
+        Ok(archived)
+    }
+
+    fn invalidate_conflicting_facts(&self) -> Result<usize> {
+        let facts = self
+            .db
+            .active_facts_in_layers(&[MemoryLayer::L2, MemoryLayer::L3])?;
+        let mut groups = HashMap::<String, Vec<crate::types::FactRecord>>::new();
+        for fact in facts {
+            let key = format!(
+                "{}|{}",
+                normalize_text(&fact.subject_text),
+                normalize_text(&fact.predicate)
+            );
+            groups.entry(key).or_default().push(fact);
+        }
+
+        let mut invalidated = 0;
+        for facts in groups.into_values() {
+            let unique_objects = facts
+                .iter()
+                .map(|fact| normalize_text(&fact.object_text))
+                .collect::<HashSet<_>>();
+            if unique_objects.len() <= 1 {
+                continue;
+            }
+
+            let winner_id = facts
+                .iter()
+                .max_by(|left, right| compare_fact_strength(left, right))
+                .map(|fact| fact.id.clone())
+                .expect("conflict group must contain at least one fact");
+
+            for fact in facts {
+                if fact.id == winner_id {
+                    continue;
+                }
+                self.db.invalidate_record("fact", &fact.id)?;
+                invalidated += 1;
+
+                if let (Some(subject_entity_id), Some(object_entity_id)) = (
+                    fact.subject_entity_id.as_deref(),
+                    fact.object_entity_id.as_deref(),
+                ) {
+                    for edge_id in self.db.matching_edge_ids(
+                        subject_entity_id,
+                        &fact.predicate,
+                        object_entity_id,
+                        &[MemoryLayer::L2, MemoryLayer::L3],
+                    )? {
+                        self.db.invalidate_record("edge", &edge_id)?;
+                        invalidated += 1;
+                    }
+                }
+            }
+        }
+        Ok(invalidated)
     }
 
     pub fn rebuild_indexes(&self, scope: RebuildScope) -> Result<RebuildReport> {
@@ -682,6 +763,19 @@ fn recency_boost(updated_at: chrono::DateTime<Utc>) -> f32 {
 
 fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
+}
+
+fn compare_fact_strength(
+    left: &crate::types::FactRecord,
+    right: &crate::types::FactRecord,
+) -> std::cmp::Ordering {
+    left.layer
+        .boost()
+        .total_cmp(&right.layer.boost())
+        .then(left.hit_count.cmp(&right.hit_count))
+        .then(left.confidence.total_cmp(&right.confidence))
+        .then(left.updated_at.cmp(&right.updated_at))
+        .then(left.created_at.cmp(&right.created_at))
 }
 
 fn mmr_select(mut candidates: Vec<Candidate>, limit: usize) -> Vec<Candidate> {
