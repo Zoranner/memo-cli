@@ -1149,8 +1149,11 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "lmkit",
  "memo-engine",
  "serde_json",
+ "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

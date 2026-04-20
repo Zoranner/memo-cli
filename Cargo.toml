@@ -21,10 +21,15 @@ license = "GPL-3.0-only"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+lmkit = { path = "crates/lmkit", default-features = false, features = ["embed", "openai", "aliyun", "anthropic", "google", "ollama", "zhipu"] }
 memo-engine = { path = "crates/engine" }
 serde_json.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
 
 [workspace.dependencies]
 anyhow = "1"

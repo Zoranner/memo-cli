@@ -3,9 +3,12 @@ use std::{path::PathBuf, time::Instant};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use memo_engine::{
-    ConsolidationTrigger, EngineConfig, EntityInput, EpisodeInput, ExtractionSource, FactInput,
-    MemoryEngine, RebuildScope, RetrieveRequest,
+    ConsolidationTrigger, EntityInput, EpisodeInput, ExtractionSource, FactInput, MemoryEngine,
+    RebuildScope, RetrieveRequest,
 };
+
+mod app_config;
+mod lmkit_adapter;
 
 #[derive(Parser)]
 #[command(name = "memo")]
@@ -67,77 +70,91 @@ fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    let cli = Cli::parse();
-    let config = EngineConfig::new(cli.data_dir);
-    let engine = MemoryEngine::open(config)?;
+    let Cli { data_dir, command } = Cli::parse();
 
-    match cli.command {
+    match command {
         Command::Init => {
-            println!("initialized");
-        }
-        Command::Ingest {
-            content,
-            layer,
-            entities,
-            facts,
-        } => {
-            let input = EpisodeInput {
-                content,
-                layer: layer.parse()?,
-                entities: parse_entities(&entities)?,
-                facts: parse_facts(&facts)?,
-                source_episode_id: None,
-                confidence: 0.85,
-            };
-            let id = engine.ingest_episode(input)?;
-            println!("{}", id);
-        }
-        Command::Query { query, limit, deep } => {
-            let result = engine.query(RetrieveRequest { query, limit, deep })?;
-            println!("{}", serde_json::to_string_pretty(&result)?);
-        }
-        Command::Inspect { id } => {
-            let record = engine.inspect_memory(&id)?;
-            println!("{}", serde_json::to_string_pretty(&record)?);
-        }
-        Command::Dream { trigger } => {
-            let trigger = parse_trigger(&trigger)?;
-            let report = engine.consolidate(trigger)?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
-        }
-        Command::RebuildIndex { scope } => {
-            let scope = parse_scope(&scope)?;
-            let report = engine.rebuild_indexes(scope)?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
-        }
-        Command::Stats => {
-            let stats = engine.stats()?;
-            println!("{}", serde_json::to_string_pretty(&stats)?);
-        }
-        Command::Benchmark {
-            query,
-            iterations,
-            limit,
-        } => {
-            let mut elapsed_ms = 0_u128;
-            for _ in 0..iterations {
-                let started = Instant::now();
-                let _ = engine.query(RetrieveRequest {
-                    query: query.clone(),
-                    limit,
-                    deep: false,
-                })?;
-                elapsed_ms += started.elapsed().as_millis();
-            }
-            let avg = elapsed_ms as f64 / iterations.max(1) as f64;
+            let report = app_config::initialize_data_dir(&data_dir)?;
             println!(
                 "{}",
                 serde_json::json!({
-                    "iterations": iterations,
-                    "avg_ms": avg,
-                    "total_ms": elapsed_ms,
+                    "data_dir": data_dir,
+                    "config_created": report.config_created,
+                    "providers_created": report.providers_created,
                 })
             );
+        }
+        command => {
+            let config = app_config::build_engine_config(&data_dir)?;
+            let engine = MemoryEngine::open(config)?;
+
+            match command {
+                Command::Init => unreachable!("handled above"),
+                Command::Ingest {
+                    content,
+                    layer,
+                    entities,
+                    facts,
+                } => {
+                    let input = EpisodeInput {
+                        content,
+                        layer: layer.parse()?,
+                        entities: parse_entities(&entities)?,
+                        facts: parse_facts(&facts)?,
+                        source_episode_id: None,
+                        confidence: 0.85,
+                    };
+                    let id = engine.ingest_episode(input)?;
+                    println!("{}", id);
+                }
+                Command::Query { query, limit, deep } => {
+                    let result = engine.query(RetrieveRequest { query, limit, deep })?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                }
+                Command::Inspect { id } => {
+                    let record = engine.inspect_memory(&id)?;
+                    println!("{}", serde_json::to_string_pretty(&record)?);
+                }
+                Command::Dream { trigger } => {
+                    let trigger = parse_trigger(&trigger)?;
+                    let report = engine.consolidate(trigger)?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                }
+                Command::RebuildIndex { scope } => {
+                    let scope = parse_scope(&scope)?;
+                    let report = engine.rebuild_indexes(scope)?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                }
+                Command::Stats => {
+                    let stats = engine.stats()?;
+                    println!("{}", serde_json::to_string_pretty(&stats)?);
+                }
+                Command::Benchmark {
+                    query,
+                    iterations,
+                    limit,
+                } => {
+                    let mut elapsed_ms = 0_u128;
+                    for _ in 0..iterations {
+                        let started = Instant::now();
+                        let _ = engine.query(RetrieveRequest {
+                            query: query.clone(),
+                            limit,
+                            deep: false,
+                        })?;
+                        elapsed_ms += started.elapsed().as_millis();
+                    }
+                    let avg = elapsed_ms as f64 / iterations.max(1) as f64;
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "iterations": iterations,
+                            "avg_ms": avg,
+                            "total_ms": elapsed_ms,
+                        })
+                    );
+                }
+            }
         }
     }
 

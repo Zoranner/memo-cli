@@ -1,0 +1,42 @@
+# Providers for the local engine.
+# Fill in the service you want to use, then point config.toml to <provider>.<service>.
+
+[openai]
+api_key = "sk-your-openai-api-key"
+
+[openai.embed]
+base_url = "https://api.openai.com/v1"
+model = "text-embedding-3-small"
+dimension = 1536
+
+[ollama]
+api_key = ""
+
+[ollama.embed]
+base_url = "http://127.0.0.1:11434/v1"
+model = "bge-m3"
+dimension = 1024
+
+# [aliyun]
+# api_key = "sk-your-dashscope-api-key"
+#
+# [aliyun.embed]
+# base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# model = "text-embedding-v4"
+# dimension = 1024
+
+# [google]
+# api_key = "your-google-api-key"
+#
+# [google.embed]
+# base_url = "https://generativelanguage.googleapis.com/v1beta"
+# model = "text-embedding-004"
+# dimension = 768
+
+# [zhipu]
+# api_key = "your-zhipu-api-key.xxx"
+#
+# [zhipu.embed]
+# base_url = "https://open.bigmodel.cn/api/paas/v4"
+# model = "embedding-3"
+# dimension = 2048

@@ -1,0 +1,7 @@
+# Memo local engine config
+
+[embed]
+# Reference format: <provider>.<service>
+embedding_provider = "openai.embed"
+# Reserved for duplicate handling during ingest.
+duplicate_threshold = 0.85
