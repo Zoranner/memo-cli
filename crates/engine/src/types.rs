@@ -224,6 +224,8 @@ pub struct FactRecord {
     pub source_episode_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub valid_from: Option<DateTime<Utc>>,
+    pub valid_to: Option<DateTime<Utc>>,
     pub archived_at: Option<DateTime<Utc>>,
     pub invalidated_at: Option<DateTime<Utc>>,
     pub hit_count: u64,

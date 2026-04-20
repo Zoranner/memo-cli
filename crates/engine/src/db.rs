@@ -173,8 +173,8 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO facts
-             (id, subject_entity_id, subject_text, predicate, object_entity_id, object_text, confidence, source_episode_id, layer, created_at, updated_at, hit_count, vector_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, 0, ?11)",
+             (id, subject_entity_id, subject_text, predicate, object_entity_id, object_text, confidence, source_episode_id, layer, valid_from, created_at, updated_at, hit_count, vector_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?10, 0, ?11)",
             params![
                 id,
                 subject_entity_id,
@@ -312,7 +312,7 @@ impl Database {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.query_row(
             "SELECT id, subject_entity_id, subject_text, predicate, object_entity_id, object_text,
-                    layer, confidence, source_episode_id, created_at, updated_at, archived_at, invalidated_at, hit_count
+                    layer, confidence, source_episode_id, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
              FROM facts WHERE id = ?1 LIMIT 1",
             params![id],
             map_fact,
@@ -432,7 +432,7 @@ impl Database {
 
             let sql = format!(
                 "SELECT id, subject_entity_id, subject_text, predicate, object_entity_id, object_text,
-                        layer, confidence, source_episode_id, created_at, updated_at, archived_at, invalidated_at, hit_count
+                        layer, confidence, source_episode_id, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
                  FROM facts
                  WHERE archived_at IS NULL
                    AND ((subject_entity_id IS NOT NULL AND subject_entity_id IN ({0}))
@@ -648,7 +648,7 @@ impl Database {
         let sql = format!(
             "UPDATE {} SET archived_at = ?2, updated_at = ?2{} WHERE id = ?1",
             table,
-            if kind == "edge" {
+            if matches!(kind, "fact" | "edge") {
                 ", valid_to = ?2"
             } else {
                 ""
@@ -671,7 +671,7 @@ impl Database {
         let sql = format!(
             "UPDATE {} SET invalidated_at = ?2, updated_at = ?2{} WHERE id = ?1",
             table,
-            if kind == "edge" {
+            if matches!(kind, "fact" | "edge") {
                 ", valid_to = ?2"
             } else {
                 ""
@@ -836,7 +836,7 @@ impl Database {
             .join(",");
         let sql = format!(
             "SELECT id, subject_entity_id, subject_text, predicate, object_entity_id, object_text,
-                    layer, confidence, source_episode_id, created_at, updated_at, archived_at, invalidated_at, hit_count
+                    layer, confidence, source_episode_id, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
              FROM facts
              WHERE archived_at IS NULL
                AND invalidated_at IS NULL
@@ -1017,6 +1017,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             confidence REAL NOT NULL,
             source_episode_id TEXT NULL,
             layer TEXT NOT NULL,
+            valid_from INTEGER NULL,
+            valid_to INTEGER NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             archived_at INTEGER NULL,
@@ -1073,6 +1075,10 @@ fn init_schema(conn: &Connection) -> Result<()> {
         );
         "#,
     )?;
+    ensure_column(conn, "facts", "valid_from", "INTEGER NULL")?;
+    ensure_column(conn, "facts", "valid_to", "INTEGER NULL")?;
+    ensure_column(conn, "edges", "valid_from", "INTEGER NULL")?;
+    ensure_column(conn, "edges", "valid_to", "INTEGER NULL")?;
     Ok(())
 }
 
@@ -1103,11 +1109,13 @@ fn map_fact(row: &rusqlite::Row<'_>) -> rusqlite::Result<FactRecord> {
         layer: parse_layer(row.get::<_, String>(6)?, 6)?,
         confidence: row.get(7)?,
         source_episode_id: row.get(8)?,
-        created_at: ts_to_dt(row.get(9)?),
-        updated_at: ts_to_dt(row.get(10)?),
-        archived_at: row.get::<_, Option<i64>>(11)?.map(ts_to_dt),
-        invalidated_at: row.get::<_, Option<i64>>(12)?.map(ts_to_dt),
-        hit_count: row.get::<_, i64>(13)?.max(0) as u64,
+        valid_from: row.get::<_, Option<i64>>(9)?.map(ts_to_dt),
+        valid_to: row.get::<_, Option<i64>>(10)?.map(ts_to_dt),
+        created_at: ts_to_dt(row.get(11)?),
+        updated_at: ts_to_dt(row.get(12)?),
+        archived_at: row.get::<_, Option<i64>>(13)?.map(ts_to_dt),
+        invalidated_at: row.get::<_, Option<i64>>(14)?.map(ts_to_dt),
+        hit_count: row.get::<_, i64>(15)?.max(0) as u64,
     })
 }
 
@@ -1143,6 +1151,24 @@ fn count_table(conn: &Connection, table: &str) -> Result<usize> {
     conn.query_row(&sql, [], |row| row.get::<_, i64>(0))
         .map(|count| count.max(0) as usize)
         .map_err(Into::into)
+}
+
+fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<()> {
+    let pragma = format!("PRAGMA table_info({})", table);
+    let mut stmt = conn.prepare(&pragma)?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .any(|name| name == column);
+    drop(stmt);
+
+    if !exists {
+        let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, definition);
+        conn.execute(&sql, [])?;
+    }
+
+    Ok(())
 }
 
 fn table_for_kind(kind: &str) -> Result<&'static str> {
@@ -1196,4 +1222,151 @@ fn json_to_vec(raw: &str) -> Result<Vec<f32>> {
         .map(|item| item.as_f64().unwrap_or_default() as f32)
         .collect();
     Ok(array)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Database;
+    use anyhow::Result;
+    use rusqlite::Connection;
+    use tempfile::TempDir;
+
+    #[test]
+    fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
+        let temp = TempDir::new()?;
+        let db_path = temp.path().join("memory.db");
+
+        let conn = Connection::open(&db_path)?;
+        conn.execute_batch(
+            r#"
+            CREATE TABLE facts (
+                id TEXT PRIMARY KEY,
+                subject_entity_id TEXT NULL,
+                subject_text TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object_entity_id TEXT NULL,
+                object_text TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_episode_id TEXT NULL,
+                layer TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                archived_at INTEGER NULL,
+                invalidated_at INTEGER NULL,
+                hit_count INTEGER NOT NULL DEFAULT 0,
+                vector_json TEXT NULL
+            );
+            CREATE TABLE edges (
+                id TEXT PRIMARY KEY,
+                subject_entity_id TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                object_entity_id TEXT NOT NULL,
+                weight REAL NOT NULL,
+                source_episode_id TEXT NULL,
+                layer TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                archived_at INTEGER NULL,
+                invalidated_at INTEGER NULL,
+                hit_count INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE episodes (
+                id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                normalized_content TEXT NOT NULL,
+                layer TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_episode_id TEXT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                archived_at INTEGER NULL,
+                invalidated_at INTEGER NULL,
+                hit_count INTEGER NOT NULL DEFAULT 0,
+                vector_json TEXT NULL
+            );
+            CREATE TABLE entities (
+                id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                canonical_name TEXT NOT NULL,
+                normalized_name TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_episode_id TEXT NULL,
+                layer TEXT NOT NULL DEFAULT 'L1',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                archived_at INTEGER NULL,
+                invalidated_at INTEGER NULL,
+                hit_count INTEGER NOT NULL DEFAULT 0,
+                vector_json TEXT NULL
+            );
+            CREATE TABLE entity_aliases (
+                id TEXT PRIMARY KEY,
+                entity_id TEXT NOT NULL,
+                alias TEXT NOT NULL,
+                normalized_alias TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                UNIQUE(entity_id, normalized_alias)
+            );
+            CREATE TABLE mentions (
+                id TEXT PRIMARY KEY,
+                episode_id TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE memory_layers (
+                memory_id TEXT NOT NULL,
+                memory_kind TEXT NOT NULL,
+                layer TEXT NOT NULL,
+                status TEXT NOT NULL,
+                last_promoted_at INTEGER NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY(memory_id, memory_kind)
+            );
+            CREATE TABLE consolidation_jobs (
+                id TEXT PRIMARY KEY,
+                trigger TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE index_state (
+                index_name TEXT PRIMARY KEY,
+                doc_count INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                detail TEXT NULL,
+                last_rebuilt_at INTEGER NULL
+            );
+            "#,
+        )?;
+        drop(conn);
+
+        let _db = Database::open(&db_path)?;
+        let conn = Connection::open(&db_path)?;
+
+        for (table, column) in [
+            ("facts", "valid_from"),
+            ("facts", "valid_to"),
+            ("edges", "valid_from"),
+            ("edges", "valid_to"),
+        ] {
+            let pragma = format!("PRAGMA table_info({})", table);
+            let names = conn
+                .prepare(&pragma)?
+                .query_map([], |row| row.get::<_, String>(1))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            assert!(
+                names.iter().any(|name| name == column),
+                "expected column {}.{} to be migrated",
+                table,
+                column
+            );
+        }
+
+        Ok(())
+    }
 }

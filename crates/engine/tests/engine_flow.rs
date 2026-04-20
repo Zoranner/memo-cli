@@ -576,6 +576,20 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
         source_episode_id: None,
         confidence: 0.9,
     })?;
+
+    let paris_fact_id = engine
+        .query(RetrieveRequest {
+            query: "Paris".to_string(),
+            limit: 20,
+            deep: true,
+        })?
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact.id.clone()),
+            _ => None,
+        })
+        .expect("expected Paris fact before consolidation");
     engine.ingest_episode(EpisodeInput {
         content: "Alice lives in London.".to_string(),
         layer: MemoryLayer::L1,
@@ -609,6 +623,15 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
     let report = engine.consolidate(ConsolidationTrigger::Manual)?;
     assert!(report.invalidated_records >= 2);
 
+    let invalidated_fact = match engine.inspect_memory(&paris_fact_id)? {
+        MemoryRecord::Fact(fact) => fact,
+        other => panic!("expected fact record, got {other:?}"),
+    };
+    assert!(invalidated_fact.invalidated_at.is_some());
+    assert!(invalidated_fact.valid_from.is_some());
+    assert!(invalidated_fact.valid_to.is_some());
+    assert!(invalidated_fact.valid_from <= invalidated_fact.valid_to);
+
     let result = engine.query(RetrieveRequest {
         query: "Alice".to_string(),
         limit: 20,
@@ -638,6 +661,20 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
     assert_eq!(live_edges.len(), 1);
     assert!(live_edges[0].valid_from.is_some());
     assert!(live_edges[0].valid_to.is_none());
+    let active_london_fact = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact)
+                if fact.predicate == "lives_in" && fact.object_text == "London" =>
+            {
+                Some(fact)
+            }
+            _ => None,
+        })
+        .expect("expected active London fact");
+    assert!(active_london_fact.valid_from.is_some());
+    assert!(active_london_fact.valid_to.is_none());
     Ok(())
 }
 
