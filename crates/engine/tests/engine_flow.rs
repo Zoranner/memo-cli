@@ -1967,6 +1967,71 @@ fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
 }
 
 #[test]
+fn consolidation_refreshes_l3_cache_after_cooling_entity_support() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice joined the design review today.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice sent the updated roadmap tonight.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+        (
+            "Alice followed up with final notes this morning.",
+            "session-c",
+            "2024-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            }],
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let result = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(result.downgraded_records >= 1);
+    assert_eq!(engine.stats()?.l3_cached, 0);
+
+    let query = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = query
+        .results
+        .iter()
+        .find(|item| matches!(&item.memory, MemoryRecord::Entity(entity) if entity.canonical_name == "Alice"))
+        .expect("expected Alice entity after cooling");
+
+    assert!(!entity
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RetrieveReason::L3)));
+    Ok(())
+}
+
+#[test]
 fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
