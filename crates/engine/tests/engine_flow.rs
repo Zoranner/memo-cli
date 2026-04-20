@@ -629,15 +629,129 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
         .results
         .iter()
         .filter_map(|item| match &item.memory {
-            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => {
-                Some(edge.object_entity_id.as_str())
-            }
+            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge),
             _ => None,
         })
         .collect::<Vec<_>>();
 
     assert_eq!(live_facts, vec!["London"]);
     assert_eq!(live_edges.len(), 1);
+    assert!(live_edges[0].valid_from.is_some());
+    assert!(live_edges[0].valid_to.is_none());
+    Ok(())
+}
+
+#[test]
+fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.7,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let paris_edge_id = engine
+        .query(RetrieveRequest {
+            query: "Paris".to_string(),
+            limit: 20,
+            deep: true,
+        })?
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge.id.clone()),
+            _ => None,
+        })
+        .expect("expected Paris edge before consolidation");
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in London.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "London".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "London".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let _ = engine.consolidate(ConsolidationTrigger::Manual)?;
+
+    let invalidated_paris_edge = match engine.inspect_memory(&paris_edge_id)? {
+        MemoryRecord::Edge(edge) => edge,
+        other => panic!("expected edge record, got {other:?}"),
+    };
+
+    assert!(invalidated_paris_edge.invalidated_at.is_some());
+    assert!(invalidated_paris_edge.valid_to.is_some());
+    assert!(invalidated_paris_edge.valid_from.is_some());
+    assert!(
+        invalidated_paris_edge.valid_from <= invalidated_paris_edge.valid_to,
+        "expected edge validity window to close in order"
+    );
+
+    let london_result = engine.query(RetrieveRequest {
+        query: "London".to_string(),
+        limit: 20,
+        deep: true,
+    })?;
+
+    let active_london_edge = london_result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge),
+            _ => None,
+        })
+        .expect("expected invalidated Paris edge with validity window");
+
+    assert!(active_london_edge.valid_from.is_some());
+    assert!(active_london_edge.valid_to.is_none());
     Ok(())
 }
 

@@ -238,6 +238,8 @@ pub struct EdgeRecord {
     pub weight: f32,
     pub source_episode_id: Option<String>,
     pub layer: MemoryLayer,
+    pub valid_from: Option<DateTime<Utc>>,
+    pub valid_to: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,

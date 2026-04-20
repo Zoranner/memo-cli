@@ -212,8 +212,8 @@ impl Database {
         let id = Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO edges
-             (id, subject_entity_id, predicate, object_entity_id, weight, source_episode_id, layer, created_at, updated_at, hit_count)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 0)",
+             (id, subject_entity_id, predicate, object_entity_id, weight, source_episode_id, layer, valid_from, created_at, updated_at, hit_count)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?8, 0)",
             params![
                 id,
                 subject_entity_id,
@@ -325,7 +325,7 @@ impl Database {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.query_row(
             "SELECT id, subject_entity_id, predicate, object_entity_id, weight, source_episode_id,
-                    layer, created_at, updated_at, archived_at, invalidated_at, hit_count
+                    layer, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
              FROM edges WHERE id = ?1 LIMIT 1",
             params![id],
             map_edge,
@@ -401,7 +401,7 @@ impl Database {
                 .join(",");
             let sql = format!(
                 "SELECT id, subject_entity_id, predicate, object_entity_id, weight, source_episode_id,
-                        layer, created_at, updated_at, archived_at, invalidated_at, hit_count
+                        layer, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
                  FROM edges
                  WHERE archived_at IS NULL
                    AND (subject_entity_id IN ({0}) OR object_entity_id IN ({0}))
@@ -646,8 +646,13 @@ impl Database {
         let table = table_for_kind(kind)?;
         let now = now_ts();
         let sql = format!(
-            "UPDATE {} SET archived_at = ?2, updated_at = ?2 WHERE id = ?1",
-            table
+            "UPDATE {} SET archived_at = ?2, updated_at = ?2{} WHERE id = ?1",
+            table,
+            if kind == "edge" {
+                ", valid_to = ?2"
+            } else {
+                ""
+            }
         );
         conn.execute(&sql, params![id, now])?;
         conn.execute(
@@ -664,8 +669,13 @@ impl Database {
         let table = table_for_kind(kind)?;
         let now = now_ts();
         let sql = format!(
-            "UPDATE {} SET invalidated_at = ?2, updated_at = ?2 WHERE id = ?1",
-            table
+            "UPDATE {} SET invalidated_at = ?2, updated_at = ?2{} WHERE id = ?1",
+            table,
+            if kind == "edge" {
+                ", valid_to = ?2"
+            } else {
+                ""
+            }
         );
         conn.execute(&sql, params![id, now])?;
         conn.execute(
@@ -1110,11 +1120,13 @@ fn map_edge(row: &rusqlite::Row<'_>) -> rusqlite::Result<EdgeRecord> {
         weight: row.get(4)?,
         source_episode_id: row.get(5)?,
         layer: parse_layer(row.get::<_, String>(6)?, 6)?,
-        created_at: ts_to_dt(row.get(7)?),
-        updated_at: ts_to_dt(row.get(8)?),
-        archived_at: row.get::<_, Option<i64>>(9)?.map(ts_to_dt),
-        invalidated_at: row.get::<_, Option<i64>>(10)?.map(ts_to_dt),
-        hit_count: row.get::<_, i64>(11)?.max(0) as u64,
+        valid_from: row.get::<_, Option<i64>>(7)?.map(ts_to_dt),
+        valid_to: row.get::<_, Option<i64>>(8)?.map(ts_to_dt),
+        created_at: ts_to_dt(row.get(9)?),
+        updated_at: ts_to_dt(row.get(10)?),
+        archived_at: row.get::<_, Option<i64>>(11)?.map(ts_to_dt),
+        invalidated_at: row.get::<_, Option<i64>>(12)?.map(ts_to_dt),
+        hit_count: row.get::<_, i64>(13)?.max(0) as u64,
     })
 }
 
