@@ -383,6 +383,9 @@ impl MemoryEngine {
         }
 
         report.invalidated_records += self.invalidate_conflicting_facts()?;
+        let (archived_duplicates, promoted_supported) = self.merge_supported_fact_clusters()?;
+        report.archived_records += archived_duplicates;
+        report.promoted_to_l3 += promoted_supported;
 
         for kind in ["episode", "entity", "fact"] {
             for id in self.db.eligible_ids_for_l3(kind)? {
@@ -475,6 +478,72 @@ impl MemoryEngine {
             }
         }
         Ok(invalidated)
+    }
+
+    fn merge_supported_fact_clusters(&self) -> Result<(usize, usize)> {
+        let facts = self
+            .db
+            .active_facts_in_layers(&[MemoryLayer::L2, MemoryLayer::L3])?;
+        let mut groups = HashMap::<String, Vec<crate::types::FactRecord>>::new();
+        for fact in facts {
+            let key = format!(
+                "{}|{}|{}",
+                normalize_text(&fact.subject_text),
+                normalize_text(&fact.predicate),
+                normalize_text(&fact.object_text)
+            );
+            groups.entry(key).or_default().push(fact);
+        }
+
+        let mut archived = 0;
+        let mut promoted = 0;
+        for facts in groups.into_values() {
+            let distinct_sources = facts
+                .iter()
+                .filter_map(|fact| fact.source_episode_id.as_deref())
+                .collect::<HashSet<_>>();
+            if distinct_sources.len() < 2 {
+                continue;
+            }
+
+            let winner = facts
+                .iter()
+                .max_by(|left, right| compare_fact_strength(left, right))
+                .cloned()
+                .expect("supported fact group must contain at least one fact");
+
+            if winner.layer != MemoryLayer::L3 {
+                self.db.update_layer("fact", &winner.id, MemoryLayer::L3)?;
+                promoted += 1;
+            }
+
+            for fact in facts {
+                if fact.id == winner.id {
+                    continue;
+                }
+                self.db.archive_record("fact", &fact.id)?;
+                archived += 1;
+
+                if let (Some(subject_entity_id), Some(object_entity_id), Some(source_episode_id)) = (
+                    fact.subject_entity_id.as_deref(),
+                    fact.object_entity_id.as_deref(),
+                    fact.source_episode_id.as_deref(),
+                ) {
+                    for edge_id in self.db.matching_edge_ids_for_source(
+                        subject_entity_id,
+                        &fact.predicate,
+                        object_entity_id,
+                        source_episode_id,
+                        &[MemoryLayer::L2, MemoryLayer::L3],
+                    )? {
+                        self.db.archive_record("edge", &edge_id)?;
+                        archived += 1;
+                    }
+                }
+            }
+        }
+
+        Ok((archived, promoted))
     }
 
     pub fn rebuild_indexes(&self, scope: RebuildScope) -> Result<RebuildReport> {

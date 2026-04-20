@@ -640,3 +640,101 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
     assert_eq!(live_edges.len(), 1);
     Ok(())
 }
+
+#[test]
+fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice currently lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.8,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice has been based in Paris for years.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.promoted_to_l3 >= 1);
+    assert!(report.archived_records >= 2);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let facts = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let edges = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].object_text, "Paris");
+    assert_eq!(facts[0].layer, MemoryLayer::L3);
+    assert_eq!(edges.len(), 1);
+    Ok(())
+}
