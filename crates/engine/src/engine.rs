@@ -13,8 +13,9 @@ use crate::{
     text_index::TextIndex,
     types::{
         ConsolidationReport, ConsolidationTrigger, EngineConfig, EngineStats, EntityInput,
-        EntityRecord, EpisodeInput, FactInput, MemoryLayer, MemoryRecord, QueryResultSet,
-        RebuildReport, RebuildScope, RetrieveReason, RetrieveRequest, RetrieveResult,
+        EntityRecord, EpisodeInput, FactInput, IngestPreview, MemoryLayer, MemoryRecord,
+        QueryResultSet, RebuildReport, RebuildScope, RetrieveReason, RetrieveRequest,
+        RetrieveResult,
     },
     vector_index::VectorIndex,
     ExtractedEntity, ExtractedFact,
@@ -68,22 +69,13 @@ impl MemoryEngine {
     }
 
     pub fn ingest_episode(&self, input: EpisodeInput) -> Result<String> {
-        let extraction = self
-            .config
-            .extraction_provider
-            .as_ref()
-            .map(|provider| provider.extract(&input.content))
-            .transpose()?
-            .unwrap_or_default();
-
-        let entities = merge_entities(input.entities.clone(), extraction.entities);
-        let facts = merge_facts(input.facts.clone(), extraction.facts);
+        let preview = self.preview_ingest(&input)?;
 
         let episode_vector = self.embed_if_available(&input.content)?;
         let episode = self.db.insert_episode(&input, episode_vector.as_deref())?;
 
         let mut entity_records = HashMap::<String, EntityRecord>::new();
-        for entity in entities {
+        for entity in preview.entities {
             let entity_vector = self.embed_if_available(&entity.name)?;
             let record = self.db.upsert_entity(
                 &entity,
@@ -113,7 +105,7 @@ impl MemoryEngine {
             ));
         }
 
-        for fact in facts {
+        for fact in preview.facts {
             let subject_key = normalize_text(&fact.subject);
             let object_key = normalize_text(&fact.object);
             let subject_record = if let Some(record) = entity_records.get(&subject_key) {
@@ -203,6 +195,25 @@ impl MemoryEngine {
         self.refresh_session_cache(&episode.id, &input.content, entity_records.values())?;
 
         Ok(episode.id)
+    }
+
+    pub fn preview_ingest(&self, input: &EpisodeInput) -> Result<IngestPreview> {
+        let extraction = self
+            .config
+            .extraction_provider
+            .as_ref()
+            .map(|provider| provider.extract(&input.content))
+            .transpose()?
+            .unwrap_or_default();
+
+        Ok(IngestPreview {
+            content: input.content.clone(),
+            layer: input.layer,
+            entities: merge_entities(input.entities.clone(), extraction.entities),
+            facts: merge_facts(input.facts.clone(), extraction.facts),
+            source_episode_id: input.source_episode_id.clone(),
+            confidence: input.confidence,
+        })
     }
 
     pub fn query(&self, request: RetrieveRequest) -> Result<QueryResultSet> {

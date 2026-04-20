@@ -171,6 +171,16 @@ pub struct EpisodeInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IngestPreview {
+    pub content: String,
+    pub layer: MemoryLayer,
+    pub entities: Vec<EntityInput>,
+    pub facts: Vec<FactInput>,
+    pub source_episode_id: Option<String>,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EpisodeRecord {
     pub id: String,
     pub content: String,

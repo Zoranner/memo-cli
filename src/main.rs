@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use memo_engine::{
     ConsolidationTrigger, EntityInput, EpisodeInput, ExtractionResult, ExtractionSource, FactInput,
-    MemoryEngine, RebuildScope, RetrieveRequest,
+    IngestPreview, MemoryEngine, RebuildScope, RetrieveRequest,
 };
 
 mod app_config;
@@ -36,6 +36,8 @@ enum Command {
         entities: Vec<String>,
         #[arg(long = "fact")]
         facts: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
     },
     Query {
         query: String,
@@ -107,6 +109,7 @@ fn main() -> Result<()> {
                     layer,
                     entities,
                     facts,
+                    dry_run,
                 } => {
                     let input = EpisodeInput {
                         content,
@@ -116,6 +119,11 @@ fn main() -> Result<()> {
                         source_episode_id: None,
                         confidence: 0.85,
                     };
+                    if dry_run {
+                        let preview = engine.preview_ingest(&input)?;
+                        println!("{}", render_ingest_preview(&preview)?);
+                        return Ok(());
+                    }
                     let id = engine.ingest_episode(input)?;
                     println!("{}", id);
                 }
@@ -175,6 +183,10 @@ fn main() -> Result<()> {
 
 fn render_extraction_result(result: &ExtractionResult) -> Result<String> {
     Ok(serde_json::to_string_pretty(result)?)
+}
+
+fn render_ingest_preview(preview: &IngestPreview) -> Result<String> {
+    Ok(serde_json::to_string_pretty(preview)?)
 }
 
 fn parse_entities(raw: &[String]) -> Result<Vec<EntityInput>> {
@@ -299,5 +311,20 @@ mod tests {
         assert!(output.contains("\"entities\""));
         assert!(output.contains("\"lives_in\""));
         assert!(output.contains('\n'));
+    }
+
+    #[test]
+    fn cli_parses_ingest_dry_run_flag() {
+        let cli = Cli::parse_from(["memo", "ingest", "Alice lives in Paris.", "--dry-run"]);
+
+        match cli.command {
+            Command::Ingest {
+                content, dry_run, ..
+            } => {
+                assert_eq!(content, "Alice lives in Paris.");
+                assert!(dry_run);
+            }
+            _ => panic!("expected ingest command"),
+        }
     }
 }

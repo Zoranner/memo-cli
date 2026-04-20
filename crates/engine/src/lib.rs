@@ -13,6 +13,6 @@ pub use model::{
 pub use types::{
     ConsolidationReport, ConsolidationTrigger, EdgeRecord, EngineConfig, EngineStats, EntityInput,
     EntityRecord, EpisodeInput, EpisodeRecord, ExtractionSource, FactInput, FactRecord,
-    IndexStatus, LayerState, MemoryLayer, MemoryRecord, QueryResultSet, RebuildReport,
-    RebuildScope, RetrieveReason, RetrieveRequest, RetrieveResult,
+    IndexStatus, IngestPreview, LayerState, MemoryLayer, MemoryRecord, QueryResultSet,
+    RebuildReport, RebuildScope, RetrieveReason, RetrieveRequest, RetrieveResult,
 };
