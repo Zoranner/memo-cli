@@ -9,6 +9,7 @@ use memo_engine::{
 
 mod app_config;
 mod lmkit_adapter;
+mod lmkit_extraction_adapter;
 
 #[derive(Parser)]
 #[command(name = "memo")]

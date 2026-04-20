@@ -3,8 +3,8 @@ use std::{path::Path, sync::Arc};
 use anyhow::Result;
 use memo_engine::{
     ConsolidationTrigger, EmbeddingProvider, EngineConfig, EntityInput, EpisodeInput,
-    ExtractionSource, FactInput, MemoryEngine, MemoryLayer, MemoryRecord, RetrieveReason,
-    RetrieveRequest,
+    ExtractedEntity, ExtractedFact, ExtractionProvider, ExtractionResult, ExtractionSource,
+    FactInput, MemoryEngine, MemoryLayer, MemoryRecord, RetrieveReason, RetrieveRequest,
 };
 use tempfile::TempDir;
 
@@ -32,6 +32,40 @@ impl EmbeddingProvider for TestEmbeddingProvider {
     }
 }
 
+#[derive(Clone)]
+struct TestExtractionProvider;
+
+impl ExtractionProvider for TestExtractionProvider {
+    fn extract(&self, text: &str) -> Result<ExtractionResult> {
+        if text.contains("Alice lives in Paris") {
+            Ok(ExtractionResult {
+                entities: vec![
+                    ExtractedEntity {
+                        entity_type: "person".to_string(),
+                        name: "Alice".to_string(),
+                        aliases: vec!["Ally".to_string()],
+                        confidence: 0.93,
+                    },
+                    ExtractedEntity {
+                        entity_type: "place".to_string(),
+                        name: "Paris".to_string(),
+                        aliases: Vec::new(),
+                        confidence: 0.92,
+                    },
+                ],
+                facts: vec![ExtractedFact {
+                    subject: "Alice".to_string(),
+                    predicate: "lives_in".to_string(),
+                    object: "Paris".to_string(),
+                    confidence: 0.9,
+                }],
+            })
+        } else {
+            Ok(ExtractionResult::default())
+        }
+    }
+}
+
 fn open_engine(path: &Path) -> Result<MemoryEngine> {
     MemoryEngine::open(EngineConfig::new(path))
 }
@@ -39,6 +73,12 @@ fn open_engine(path: &Path) -> Result<MemoryEngine> {
 fn open_engine_with_vectors(path: &Path) -> Result<MemoryEngine> {
     MemoryEngine::open(
         EngineConfig::new(path).with_embedding_provider(Arc::new(TestEmbeddingProvider)),
+    )
+}
+
+fn open_engine_with_extraction(path: &Path) -> Result<MemoryEngine> {
+    MemoryEngine::open(
+        EngineConfig::new(path).with_extraction_provider(Arc::new(TestExtractionProvider)),
     )
 }
 
@@ -196,6 +236,34 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
         .reasons
         .iter()
         .any(|reason| matches!(reason, RetrieveReason::GraphHop { .. })));
+    Ok(())
+}
+
+#[test]
+fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine_with_extraction(temp.path())?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        confidence: 0.9,
+    })?;
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 5,
+        deep: false,
+    })?;
+
+    assert!(result.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Entity(entity) if entity.canonical_name == "Alice")
+    ));
+    assert!(result.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Fact(fact) if fact.predicate == "lives_in" && fact.object_text == "Paris")
+    ));
     Ok(())
 }
 

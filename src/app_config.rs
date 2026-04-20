@@ -10,6 +10,7 @@ use lmkit::{Provider, ProviderConfig};
 use memo_engine::EngineConfig;
 
 use crate::lmkit_adapter::LmkitEmbeddingAdapter;
+use crate::lmkit_extraction_adapter::LmkitExtractionAdapter;
 
 const CONFIG_TEMPLATE: &str = include_str!("templates/config.toml");
 const PROVIDERS_TEMPLATE: &str = include_str!("templates/providers.toml");
@@ -21,8 +22,14 @@ struct EmbedConfig {
 }
 
 #[derive(Debug, Default)]
+struct ExtractConfig {
+    extraction_provider: Option<String>,
+}
+
+#[derive(Debug, Default)]
 struct FileConfig {
     embed: EmbedConfig,
+    extract: ExtractConfig,
 }
 
 #[derive(Debug, Default)]
@@ -61,9 +68,15 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
     let _duplicate_threshold = file_config.embed.duplicate_threshold;
 
     if let Some(provider_ref) = file_config.embed.embedding_provider.as_deref() {
-        let provider_config = load_embedding_provider_config(&data_dir, provider_ref)?;
+        let provider_config = load_provider_config(&data_dir, provider_ref, "embedding")?;
         let adapter = LmkitEmbeddingAdapter::new(provider_config)?;
         engine_config = engine_config.with_embedding_provider(Arc::new(adapter));
+    }
+
+    if let Some(provider_ref) = file_config.extract.extraction_provider.as_deref() {
+        let provider_config = load_provider_config(&data_dir, provider_ref, "extraction")?;
+        let adapter = LmkitExtractionAdapter::new(provider_config)?;
+        engine_config = engine_config.with_extraction_provider(Arc::new(adapter));
     }
 
     Ok(engine_config)
@@ -91,7 +104,11 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<bool> {
     Ok(true)
 }
 
-fn load_embedding_provider_config(data_dir: &Path, provider_ref: &str) -> Result<ProviderConfig> {
+fn load_provider_config(
+    data_dir: &Path,
+    provider_ref: &str,
+    capability: &str,
+) -> Result<ProviderConfig> {
     let providers_path = data_dir.join("providers.toml");
     let providers_text = fs::read_to_string(&providers_path).with_context(|| {
         format!(
@@ -101,7 +118,7 @@ fn load_embedding_provider_config(data_dir: &Path, provider_ref: &str) -> Result
     })?;
 
     resolve_provider_config(&providers_text, provider_ref)
-        .with_context(|| format!("failed to resolve embedding provider `{provider_ref}`"))
+        .with_context(|| format!("failed to resolve {capability} provider `{provider_ref}`"))
 }
 
 fn resolve_provider_config(providers_toml: &str, provider_ref: &str) -> Result<ProviderConfig> {
@@ -160,8 +177,8 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
 
         let (key, value) = parse_key_value(line)
             .with_context(|| format!("invalid config line {}", line_no + 1))?;
-        if section.as_deref() == Some("embed") {
-            match key {
+        match section.as_deref() {
+            Some("embed") => match key {
                 "embedding_provider" => {
                     config.embed.embedding_provider = Some(parse_string(value)?.to_string());
                 }
@@ -169,7 +186,13 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
                     config.embed.duplicate_threshold = Some(value.parse::<f32>()?);
                 }
                 _ => {}
+            },
+            Some("extract") => {
+                if key == "extraction_provider" {
+                    config.extract.extraction_provider = Some(parse_string(value)?.to_string());
+                }
             }
+            _ => {}
         }
     }
 
@@ -284,11 +307,11 @@ mod tests {
         let temp = TempDir::new()?;
         fs::write(
             temp.path().join("config.toml"),
-            "[embed]\nembedding_provider = \"openai.embed\"\n",
+            "[embed]\nembedding_provider = \"openai.embed\"\n[extract]\nextraction_provider = \"openai.extract\"\n",
         )?;
         fs::write(
             temp.path().join("providers.toml"),
-            "[openai]\napi_key = \"sk-test\"\n[openai.embed]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"text-embedding-3-small\"\ndimension = 1536\n",
+            "[openai]\napi_key = \"sk-test\"\n[openai.embed]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"text-embedding-3-small\"\ndimension = 1536\n[openai.extract]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"gpt-4o-mini\"\n",
         )?;
 
         let config = build_engine_config(temp.path())?;
@@ -299,6 +322,7 @@ mod tests {
             .as_ref()
             .expect("expected embedding provider to be loaded");
         assert_eq!(provider.dimension(), 1536);
+        assert!(config.extraction_provider.is_some());
         Ok(())
     }
 
@@ -314,7 +338,10 @@ mod tests {
             "[openai]\napi_key = \"sk-test\"\n",
         )?;
 
-        let error = build_engine_config(temp.path()).expect_err("expected invalid provider ref");
+        let error = match build_engine_config(temp.path()) {
+            Ok(_) => panic!("expected invalid provider ref"),
+            Err(error) => error,
+        };
         assert!(error
             .to_string()
             .contains("must look like `<provider>.<service>`"));

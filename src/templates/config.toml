@@ -5,3 +5,7 @@
 embedding_provider = "openai.embed"
 # Reserved for duplicate handling during ingest.
 duplicate_threshold = 0.85
+
+[extract]
+# Reference format: <provider>.<service>
+extraction_provider = "openai.extract"
