@@ -32,7 +32,10 @@ impl Database {
         vector: Option<&[f32]>,
     ) -> Result<EpisodeRecord> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let now = now_ts();
+        let now = input
+            .recorded_at
+            .map(|ts| ts.timestamp_millis())
+            .unwrap_or_else(now_ts);
         let id = Uuid::new_v4().to_string();
         let vector_json = vector.map(vec_to_json).transpose()?;
         conn.execute(
@@ -1010,12 +1013,15 @@ impl Database {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    pub fn support_scope_key_for_episode(&self, episode_id: &str) -> Result<Option<String>> {
+    pub fn support_scope_for_episode(
+        &self,
+        episode_id: &str,
+    ) -> Result<Option<(String, DateTime<Utc>)>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.query_row(
-            "SELECT COALESCE(session_id, id) FROM episodes WHERE id = ?1 LIMIT 1",
+            "SELECT COALESCE(session_id, id), created_at FROM episodes WHERE id = ?1 LIMIT 1",
             params![episode_id],
-            |row| row.get(0),
+            |row| Ok((row.get::<_, String>(0)?, ts_to_dt(row.get::<_, i64>(1)?))),
         )
         .optional()
         .map_err(Into::into)

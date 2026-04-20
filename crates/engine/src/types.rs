@@ -168,6 +168,8 @@ pub struct EpisodeInput {
     pub source_episode_id: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
+    #[serde(default)]
+    pub recorded_at: Option<DateTime<Utc>>,
     #[serde(default = "default_confidence")]
     pub confidence: f32,
 }
@@ -180,6 +182,7 @@ pub struct IngestPreview {
     pub facts: Vec<FactInput>,
     pub source_episode_id: Option<String>,
     pub session_id: Option<String>,
+    pub recorded_at: Option<DateTime<Utc>>,
     pub confidence: f32,
 }
 

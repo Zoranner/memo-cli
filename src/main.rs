@@ -1,6 +1,7 @@
 use std::{path::PathBuf, time::Instant};
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use memo_engine::{
     ConsolidationTrigger, EntityInput, EpisodeInput, ExtractionResult, ExtractionSource, FactInput,
@@ -34,6 +35,8 @@ enum Command {
         layer: String,
         #[arg(long)]
         session: Option<String>,
+        #[arg(long)]
+        at: Option<String>,
         #[arg(long = "entity")]
         entities: Vec<String>,
         #[arg(long = "fact")]
@@ -110,6 +113,7 @@ fn main() -> Result<()> {
                     content,
                     layer,
                     session,
+                    at,
                     entities,
                     facts,
                     dry_run,
@@ -121,6 +125,7 @@ fn main() -> Result<()> {
                         facts: parse_facts(&facts)?,
                         source_episode_id: None,
                         session_id: session,
+                        recorded_at: parse_recorded_at(at.as_deref())?,
                         confidence: 0.85,
                     };
                     if dry_run {
@@ -261,6 +266,15 @@ fn parse_trigger(raw: &str) -> Result<ConsolidationTrigger> {
         "manual" => ConsolidationTrigger::Manual,
         _ => anyhow::bail!("invalid trigger: {}", raw),
     })
+}
+
+fn parse_recorded_at(raw: Option<&str>) -> Result<Option<DateTime<Utc>>> {
+    raw.map(|value| {
+        DateTime::parse_from_rfc3339(value)
+            .map(|ts| ts.with_timezone(&Utc))
+            .map_err(Into::into)
+    })
+    .transpose()
 }
 
 fn parse_scope(raw: &str) -> Result<RebuildScope> {

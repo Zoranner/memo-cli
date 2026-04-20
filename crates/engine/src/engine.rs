@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use tracing::debug;
 
 use crate::{
@@ -213,6 +213,7 @@ impl MemoryEngine {
             facts: merge_facts(input.facts.clone(), extraction.facts),
             source_episode_id: input.source_episode_id.clone(),
             session_id: input.session_id.clone(),
+            recorded_at: input.recorded_at,
             confidence: input.confidence,
         })
     }
@@ -531,6 +532,8 @@ impl MemoryEngine {
     }
 
     fn merge_supported_fact_clusters(&self) -> Result<(usize, usize)> {
+        const FACT_L3_MIN_SESSION_SPAN: Duration = Duration::days(1);
+
         let facts = self
             .db
             .active_facts_in_layers(&[MemoryLayer::L2, MemoryLayer::L3])?;
@@ -548,16 +551,39 @@ impl MemoryEngine {
         let mut archived = 0;
         let mut promoted = 0;
         for facts in groups.into_values() {
-            let mut distinct_sources = HashSet::new();
+            let mut distinct_sources = HashMap::new();
             for fact in &facts {
                 let Some(episode_id) = fact.source_episode_id.as_deref() else {
                     continue;
                 };
-                if let Some(scope_key) = self.db.support_scope_key_for_episode(episode_id)? {
-                    distinct_sources.insert(scope_key);
+                if let Some((scope_key, created_at)) =
+                    self.db.support_scope_for_episode(episode_id)?
+                {
+                    distinct_sources
+                        .entry(scope_key)
+                        .and_modify(|existing: &mut chrono::DateTime<Utc>| {
+                            if created_at < *existing {
+                                *existing = created_at;
+                            }
+                        })
+                        .or_insert(created_at);
                 }
             }
             if distinct_sources.len() < 3 {
+                continue;
+            }
+
+            let earliest = distinct_sources
+                .values()
+                .min()
+                .copied()
+                .expect("fact support scopes should not be empty");
+            let latest = distinct_sources
+                .values()
+                .max()
+                .copied()
+                .expect("fact support scopes should not be empty");
+            if latest - earliest < FACT_L3_MIN_SESSION_SPAN {
                 continue;
             }
 

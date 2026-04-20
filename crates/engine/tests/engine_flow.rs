@@ -106,6 +106,7 @@ fn preview_ingest_merges_provider_and_manual_inputs() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -139,6 +140,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
         facts: Vec::new(),
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
     drop(engine);
@@ -173,6 +175,7 @@ fn bm25_query_hits_episode() -> Result<()> {
         facts: Vec::new(),
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -205,6 +208,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         facts: Vec::new(),
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -260,6 +264,7 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -294,6 +299,7 @@ fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
         facts: Vec::new(),
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -323,6 +329,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         facts: Vec::new(),
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
     let second = engine.ingest_episode(EpisodeInput {
@@ -332,6 +339,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         facts: Vec::new(),
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -411,6 +419,7 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -477,6 +486,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
         facts: Vec::new(),
         source_episode_id: None,
         session_id: Some("session-a".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -492,6 +502,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
         facts: Vec::new(),
         source_episode_id: None,
         session_id: Some("session-b".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -549,6 +560,7 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -579,6 +591,7 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -629,6 +642,7 @@ fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<
         facts: Vec::new(),
         source_episode_id: None,
         session_id: Some("session-a".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -644,6 +658,7 @@ fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<
         facts: Vec::new(),
         source_episode_id: None,
         session_id: Some("session-a".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -701,6 +716,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: Some("session-a".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -745,6 +761,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: Some("session-b".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -839,6 +856,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -884,6 +902,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         }],
         source_episode_id: None,
         session_id: None,
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -927,14 +946,25 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    for (content, confidence, session_id) in [
-        ("Alice currently lives in Paris.", 0.8, "session-a"),
+    for (content, confidence, session_id, recorded_at) in [
+        (
+            "Alice currently lives in Paris.",
+            0.8,
+            "session-a",
+            "2026-01-01T09:00:00Z",
+        ),
         (
             "Alice has been based in Paris for years.",
             0.95,
             "session-b",
+            "2026-01-03T09:00:00Z",
         ),
-        ("Alice still keeps her home in Paris.", 0.9, "session-c"),
+        (
+            "Alice still keeps her home in Paris.",
+            0.9,
+            "session-c",
+            "2026-01-05T09:00:00Z",
+        ),
     ] {
         engine.ingest_episode(EpisodeInput {
             content: content.to_string(),
@@ -964,6 +994,9 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
             }],
             source_episode_id: None,
             session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
             confidence: 0.9,
         })?;
     }
@@ -1035,6 +1068,7 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
         }],
         source_episode_id: None,
         session_id: Some("session-a".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
     engine.ingest_episode(EpisodeInput {
@@ -1065,6 +1099,7 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
         }],
         source_episode_id: None,
         session_id: Some("session-a".to_string()),
+        recorded_at: None,
         confidence: 0.9,
     })?;
 
@@ -1096,9 +1131,17 @@ fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    for (content, session_id) in [
-        ("Alice currently lives in Paris.", "session-a"),
-        ("Alice has been based in Paris for years.", "session-b"),
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice currently lives in Paris.",
+            "session-a",
+            "2026-01-01T09:00:00Z",
+        ),
+        (
+            "Alice has been based in Paris for years.",
+            "session-b",
+            "2026-01-03T09:00:00Z",
+        ),
     ] {
         engine.ingest_episode(EpisodeInput {
             content: content.to_string(),
@@ -1128,6 +1171,89 @@ fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
             }],
             source_episode_id: None,
             session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert_eq!(report.promoted_to_l3, 0);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let facts = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(!facts.is_empty());
+    assert!(facts.iter().all(|fact| fact.layer == MemoryLayer::L2));
+    Ok(())
+}
+
+#[test]
+fn consolidation_requires_fact_support_span_for_l3_promotion() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice currently lives in Paris.",
+            "session-a",
+            "2026-01-01T09:00:00Z",
+        ),
+        (
+            "Alice has been based in Paris for years.",
+            "session-b",
+            "2026-01-01T12:00:00Z",
+        ),
+        (
+            "Alice still keeps her home in Paris.",
+            "session-c",
+            "2026-01-01T18:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![
+                EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+                EntityInput {
+                    entity_type: "place".to_string(),
+                    name: "Paris".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+            ],
+            facts: vec![FactInput {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence: 0.9,
+                source: ExtractionSource::Manual,
+            }],
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
             confidence: 0.9,
         })?;
     }
@@ -1181,6 +1307,7 @@ fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> 
             facts: Vec::new(),
             source_episode_id: None,
             session_id: Some(session_id.to_string()),
+            recorded_at: None,
             confidence: 0.9,
         })?;
     }
