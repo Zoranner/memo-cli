@@ -395,6 +395,12 @@ impl MemoryEngine {
         report.archived_records += archived_duplicates;
         report.promoted_to_l3 += promoted_supported;
 
+        for entity_id in self.db.eligible_entity_ids_for_l3_by_support()? {
+            self.db
+                .update_layer("entity", &entity_id, MemoryLayer::L3)?;
+            report.promoted_to_l3 += 1;
+        }
+
         for kind in ["episode", "entity", "fact"] {
             for id in self.db.eligible_ids_for_l3(kind)? {
                 self.db.update_layer(kind, &id, MemoryLayer::L3)?;

@@ -827,7 +827,7 @@ impl Database {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stmt = conn.prepare(
             "SELECT f.id
-             FROM facts f
+            FROM facts f
              JOIN (
                 SELECT LOWER(TRIM(subject_text)) AS subject_key,
                        LOWER(TRIM(predicate)) AS predicate_key,
@@ -847,6 +847,34 @@ impl Database {
              WHERE f.layer = 'L1'
                AND f.archived_at IS NULL
                AND f.invalidated_at IS NULL",
+        )?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn eligible_entity_ids_for_l3_by_support(&self) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT e.id
+             FROM entities e
+             WHERE e.layer = 'L2'
+               AND e.archived_at IS NULL
+               AND e.invalidated_at IS NULL
+               AND (
+                    SELECT COUNT(DISTINCT support_scope_id)
+                    FROM (
+                        SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id
+                        FROM mentions m
+                        JOIN episodes ep ON ep.id = m.episode_id
+                        WHERE m.entity_id = e.id
+                        UNION
+                        SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id
+                        FROM facts f
+                        JOIN episodes ep ON ep.id = f.source_episode_id
+                        WHERE (f.subject_entity_id = e.id OR f.object_entity_id = e.id)
+                          AND f.source_episode_id IS NOT NULL
+                    )
+               ) >= 3",
         )?;
         let rows = stmt.query_map([], |row| row.get(0))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
