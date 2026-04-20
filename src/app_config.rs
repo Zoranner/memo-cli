@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use lmkit::{Provider, ProviderConfig};
-use memo_engine::EngineConfig;
+use memo_engine::{EngineConfig, ExtractionProvider};
 
 use crate::lmkit_adapter::LmkitEmbeddingAdapter;
 use crate::lmkit_extraction_adapter::LmkitExtractionAdapter;
@@ -80,6 +80,30 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
     }
 
     Ok(engine_config)
+}
+
+pub(crate) fn build_extraction_provider(
+    data_dir: impl Into<PathBuf>,
+) -> Result<Option<Arc<dyn ExtractionProvider>>> {
+    let data_dir = data_dir.into();
+    let config_path = data_dir.join("config.toml");
+
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let config_text = fs::read_to_string(&config_path)
+        .with_context(|| format!("failed to read config file: {}", config_path.display()))?;
+    let file_config = parse_app_config(&config_text)
+        .with_context(|| format!("failed to parse config file: {}", config_path.display()))?;
+
+    let Some(provider_ref) = file_config.extract.extraction_provider.as_deref() else {
+        return Ok(None);
+    };
+
+    let provider_config = load_provider_config(&data_dir, provider_ref, "extraction")?;
+    let adapter = LmkitExtractionAdapter::new(provider_config)?;
+    Ok(Some(Arc::new(adapter)))
 }
 
 pub(crate) fn initialize_data_dir(data_dir: &Path) -> Result<InitReport> {
@@ -287,7 +311,7 @@ mod tests {
     use anyhow::Result;
     use tempfile::TempDir;
 
-    use super::{build_engine_config, initialize_data_dir};
+    use super::{build_engine_config, build_extraction_provider, initialize_data_dir};
 
     #[test]
     fn init_writes_current_templates_into_data_dir() -> Result<()> {
@@ -345,6 +369,24 @@ mod tests {
         assert!(error
             .to_string()
             .contains("must look like `<provider>.<service>`"));
+        Ok(())
+    }
+
+    #[test]
+    fn build_extraction_provider_loads_from_local_files() -> Result<()> {
+        let temp = TempDir::new()?;
+        fs::write(
+            temp.path().join("config.toml"),
+            "[extract]\nextraction_provider = \"openai.extract\"\n",
+        )?;
+        fs::write(
+            temp.path().join("providers.toml"),
+            "[openai]\napi_key = \"sk-test\"\n[openai.extract]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"gpt-4o-mini\"\n",
+        )?;
+
+        let provider = build_extraction_provider(temp.path())?;
+
+        assert!(provider.is_some());
         Ok(())
     }
 }

@@ -3,8 +3,8 @@ use std::{path::PathBuf, time::Instant};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use memo_engine::{
-    ConsolidationTrigger, EntityInput, EpisodeInput, ExtractionSource, FactInput, MemoryEngine,
-    RebuildScope, RetrieveRequest,
+    ConsolidationTrigger, EntityInput, EpisodeInput, ExtractionResult, ExtractionSource, FactInput,
+    MemoryEngine, RebuildScope, RetrieveRequest,
 };
 
 mod app_config;
@@ -22,9 +22,12 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 enum Command {
     Init,
+    Extract {
+        content: String,
+    },
     Ingest {
         content: String,
         #[arg(long, default_value = "L1")]
@@ -85,12 +88,20 @@ fn main() -> Result<()> {
                 })
             );
         }
+        Command::Extract { content } => {
+            let provider = app_config::build_extraction_provider(&data_dir)?.ok_or_else(|| {
+                anyhow::anyhow!("no extraction provider configured in config.toml")
+            })?;
+            let result = provider.extract(&content)?;
+            println!("{}", render_extraction_result(&result)?);
+        }
         command => {
             let config = app_config::build_engine_config(&data_dir)?;
             let engine = MemoryEngine::open(config)?;
 
             match command {
                 Command::Init => unreachable!("handled above"),
+                Command::Extract { .. } => unreachable!("handled above"),
                 Command::Ingest {
                     content,
                     layer,
@@ -160,6 +171,10 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn render_extraction_result(result: &ExtractionResult) -> Result<String> {
+    Ok(serde_json::to_string_pretty(result)?)
 }
 
 fn parse_entities(raw: &[String]) -> Result<Vec<EntityInput>> {
@@ -239,4 +254,50 @@ fn parse_scope(raw: &str) -> Result<RebuildScope> {
         "vector" => RebuildScope::Vector,
         _ => anyhow::bail!("invalid rebuild scope: {}", raw),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cli, Command};
+    use clap::Parser;
+    use memo_engine::{ExtractedEntity, ExtractedFact, ExtractionResult};
+
+    #[test]
+    fn cli_parses_extract_command() {
+        let cli = Cli::parse_from([
+            "memo",
+            "--data-dir",
+            ".memo-test",
+            "extract",
+            "Alice lives in Paris.",
+        ]);
+
+        match cli.command {
+            Command::Extract { content } => assert_eq!(content, "Alice lives in Paris."),
+            _ => panic!("expected extract command"),
+        }
+    }
+
+    #[test]
+    fn render_extraction_result_outputs_pretty_json() {
+        let output = super::render_extraction_result(&ExtractionResult {
+            entities: vec![ExtractedEntity {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.9,
+            }],
+            facts: vec![ExtractedFact {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence: 0.8,
+            }],
+        })
+        .expect("expected JSON rendering");
+
+        assert!(output.contains("\"entities\""));
+        assert!(output.contains("\"lives_in\""));
+        assert!(output.contains('\n'));
+    }
 }
