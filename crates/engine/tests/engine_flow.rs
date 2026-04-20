@@ -319,6 +319,133 @@ fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
 }
 
 #[test]
+fn reaccessed_entity_ranks_ahead_of_stale_alias_peer() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice handled the launch checklist.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["captain".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        recorded_at: Some(
+            chrono::DateTime::parse_from_rfc3339("2024-01-01T09:00:00Z")?
+                .with_timezone(&chrono::Utc),
+        ),
+        confidence: 0.9,
+    })?;
+    engine.ingest_episode(EpisodeInput {
+        content: "Bob reviewed the logistics board.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Bob".to_string(),
+            aliases: vec!["captain".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-b".to_string()),
+        recorded_at: Some(
+            chrono::DateTime::parse_from_rfc3339("2024-01-01T09:00:00Z")?
+                .with_timezone(&chrono::Utc),
+        ),
+        confidence: 0.9,
+    })?;
+
+    let _ = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 5,
+        deep: false,
+    })?;
+
+    let result = engine.query(RetrieveRequest {
+        query: "captain".to_string(),
+        limit: 5,
+        deep: false,
+    })?;
+
+    let first_entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) => Some(entity),
+            _ => None,
+        })
+        .expect("expected entity result");
+
+    assert_eq!(first_entity.canonical_name, "Alice");
+    Ok(())
+}
+
+#[test]
+fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    let alpha_id = engine.ingest_episode(EpisodeInput {
+        content: "warehouse memo alpha".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        recorded_at: Some(
+            chrono::DateTime::parse_from_rfc3339("2024-01-01T09:00:00Z")?
+                .with_timezone(&chrono::Utc),
+        ),
+        confidence: 0.9,
+    })?;
+    let beta_id = engine.ingest_episode(EpisodeInput {
+        content: "warehouse memo beta".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-b".to_string()),
+        recorded_at: Some(
+            chrono::DateTime::parse_from_rfc3339("2024-01-01T09:00:00Z")?
+                .with_timezone(&chrono::Utc),
+        ),
+        confidence: 0.9,
+    })?;
+
+    let _ = beta_id;
+    let _ = engine.query(RetrieveRequest {
+        query: "warehouse memo alpha".to_string(),
+        limit: 5,
+        deep: false,
+    })?;
+
+    let result = engine.query(RetrieveRequest {
+        query: "warehouse memo".to_string(),
+        limit: 5,
+        deep: false,
+    })?;
+
+    let first_episode = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Episode(record) => Some(record),
+            _ => None,
+        })
+        .expect("expected episode result");
+
+    assert_eq!(first_episode.id, alpha_id);
+    Ok(())
+}
+
+#[test]
 fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
@@ -1282,16 +1409,107 @@ fn consolidation_requires_fact_support_span_for_l3_promotion() -> Result<()> {
 }
 
 #[test]
-fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<()> {
+fn ingest_propagates_recorded_at_to_structured_memory_timestamps() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let recorded_at =
+        chrono::DateTime::parse_from_rfc3339("2024-01-15T08:30:00Z")?.with_timezone(&chrono::Utc);
+
+    engine.ingest_episode(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-historical".to_string()),
+        recorded_at: Some(recorded_at),
+        confidence: 0.9,
+    })?;
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: true,
+    })?;
+
+    let alice_entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity");
+    assert_eq!(alice_entity.created_at, recorded_at);
+    assert_eq!(alice_entity.updated_at, recorded_at);
+
+    let lives_in_fact = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact),
+            _ => None,
+        })
+        .expect("expected lives_in fact");
+    assert_eq!(lives_in_fact.created_at, recorded_at);
+    assert_eq!(lives_in_fact.updated_at, recorded_at);
+    assert_eq!(lives_in_fact.valid_from, Some(recorded_at));
+
+    let lives_in_edge = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge),
+            _ => None,
+        })
+        .expect("expected lives_in edge");
+    assert_eq!(lives_in_edge.created_at, recorded_at);
+    assert_eq!(lives_in_edge.updated_at, recorded_at);
+    assert_eq!(lives_in_edge.valid_from, Some(recorded_at));
+    Ok(())
+}
+
+#[test]
+fn consolidation_requires_entity_support_span_for_l3_promotion() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    for (content, session_id) in [
-        ("Alice joined the design review today.", "session-a"),
-        ("Alice sent the updated roadmap tonight.", "session-b"),
+    for (content, session_id, recorded_at) in [
         (
-            "Alice followed up with final notes this morning.",
+            "Alice joined the design review this morning.",
+            "session-a",
+            "2026-01-01T09:00:00Z",
+        ),
+        (
+            "Alice shared the updated roadmap at noon.",
+            "session-b",
+            "2026-01-01T12:00:00Z",
+        ),
+        (
+            "Alice followed up with final notes tonight.",
             "session-c",
+            "2026-01-01T18:00:00Z",
         ),
     ] {
         engine.ingest_episode(EpisodeInput {
@@ -1307,7 +1525,485 @@ fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> 
             facts: Vec::new(),
             source_episode_id: None,
             session_id: Some(session_id.to_string()),
-            recorded_at: None,
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert_eq!(report.promoted_to_l3, 0);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity after repeated support consolidation");
+
+    assert_eq!(entity.layer, MemoryLayer::L2);
+    Ok(())
+}
+
+#[test]
+fn consolidation_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice joined the design review today.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice sent the updated roadmap tonight.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+        (
+            "Alice followed up with final notes this morning.",
+            "session-c",
+            "2024-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            }],
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.downgraded_records >= 1);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity after stale consolidation");
+
+    assert_eq!(entity.layer, MemoryLayer::L2);
+    Ok(())
+}
+
+#[test]
+fn consolidation_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice joined the design review today.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice sent the updated roadmap tonight.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+        (
+            "Alice followed up with final notes this morning.",
+            "session-c",
+            "2024-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            }],
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let first_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(first_report.downgraded_records >= 1);
+
+    let warmed = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+    let warmed_entity = warmed
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity after warm query");
+    assert_eq!(warmed_entity.layer, MemoryLayer::L2);
+
+    let second_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(second_report.promoted_to_l3 >= 1);
+    assert_eq!(second_report.downgraded_records, 0);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Ally".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    let entity = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
+            _ => None,
+        })
+        .expect("expected Alice entity after reheated consolidation");
+
+    assert_eq!(entity.layer, MemoryLayer::L3);
+    Ok(())
+}
+
+#[test]
+fn consolidation_preserves_fact_observation_timestamp_when_promoting_layers() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let recorded_at =
+        chrono::DateTime::parse_from_rfc3339("2024-01-01T09:00:00Z")?.with_timezone(&chrono::Utc);
+
+    for session_id in ["session-a", "session-b", "session-c"] {
+        engine.ingest_episode(EpisodeInput {
+            content: "Alice still lives in Paris.".to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![
+                EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+                EntityInput {
+                    entity_type: "place".to_string(),
+                    name: "Paris".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+            ],
+            facts: vec![FactInput {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence: 0.9,
+                source: ExtractionSource::Manual,
+            }],
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(recorded_at),
+            confidence: 0.9,
+        })?;
+    }
+
+    let _ = engine.consolidate(ConsolidationTrigger::Manual)?;
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice Paris".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let fact = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact)
+                if fact.subject_text == "Alice"
+                    && fact.predicate == "lives_in"
+                    && fact.object_text == "Paris" =>
+            {
+                Some(fact)
+            }
+            _ => None,
+        })
+        .expect("expected Alice lives_in Paris fact after consolidation");
+
+    assert_eq!(fact.created_at, recorded_at);
+    assert_eq!(fact.updated_at, recorded_at);
+    assert_eq!(fact.valid_from, Some(recorded_at));
+    Ok(())
+}
+
+#[test]
+fn consolidation_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice currently lives in Paris.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice has been based in Paris for years.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+        (
+            "Alice still keeps her home in Paris.",
+            "session-c",
+            "2024-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![
+                EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+                EntityInput {
+                    entity_type: "place".to_string(),
+                    name: "Paris".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+            ],
+            facts: vec![FactInput {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence: 0.9,
+                source: ExtractionSource::Manual,
+            }],
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(report.downgraded_records >= 1);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let fact = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact)
+                if fact.subject_text == "Alice"
+                    && fact.predicate == "lives_in"
+                    && fact.object_text == "Paris" =>
+            {
+                Some(fact)
+            }
+            _ => None,
+        })
+        .expect("expected Alice lives_in Paris fact after stale consolidation");
+
+    assert_eq!(fact.layer, MemoryLayer::L2);
+    Ok(())
+}
+
+#[test]
+fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice currently lives in Paris.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice has been based in Paris for years.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+        (
+            "Alice still keeps her home in Paris.",
+            "session-c",
+            "2024-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![
+                EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+                EntityInput {
+                    entity_type: "place".to_string(),
+                    name: "Paris".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+            ],
+            facts: vec![FactInput {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence: 0.9,
+                source: ExtractionSource::Manual,
+            }],
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let first_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(first_report.downgraded_records >= 1);
+
+    let warmed = engine.query(RetrieveRequest {
+        query: "Alice Paris".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+    let warmed_fact = warmed
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact)
+                if fact.subject_text == "Alice"
+                    && fact.predicate == "lives_in"
+                    && fact.object_text == "Paris" =>
+            {
+                Some(fact)
+            }
+            _ => None,
+        })
+        .expect("expected Alice lives_in Paris fact after warm query");
+    assert_eq!(warmed_fact.layer, MemoryLayer::L2);
+
+    let second_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert!(second_report.promoted_to_l3 >= 1);
+    assert_eq!(second_report.downgraded_records, 0);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice Paris".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let fact = result
+        .results
+        .iter()
+        .find_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact)
+                if fact.subject_text == "Alice"
+                    && fact.predicate == "lives_in"
+                    && fact.object_text == "Paris" =>
+            {
+                Some(fact)
+            }
+            _ => None,
+        })
+        .expect("expected Alice lives_in Paris fact after reheated consolidation");
+
+    assert_eq!(fact.layer, MemoryLayer::L3);
+    Ok(())
+}
+
+#[test]
+fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice joined the design review today.",
+            "session-a",
+            "2026-01-01T09:00:00Z",
+        ),
+        (
+            "Alice sent the updated roadmap tonight.",
+            "session-b",
+            "2026-01-02T09:00:00Z",
+        ),
+        (
+            "Alice followed up with final notes this morning.",
+            "session-c",
+            "2026-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            }],
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
             confidence: 0.9,
         })?;
     }

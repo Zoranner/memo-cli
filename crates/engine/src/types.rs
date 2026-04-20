@@ -213,6 +213,7 @@ pub struct EntityRecord {
     pub source_episode_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub last_seen_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
     pub invalidated_at: Option<DateTime<Utc>>,
     pub hit_count: u64,
@@ -310,6 +311,15 @@ impl MemoryRecord {
         }
     }
 
+    pub fn activity_at(&self) -> DateTime<Utc> {
+        match self {
+            Self::Episode(record) => record.last_seen_at,
+            Self::Entity(record) => record.last_seen_at,
+            Self::Fact(record) => record.updated_at,
+            Self::Edge(record) => record.updated_at,
+        }
+    }
+
     pub fn text_for_ranking(&self) -> String {
         match self {
             Self::Episode(record) => record.content.clone(),
@@ -395,6 +405,7 @@ pub struct ConsolidationReport {
     pub trigger: String,
     pub promoted_to_l2: usize,
     pub promoted_to_l3: usize,
+    pub downgraded_records: usize,
     pub archived_records: usize,
     pub invalidated_records: usize,
     pub jobs_created: usize,

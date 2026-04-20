@@ -9,7 +9,7 @@ use chrono::{Duration, Utc};
 use tracing::debug;
 
 use crate::{
-    db::{normalize_text, Database},
+    db::{normalize_text, Database, ObservationContext},
     text_index::TextIndex,
     types::{
         ConsolidationReport, ConsolidationTrigger, EngineConfig, EngineStats, EntityInput,
@@ -80,7 +80,10 @@ impl MemoryEngine {
             let record = self.db.upsert_entity(
                 &entity,
                 input.layer,
-                Some(&episode.id),
+                ObservationContext {
+                    source_episode_id: Some(&episode.id),
+                    observed_at: episode.created_at,
+                },
                 entity_vector.as_deref(),
             )?;
             self.db
@@ -122,7 +125,10 @@ impl MemoryEngine {
                 let record = self.db.upsert_entity(
                     &fallback,
                     input.layer,
-                    Some(&episode.id),
+                    ObservationContext {
+                        source_episode_id: Some(&episode.id),
+                        observed_at: episode.created_at,
+                    },
                     vector.as_deref(),
                 )?;
                 entity_records.insert(subject_key.clone(), record.clone());
@@ -148,7 +154,10 @@ impl MemoryEngine {
                 let record = self.db.upsert_entity(
                     &fallback,
                     input.layer,
-                    Some(&episode.id),
+                    ObservationContext {
+                        source_episode_id: Some(&episode.id),
+                        observed_at: episode.created_at,
+                    },
                     vector.as_deref(),
                 )?;
                 entity_records.insert(object_key.clone(), record.clone());
@@ -168,9 +177,12 @@ impl MemoryEngine {
             let fact_record = self.db.insert_fact(
                 &fact,
                 input.layer,
-                Some(&episode.id),
                 Some(&subject_record.id),
                 Some(&object_record.id),
+                ObservationContext {
+                    source_episode_id: Some(&episode.id),
+                    observed_at: episode.created_at,
+                },
                 vector.as_deref(),
             )?;
             let _ = self.db.insert_edge(
@@ -179,7 +191,10 @@ impl MemoryEngine {
                 &object_record.id,
                 fact.confidence,
                 input.layer,
-                Some(&episode.id),
+                ObservationContext {
+                    source_episode_id: Some(&episode.id),
+                    observed_at: episode.created_at,
+                },
             )?;
             indexed_docs.push((
                 fact_record.id.clone(),
@@ -302,7 +317,7 @@ impl MemoryEngine {
         let mut scored: Vec<Candidate> = candidates
             .into_values()
             .map(|mut candidate| {
-                let recency = recency_boost(candidate.memory.updated_at());
+                let recency = recency_boost(candidate.memory.activity_at());
                 if recency > 0.0 {
                     candidate.score += recency;
                     candidate.reasons.push(RetrieveReason::RecencyBoost);
@@ -362,6 +377,9 @@ impl MemoryEngine {
     }
 
     pub fn consolidate(&self, trigger: ConsolidationTrigger) -> Result<ConsolidationReport> {
+        const ENTITY_L3_MIN_SESSION_SPAN: Duration = Duration::days(1);
+        const L3_STALE_AFTER: Duration = Duration::days(30);
+
         self.db.create_consolidation_job(trigger.as_str())?;
         let mut report = ConsolidationReport {
             trigger: trigger.as_str().to_string(),
@@ -396,7 +414,25 @@ impl MemoryEngine {
         report.archived_records += archived_duplicates;
         report.promoted_to_l3 += promoted_supported;
 
-        for entity_id in self.db.eligible_entity_ids_for_l3_by_support()? {
+        for entity_id in self.db.active_entity_ids_in_layers(&[MemoryLayer::L2])? {
+            let support_scopes = self.db.entity_support_scopes(&entity_id)?;
+            if support_scopes.len() < 3 {
+                continue;
+            }
+            let earliest = support_scopes
+                .iter()
+                .map(|(_, created_at)| *created_at)
+                .min()
+                .expect("entity support scopes should not be empty");
+            let latest = support_scopes
+                .iter()
+                .map(|(_, created_at)| *created_at)
+                .max()
+                .expect("entity support scopes should not be empty");
+            if latest - earliest < ENTITY_L3_MIN_SESSION_SPAN {
+                continue;
+            }
+
             self.db
                 .update_layer("entity", &entity_id, MemoryLayer::L3)?;
             report.promoted_to_l3 += 1;
@@ -408,6 +444,8 @@ impl MemoryEngine {
                 report.promoted_to_l3 += 1;
             }
         }
+
+        report.downgraded_records += self.cool_stale_l3_records(Utc::now() - L3_STALE_AFTER)?;
 
         let _ = self.db.complete_consolidation_jobs()?;
         self.refresh_l3_cache()?;
@@ -625,6 +663,19 @@ impl MemoryEngine {
         }
 
         Ok((archived, promoted))
+    }
+
+    fn cool_stale_l3_records(&self, stale_before: chrono::DateTime<Utc>) -> Result<usize> {
+        let mut downgraded = 0;
+        for record in self.db.load_all_l3_records()? {
+            if !should_cool_l3_record(&record, stale_before) {
+                continue;
+            }
+            self.db
+                .update_layer(record.kind(), record.id(), MemoryLayer::L2)?;
+            downgraded += 1;
+        }
+        Ok(downgraded)
     }
 
     pub fn rebuild_indexes(&self, scope: RebuildScope) -> Result<RebuildReport> {
@@ -915,6 +966,21 @@ fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
 }
 
+fn should_cool_l3_record(record: &MemoryRecord, stale_before: chrono::DateTime<Utc>) -> bool {
+    let Some(max_hit_count) = l3_cooldown_max_hit_count(record) else {
+        return false;
+    };
+    record.hit_count() <= max_hit_count && record.activity_at() < stale_before
+}
+
+fn l3_cooldown_max_hit_count(record: &MemoryRecord) -> Option<u64> {
+    match record {
+        MemoryRecord::Episode(_) => Some(2),
+        MemoryRecord::Entity(_) | MemoryRecord::Fact(_) => Some(1),
+        MemoryRecord::Edge(_) => None,
+    }
+}
+
 fn compare_fact_strength(
     left: &crate::types::FactRecord,
     right: &crate::types::FactRecord,
@@ -988,4 +1054,114 @@ fn fact_text_for_ranking(fact: &crate::types::FactRecord) -> String {
         "{} {} {}",
         fact.subject_text, fact.predicate, fact.object_text
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use crate::types::{
+        EdgeRecord, EntityRecord, EpisodeRecord, FactRecord, MemoryLayer, MemoryRecord,
+    };
+
+    use super::{l3_cooldown_max_hit_count, should_cool_l3_record};
+
+    #[test]
+    fn episode_l3_cooldown_allows_two_historical_hits() {
+        let stale_before = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+        let activity_at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let record = MemoryRecord::Episode(EpisodeRecord {
+            id: "episode-1".to_string(),
+            content: "Alice likes jasmine tea.".to_string(),
+            layer: MemoryLayer::L3,
+            confidence: 0.9,
+            source_episode_id: None,
+            session_id: None,
+            created_at: activity_at,
+            updated_at: activity_at,
+            last_seen_at: activity_at,
+            archived_at: None,
+            invalidated_at: None,
+            hit_count: 2,
+        });
+
+        assert_eq!(l3_cooldown_max_hit_count(&record), Some(2));
+        assert!(should_cool_l3_record(&record, stale_before));
+    }
+
+    #[test]
+    fn entity_l3_cooldown_remains_stricter_than_episode() {
+        let stale_before = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+        let activity_at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let record = MemoryRecord::Entity(EntityRecord {
+            id: "entity-1".to_string(),
+            entity_type: "person".to_string(),
+            canonical_name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            layer: MemoryLayer::L3,
+            confidence: 0.95,
+            source_episode_id: None,
+            created_at: activity_at,
+            updated_at: activity_at,
+            last_seen_at: activity_at,
+            archived_at: None,
+            invalidated_at: None,
+            hit_count: 2,
+        });
+
+        assert_eq!(l3_cooldown_max_hit_count(&record), Some(1));
+        assert!(!should_cool_l3_record(&record, stale_before));
+    }
+
+    #[test]
+    fn fact_l3_cooldown_still_requires_low_hits() {
+        let stale_before = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+        let activity_at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let record = MemoryRecord::Fact(FactRecord {
+            id: "fact-1".to_string(),
+            subject_entity_id: Some("alice".to_string()),
+            subject_text: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object_entity_id: Some("paris".to_string()),
+            object_text: "Paris".to_string(),
+            layer: MemoryLayer::L3,
+            confidence: 0.95,
+            source_episode_id: None,
+            created_at: activity_at,
+            updated_at: activity_at,
+            valid_from: Some(activity_at),
+            valid_to: None,
+            archived_at: None,
+            invalidated_at: None,
+            hit_count: 2,
+        });
+
+        assert_eq!(l3_cooldown_max_hit_count(&record), Some(1));
+        assert!(!should_cool_l3_record(&record, stale_before));
+    }
+
+    #[test]
+    fn edge_is_excluded_from_l3_cooldown() {
+        let activity_at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let stale_before = Utc.with_ymd_and_hms(2026, 2, 1, 0, 0, 0).unwrap();
+        let record = MemoryRecord::Edge(EdgeRecord {
+            id: "edge-1".to_string(),
+            subject_entity_id: "alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object_entity_id: "paris".to_string(),
+            weight: 0.9,
+            source_episode_id: None,
+            layer: MemoryLayer::L3,
+            valid_from: Some(activity_at),
+            valid_to: None,
+            created_at: activity_at,
+            updated_at: activity_at,
+            archived_at: None,
+            invalidated_at: None,
+            hit_count: 0,
+        });
+
+        assert_eq!(l3_cooldown_max_hit_count(&record), None);
+        assert!(!should_cool_l3_record(&record, stale_before));
+    }
 }

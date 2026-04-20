@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Mutex};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -13,6 +16,11 @@ use crate::types::{
 
 pub struct Database {
     conn: Mutex<Connection>,
+}
+
+pub struct ObservationContext<'a> {
+    pub source_episode_id: Option<&'a str>,
+    pub observed_at: DateTime<Utc>,
 }
 
 impl Database {
@@ -70,11 +78,11 @@ impl Database {
         &self,
         input: &EntityInput,
         layer: MemoryLayer,
-        source_episode_id: Option<&str>,
+        observation: ObservationContext<'_>,
         vector: Option<&[f32]>,
     ) -> Result<EntityRecord> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let now = now_ts();
+        let observed_at_ts = observation.observed_at.timestamp_millis();
         let normalized_name = normalize_text(&input.name);
         let existing_id: Option<String> = conn
             .query_row(
@@ -87,9 +95,11 @@ impl Database {
         let entity_id = if let Some(existing_id) = existing_id {
             conn.execute(
                 "UPDATE entities
-                 SET confidence = MAX(confidence, ?2), updated_at = ?3, last_seen_at = ?3
+                 SET confidence = MAX(confidence, ?2),
+                     updated_at = MAX(updated_at, ?3),
+                     last_seen_at = MAX(last_seen_at, ?3)
                  WHERE id = ?1",
-                params![existing_id, input.confidence, now],
+                params![existing_id, input.confidence, observed_at_ts],
             )?;
             existing_id
         } else {
@@ -105,15 +115,15 @@ impl Database {
                     input.name,
                     normalized_name,
                     input.confidence,
-                    source_episode_id,
-                    now,
+                    observation.source_episode_id,
+                    observed_at_ts,
                     vector_json
                 ],
             )?;
             conn.execute(
                 "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
                  VALUES (?1, 'entity', ?2, 'active', ?3, ?3)",
-                params![entity_id, layer.as_str(), now],
+                params![entity_id, layer.as_str(), observed_at_ts],
             )?;
             entity_id
         };
@@ -128,7 +138,7 @@ impl Database {
                     entity_id,
                     alias,
                     normalize_text(alias),
-                    now
+                    observed_at_ts
                 ],
             )?;
         }
@@ -166,13 +176,13 @@ impl Database {
         &self,
         input: &FactInput,
         layer: MemoryLayer,
-        source_episode_id: Option<&str>,
         subject_entity_id: Option<&str>,
         object_entity_id: Option<&str>,
+        observation: ObservationContext<'_>,
         vector: Option<&[f32]>,
     ) -> Result<FactRecord> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let now = now_ts();
+        let observed_at_ts = observation.observed_at.timestamp_millis();
         let vector_json = vector.map(vec_to_json).transpose()?;
         let id = Uuid::new_v4().to_string();
         conn.execute(
@@ -187,16 +197,16 @@ impl Database {
                 object_entity_id,
                 input.object,
                 input.confidence,
-                source_episode_id,
+                observation.source_episode_id,
                 layer.as_str(),
-                now,
+                observed_at_ts,
                 vector_json
             ],
         )?;
         conn.execute(
             "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
              VALUES (?1, 'fact', ?2, 'active', ?3, ?3)",
-            params![id, layer.as_str(), now],
+            params![id, layer.as_str(), observed_at_ts],
         )?;
         drop(conn);
         self.get_fact(&id)?.context("failed to load inserted fact")
@@ -209,10 +219,10 @@ impl Database {
         object_entity_id: &str,
         weight: f32,
         layer: MemoryLayer,
-        source_episode_id: Option<&str>,
+        observation: ObservationContext<'_>,
     ) -> Result<EdgeRecord> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let now = now_ts();
+        let observed_at_ts = observation.observed_at.timestamp_millis();
         let id = Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO edges
@@ -224,15 +234,15 @@ impl Database {
                 predicate,
                 object_entity_id,
                 weight,
-                source_episode_id,
+                observation.source_episode_id,
                 layer.as_str(),
-                now
+                observed_at_ts
             ],
         )?;
         conn.execute(
             "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
              VALUES (?1, 'edge', ?2, 'active', ?3, ?3)",
-            params![id, layer.as_str(), now],
+            params![id, layer.as_str(), observed_at_ts],
         )?;
         drop(conn);
         self.get_edge(&id)?.context("failed to load inserted edge")
@@ -272,7 +282,7 @@ impl Database {
         let row = conn
             .query_row(
                 "SELECT id, entity_type, canonical_name, confidence, source_episode_id, layer,
-                        created_at, updated_at, archived_at, invalidated_at, hit_count
+                        created_at, updated_at, last_seen_at, archived_at, invalidated_at, hit_count
                  FROM entities WHERE id = ?1 LIMIT 1",
                 params![id],
                 |row| {
@@ -285,9 +295,10 @@ impl Database {
                         row.get::<_, String>(5)?,
                         row.get::<_, i64>(6)?,
                         row.get::<_, i64>(7)?,
-                        row.get::<_, Option<i64>>(8)?,
+                        row.get::<_, i64>(8)?,
                         row.get::<_, Option<i64>>(9)?,
-                        row.get::<_, i64>(10)?,
+                        row.get::<_, Option<i64>>(10)?,
+                        row.get::<_, i64>(11)?,
                     ))
                 },
             )
@@ -306,9 +317,10 @@ impl Database {
             source_episode_id: row.4,
             created_at: ts_to_dt(row.6),
             updated_at: ts_to_dt(row.7),
-            archived_at: row.8.map(ts_to_dt),
-            invalidated_at: row.9.map(ts_to_dt),
-            hit_count: row.10.max(0) as u64,
+            last_seen_at: ts_to_dt(row.8),
+            archived_at: row.9.map(ts_to_dt),
+            invalidated_at: row.10.map(ts_to_dt),
+            hit_count: row.11.max(0) as u64,
         }))
     }
 
@@ -607,6 +619,37 @@ impl Database {
         Ok(records)
     }
 
+    pub fn load_all_l3_records(&self) -> Result<Vec<MemoryRecord>> {
+        let rows = {
+            let conn = self.conn.lock().expect("sqlite mutex poisoned");
+            let mut stmt = conn.prepare(
+                "SELECT memory_id, memory_kind FROM memory_layers
+                 WHERE layer = 'L3' AND status = 'active'
+                 ORDER BY updated_at DESC",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+
+        let mut records = Vec::new();
+        for (id, kind) in rows {
+            let record = match kind.as_str() {
+                "episode" => self.get_episode(&id)?.map(MemoryRecord::Episode),
+                "entity" => self.get_entity(&id)?.map(MemoryRecord::Entity),
+                "fact" => self.get_fact(&id)?.map(MemoryRecord::Fact),
+                "edge" => self.get_edge(&id)?.map(MemoryRecord::Edge),
+                _ => None,
+            };
+            if let Some(record) = record {
+                records.push(record);
+            }
+        }
+
+        Ok(records)
+    }
+
     pub fn increment_hit_count(&self, memory: &MemoryRecord) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let sql = match memory {
@@ -631,14 +674,11 @@ impl Database {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let table = table_for_kind(kind)?;
         let now = now_ts();
-        let sql = format!(
-            "UPDATE {} SET layer = ?2, updated_at = ?3 WHERE id = ?1",
-            table
-        );
-        conn.execute(&sql, params![id, layer.as_str(), now])?;
+        let sql = format!("UPDATE {} SET layer = ?2 WHERE id = ?1", table);
+        conn.execute(&sql, params![id, layer.as_str()])?;
         conn.execute(
             "UPDATE memory_layers
-             SET layer = ?2, updated_at = ?3
+             SET layer = ?2, last_promoted_at = ?3, updated_at = ?3
              WHERE memory_id = ?1 AND memory_kind = ?4",
             params![id, layer.as_str(), now, kind],
         )?;
@@ -855,32 +895,65 @@ impl Database {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    pub fn eligible_entity_ids_for_l3_by_support(&self) -> Result<Vec<String>> {
+    pub fn active_entity_ids_in_layers(&self, layers: &[MemoryLayer]) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let placeholders = (1..=layers.len())
+            .map(|idx| format!("?{}", idx))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id FROM entities
+             WHERE archived_at IS NULL
+               AND invalidated_at IS NULL
+               AND layer IN ({})",
+            placeholders
+        );
+        let args = layers
+            .iter()
+            .map(|layer| layer.as_str())
+            .collect::<Vec<_>>();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn entity_support_scopes(&self, entity_id: &str) -> Result<Vec<(String, DateTime<Utc>)>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT e.id
-             FROM entities e
-             WHERE e.layer = 'L2'
-               AND e.archived_at IS NULL
-               AND e.invalidated_at IS NULL
-               AND (
-                    SELECT COUNT(DISTINCT support_scope_id)
-                    FROM (
-                        SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id
-                        FROM mentions m
-                        JOIN episodes ep ON ep.id = m.episode_id
-                        WHERE m.entity_id = e.id
-                        UNION
-                        SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id
-                        FROM facts f
-                        JOIN episodes ep ON ep.id = f.source_episode_id
-                        WHERE (f.subject_entity_id = e.id OR f.object_entity_id = e.id)
-                          AND f.source_episode_id IS NOT NULL
-                    )
-               ) >= 3",
+            "SELECT support_scope_id, created_at
+             FROM (
+                SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id,
+                       ep.created_at AS created_at
+                FROM mentions m
+                JOIN episodes ep ON ep.id = m.episode_id
+                WHERE m.entity_id = ?1
+                UNION ALL
+                SELECT COALESCE(ep.session_id, ep.id) AS support_scope_id,
+                       ep.created_at AS created_at
+                FROM facts f
+                JOIN episodes ep ON ep.id = f.source_episode_id
+                WHERE (f.subject_entity_id = ?1 OR f.object_entity_id = ?1)
+                  AND f.source_episode_id IS NOT NULL
+             )",
         )?;
-        let rows = stmt.query_map([], |row| row.get(0))?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        let rows = stmt.query_map(params![entity_id], |row| {
+            Ok((row.get::<_, String>(0)?, ts_to_dt(row.get::<_, i64>(1)?)))
+        })?;
+
+        let mut earliest_by_scope = HashMap::<String, DateTime<Utc>>::new();
+        for row in rows {
+            let (scope_id, created_at) = row?;
+            earliest_by_scope
+                .entry(scope_id)
+                .and_modify(|existing| {
+                    if created_at < *existing {
+                        *existing = created_at;
+                    }
+                })
+                .or_insert(created_at);
+        }
+
+        Ok(earliest_by_scope.into_iter().collect())
     }
 
     pub fn related_ids_for_episode(&self, kind: &str, episode_id: &str) -> Result<Vec<String>> {
