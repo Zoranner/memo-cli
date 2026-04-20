@@ -927,70 +927,50 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
-        content: "Alice currently lives in Paris.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: vec![
-            EntityInput {
-                entity_type: "person".to_string(),
-                name: "Alice".to_string(),
-                aliases: Vec::new(),
-                confidence: 0.95,
+    for (content, confidence, session_id) in [
+        ("Alice currently lives in Paris.", 0.8, "session-a"),
+        (
+            "Alice has been based in Paris for years.",
+            0.95,
+            "session-b",
+        ),
+        ("Alice still keeps her home in Paris.", 0.9, "session-c"),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![
+                EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+                EntityInput {
+                    entity_type: "place".to_string(),
+                    name: "Paris".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+            ],
+            facts: vec![FactInput {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence,
                 source: ExtractionSource::Manual,
-            },
-            EntityInput {
-                entity_type: "place".to_string(),
-                name: "Paris".to_string(),
-                aliases: Vec::new(),
-                confidence: 0.95,
-                source: ExtractionSource::Manual,
-            },
-        ],
-        facts: vec![FactInput {
-            subject: "Alice".to_string(),
-            predicate: "lives_in".to_string(),
-            object: "Paris".to_string(),
-            confidence: 0.8,
-            source: ExtractionSource::Manual,
-        }],
-        source_episode_id: None,
-        session_id: None,
-        confidence: 0.9,
-    })?;
-    engine.ingest_episode(EpisodeInput {
-        content: "Alice has been based in Paris for years.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: vec![
-            EntityInput {
-                entity_type: "person".to_string(),
-                name: "Alice".to_string(),
-                aliases: Vec::new(),
-                confidence: 0.95,
-                source: ExtractionSource::Manual,
-            },
-            EntityInput {
-                entity_type: "place".to_string(),
-                name: "Paris".to_string(),
-                aliases: Vec::new(),
-                confidence: 0.95,
-                source: ExtractionSource::Manual,
-            },
-        ],
-        facts: vec![FactInput {
-            subject: "Alice".to_string(),
-            predicate: "lives_in".to_string(),
-            object: "Paris".to_string(),
-            confidence: 0.95,
-            source: ExtractionSource::Manual,
-        }],
-        source_episode_id: None,
-        session_id: None,
-        confidence: 0.9,
-    })?;
+            }],
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            confidence: 0.9,
+        })?;
+    }
 
     let report = engine.consolidate(ConsolidationTrigger::Manual)?;
     assert!(report.promoted_to_l3 >= 1);
-    assert!(report.archived_records >= 2);
+    assert!(report.archived_records >= 4);
 
     let result = engine.query(RetrieveRequest {
         query: "Alice".to_string(),
@@ -1108,6 +1088,70 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
 
     assert!(!facts.is_empty());
     assert!(facts.iter().all(|fact| fact.layer != MemoryLayer::L3));
+    Ok(())
+}
+
+#[test]
+fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id) in [
+        ("Alice currently lives in Paris.", "session-a"),
+        ("Alice has been based in Paris for years.", "session-b"),
+    ] {
+        engine.ingest_episode(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![
+                EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+                EntityInput {
+                    entity_type: "place".to_string(),
+                    name: "Paris".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.95,
+                    source: ExtractionSource::Manual,
+                },
+            ],
+            facts: vec![FactInput {
+                subject: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object: "Paris".to_string(),
+                confidence: 0.9,
+                source: ExtractionSource::Manual,
+            }],
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            confidence: 0.9,
+        })?;
+    }
+
+    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    assert_eq!(report.promoted_to_l3, 0);
+
+    let result = engine.query(RetrieveRequest {
+        query: "Alice".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
+
+    let facts = result
+        .results
+        .iter()
+        .filter_map(|item| match &item.memory {
+            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(!facts.is_empty());
+    assert!(facts.iter().all(|fact| fact.layer == MemoryLayer::L2));
     Ok(())
 }
 

@@ -557,7 +557,7 @@ impl MemoryEngine {
                     distinct_sources.insert(scope_key);
                 }
             }
-            if distinct_sources.len() < 2 {
+            if distinct_sources.len() < 3 {
                 continue;
             }
 
