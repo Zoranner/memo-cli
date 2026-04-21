@@ -21,10 +21,24 @@
 |------------|-------------|
 | 🗄️ **Local Truth Source** | SQLite stores episodes, entities, facts, edges, and job/index state as the single source of truth |
 | 🔎 **Hybrid Retrieval** | Queries combine exact, alias, BM25, vector, graph, recency, layer, and hit-frequency signals with optional deep search |
-| 🧩 **Structured Ingest** | `memo ingest` can merge raw text with manual entities/facts and optional provider extraction |
-| 💤 **Consolidation Workflows** | `memo dream` and `memo run-dream-jobs` promote, cool, archive, and reconcile memory layers |
+| 🧩 **Structured Remembering** | `memo remember` can merge raw text with manual entities/facts and optional provider extraction |
+| 💤 **Consolidation Workflows** | `memo dream` promotes, cools, archives, and reconciles memory layers |
 | ♻️ **Rebuildable Indexes** | Text and vector indexes are derived layers that can be refreshed or rebuilt from SQLite |
 | 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through local provider configuration |
+
+## 🧭 Public Command Standard
+
+The public command language is defined by [Command Philosophy](docs/architecture/command-philosophy.md). That document is the product standard.
+
+Memo should be described and learned through this public action language:
+
+- `memo awaken`
+- `memo remember`
+- `memo recall`
+- `memo reflect`
+- `memo dream`
+- `memo state`
+- `memo restore`
 
 ## 🚀 Quick Start
 
@@ -40,33 +54,33 @@ irm https://memo.zoran.ink/install.ps1 | iex
 curl -fsSL https://memo.zoran.ink/install.sh | bash
 ```
 
-### Step 2: Initialize a Local Data Directory
+### Step 2: Awaken a Local Memory Space
 
 ```bash
-memo init
+memo awaken
 ```
 
 This creates a local `.memo` data directory with `config.toml` and `providers.toml` templates.
 
-### Step 3: Ingest and Query Memory
+### Step 3: Remember and Recall
 
 ```bash
-memo ingest "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
-memo query "Where does Alice live?"
-memo inspect <memory-id>
+memo remember "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
+memo recall "Where does Alice live?"
+memo reflect <memory-id>
 ```
 
-`memo ingest` writes to SQLite first. Structured entities and facts can come from manual flags and optional provider extraction.
+`memo remember` writes memory into the local truth source. Structured entities and facts can come from manual flags and optional provider extraction. `memo recall` retrieves relevant memory, and `memo reflect` inspects one memory record in detail.
 
-### Step 4: Run Maintenance Workflows
+### Step 4: Dream, Restore, and Inspect State
 
 ```bash
-memo dream --trigger manual
-memo refresh-index --scope all
-memo stats
+memo dream
+memo restore
+memo state
 ```
 
-`memo dream` runs consolidation over memory layers. `memo refresh-index` updates any derived indexes currently marked as pending. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
+`memo dream` runs consolidation over memory layers. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
 
 ## ⚙️ Configuration
 
@@ -84,7 +98,7 @@ Command-line args > Local config > Defaults
 
 1. Initialize templates:
 ```bash
-memo init
+memo awaken
 ```
 
 2. Edit `./.memo/providers.toml` with your provider credentials
@@ -97,7 +111,7 @@ memo init
 |---------|-----------|:--------:|-------------|---------|
 | `[embed]` | `embedding_provider` | ❌ | Embedding service reference (for example `openai.embed`) | - |
 | `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
-| `[extract]` | `extraction_provider` | ❌ | Extraction service reference (for example `openai.llm`) | - |
+| `[extract]` | `extraction_provider` | ❌ | Extraction service reference (for example `openai.extract`) | - |
 | `[extract]` | `min_confidence` | ❌ | Minimum extraction confidence kept after cleanup | `0.5` |
 | `[extract]` | `normalize_predicates` | ❌ | Normalize extracted predicates into stable relation names | `true` |
 | `[rerank]` | `rerank_provider` | ❌ | Rerank service reference (for example `aliyun.rerank`) | - |
@@ -108,7 +122,8 @@ Provider references use `<provider>.<service>` names such as `openai.embed` or `
 
 ## 📖 More Information
 
-- [Command Reference](docs/COMMANDS.md) - Detailed documentation for all current CLI commands
+- [Command Philosophy](docs/architecture/command-philosophy.md) - Public command language standard
+- [Command Reference](docs/COMMANDS.md) - Public command reference
 - [AI Agent Skill](skills/memo-brain/en-US/SKILL.md) - AI coding assistant integration guide
 - `config.example.toml` - Main configuration example
 - `providers.example.toml` - Provider configuration example

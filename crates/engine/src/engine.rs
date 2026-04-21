@@ -12,10 +12,9 @@ use crate::{
     db::{normalize_text, Database, ObservationContext},
     text_index::TextIndex,
     types::{
-        ConsolidationReport, ConsolidationTrigger, EngineConfig, EngineStats, EntityInput,
-        EntityRecord, EpisodeInput, FactInput, IngestPreview, MemoryLayer, MemoryRecord,
-        QueryResultSet, RebuildReport, RebuildScope, RetrieveReason, RetrieveRequest,
-        RetrieveResult,
+        DreamReport, DreamTrigger, EngineConfig, EntityInput, EntityRecord, EpisodeInput,
+        FactInput, MemoryLayer, MemoryRecord, RecallReason, RecallRequest, RecallResult,
+        RecallResultSet, RememberPreview, RestoreReport, RestoreScope, SystemState,
     },
     vector_index::VectorIndex,
     ExtractedEntity, ExtractedFact,
@@ -43,7 +42,7 @@ struct SessionCache {
 struct Candidate {
     memory: MemoryRecord,
     score: f32,
-    reasons: Vec<RetrieveReason>,
+    reasons: Vec<RecallReason>,
 }
 
 impl MemoryEngine {
@@ -63,13 +62,13 @@ impl MemoryEngine {
             session: Mutex::new(SessionCache::default()),
         };
 
-        engine.rebuild_indexes(RebuildScope::All)?;
+        engine.restore_full(RestoreScope::All)?;
         engine.refresh_l3_cache()?;
         Ok(engine)
     }
 
-    pub fn ingest_episode(&self, input: EpisodeInput) -> Result<String> {
-        let preview = self.preview_ingest(&input)?;
+    pub fn remember(&self, input: EpisodeInput) -> Result<String> {
+        let preview = self.preview_remember(&input)?;
 
         let episode_vector = self.embed_if_available(&input.content)?;
         let episode = self.db.insert_episode(&input, episode_vector.as_deref())?;
@@ -176,7 +175,7 @@ impl MemoryEngine {
         Ok(episode.id)
     }
 
-    pub fn preview_ingest(&self, input: &EpisodeInput) -> Result<IngestPreview> {
+    pub fn preview_remember(&self, input: &EpisodeInput) -> Result<RememberPreview> {
         let extraction = self
             .config
             .extraction_provider
@@ -185,7 +184,7 @@ impl MemoryEngine {
             .transpose()?
             .unwrap_or_default();
 
-        Ok(IngestPreview {
+        Ok(RememberPreview {
             content: input.content.clone(),
             layer: input.layer,
             entities: merge_entities(input.entities.clone(), extraction.entities),
@@ -197,7 +196,7 @@ impl MemoryEngine {
         })
     }
 
-    pub fn query(&self, request: RetrieveRequest) -> Result<QueryResultSet> {
+    pub fn recall(&self, request: RecallRequest) -> Result<RecallResultSet> {
         let started = Instant::now();
         let normalized = normalize_text(&request.query);
         let mut result = self.execute_query(&request, request.deep)?;
@@ -218,7 +217,7 @@ impl MemoryEngine {
         Ok(result)
     }
 
-    fn execute_query(&self, request: &RetrieveRequest, deep: bool) -> Result<QueryResultSet> {
+    fn execute_query(&self, request: &RecallRequest, deep: bool) -> Result<RecallResultSet> {
         let mut candidates: HashMap<String, Candidate> = HashMap::new();
         let limit = request.limit.max(1);
         let text_limit = if deep { limit * 12 } else { limit * 6 };
@@ -236,8 +235,8 @@ impl MemoryEngine {
 
         for record in self.db.search_exact_alias(&request.query)? {
             let reason = match &record {
-                MemoryRecord::Entity(_) => RetrieveReason::Alias,
-                _ => RetrieveReason::Exact,
+                MemoryRecord::Entity(_) => RecallReason::Alias,
+                _ => RecallReason::Exact,
             };
             add_candidate(
                 &mut candidates,
@@ -258,7 +257,7 @@ impl MemoryEngine {
                         Candidate {
                             memory,
                             score: 0.4 + hit.score.max(0.0) * 0.15,
-                            reasons: vec![RetrieveReason::Bm25],
+                            reasons: vec![RecallReason::Bm25],
                         },
                     );
                 }
@@ -275,7 +274,7 @@ impl MemoryEngine {
                         Candidate {
                             memory,
                             score: hit.score.max(0.0) * 1.2,
-                            reasons: vec![RetrieveReason::Vector],
+                            reasons: vec![RecallReason::Vector],
                         },
                     );
                 }
@@ -293,7 +292,7 @@ impl MemoryEngine {
                 Candidate {
                     memory,
                     score: 0.35 / hops as f32,
-                    reasons: vec![RetrieveReason::GraphHop { hops }],
+                    reasons: vec![RecallReason::GraphHop { hops }],
                 },
             );
         }
@@ -304,17 +303,17 @@ impl MemoryEngine {
                 let recency = recency_boost(candidate.memory.activity_at());
                 if recency > 0.0 {
                     candidate.score += recency;
-                    candidate.reasons.push(RetrieveReason::RecencyBoost);
+                    candidate.reasons.push(RecallReason::RecencyBoost);
                 }
                 let layer_boost = candidate.memory.layer().boost();
                 if layer_boost > 0.0 {
                     candidate.score += layer_boost;
-                    candidate.reasons.push(RetrieveReason::LayerBoost);
+                    candidate.reasons.push(RecallReason::LayerBoost);
                 }
                 let frequency_boost = hit_frequency_boost(candidate.memory.hit_count());
                 if frequency_boost > 0.0 {
                     candidate.score += frequency_boost;
-                    candidate.reasons.push(RetrieveReason::HitFrequencyBoost);
+                    candidate.reasons.push(RecallReason::HitFrequencyBoost);
                 }
                 candidate
             })
@@ -326,8 +325,8 @@ impl MemoryEngine {
         let results = selected
             .into_iter()
             .map(|mut candidate| {
-                candidate.reasons.push(RetrieveReason::MmrSelected);
-                RetrieveResult {
+                candidate.reasons.push(RecallReason::MmrSelected);
+                RecallResult {
                     memory: candidate.memory,
                     score: candidate.score,
                     reasons: candidate.reasons,
@@ -335,52 +334,49 @@ impl MemoryEngine {
             })
             .collect::<Vec<_>>();
 
-        Ok(QueryResultSet {
+        Ok(RecallResultSet {
             total_candidates: results.len(),
             deep_search_used: deep,
             results,
         })
     }
 
-    pub fn inspect_memory(&self, id: &str) -> Result<MemoryRecord> {
+    pub fn reflect(&self, id: &str) -> Result<MemoryRecord> {
         self.db
             .get_memory(id)?
             .with_context(|| format!("memory not found: {}", id))
     }
 
-    pub fn consolidate(&self, trigger: ConsolidationTrigger) -> Result<ConsolidationReport> {
-        let job_id = self
-            .db
-            .create_consolidation_job(trigger.as_str(), "running")?;
-        let report = self.run_consolidation(trigger);
+    pub fn dream(&self, trigger: DreamTrigger) -> Result<DreamReport> {
+        let job_id = self.db.create_dream_job(trigger.as_str(), "running")?;
+        let report = self.run_dream(trigger);
         match report {
             Ok(report) => {
-                self.db.complete_consolidation_job(&job_id)?;
+                self.db.complete_dream_job(&job_id)?;
                 Ok(report)
             }
             Err(error) => {
-                let _ = self.db.fail_consolidation_job(&job_id);
+                let _ = self.db.fail_dream_job(&job_id);
                 Err(error)
             }
         }
     }
 
-    pub fn schedule_consolidation(&self, trigger: ConsolidationTrigger) -> Result<String> {
-        self.db
-            .create_consolidation_job(trigger.as_str(), "pending")
+    pub fn schedule_dream(&self, trigger: DreamTrigger) -> Result<String> {
+        self.db.create_dream_job(trigger.as_str(), "pending")
     }
 
-    pub fn run_pending_consolidation_jobs(&self, limit: usize) -> Result<Vec<ConsolidationReport>> {
+    pub fn run_pending_dreams(&self, limit: usize) -> Result<Vec<DreamReport>> {
         let mut reports = Vec::new();
-        for (job_id, trigger) in self.db.claim_pending_consolidation_jobs(limit.max(1))? {
-            let trigger = trigger.parse::<ConsolidationTrigger>()?;
-            match self.run_consolidation(trigger) {
+        for (job_id, trigger) in self.db.claim_pending_dream_jobs(limit.max(1))? {
+            let trigger = trigger.parse::<DreamTrigger>()?;
+            match self.run_dream(trigger) {
                 Ok(report) => {
-                    self.db.complete_consolidation_job(&job_id)?;
+                    self.db.complete_dream_job(&job_id)?;
                     reports.push(report);
                 }
                 Err(error) => {
-                    let _ = self.db.fail_consolidation_job(&job_id);
+                    let _ = self.db.fail_dream_job(&job_id);
                     return Err(error);
                 }
             }
@@ -388,11 +384,11 @@ impl MemoryEngine {
         Ok(reports)
     }
 
-    fn run_consolidation(&self, trigger: ConsolidationTrigger) -> Result<ConsolidationReport> {
+    fn run_dream(&self, trigger: DreamTrigger) -> Result<DreamReport> {
         const ENTITY_L3_MIN_SESSION_SPAN: Duration = Duration::days(1);
         const L3_STALE_AFTER: Duration = Duration::days(30);
 
-        let mut report = ConsolidationReport {
+        let mut report = DreamReport {
             trigger: trigger.as_str().to_string(),
             jobs_created: 1,
             ..Default::default()
@@ -491,17 +487,13 @@ impl MemoryEngine {
             }
             let candidate = &mut candidates[item.index];
             candidate.score += 5.0 + item.score.max(0.0);
-            candidate.reasons.push(RetrieveReason::Rerank);
+            candidate.reasons.push(RecallReason::Rerank);
         }
 
         Ok(())
     }
 
-    fn commit_query_results(
-        &self,
-        normalized_query: &str,
-        results: &[RetrieveResult],
-    ) -> Result<()> {
+    fn commit_query_results(&self, normalized_query: &str, results: &[RecallResult]) -> Result<()> {
         for result in results {
             let _ = self.db.increment_hit_count(&result.memory);
         }
@@ -734,10 +726,10 @@ impl MemoryEngine {
         Ok(downgraded)
     }
 
-    pub fn rebuild_indexes(&self, scope: RebuildScope) -> Result<RebuildReport> {
-        let mut report = RebuildReport::default();
+    pub fn restore_full(&self, scope: RestoreScope) -> Result<RestoreReport> {
+        let mut report = RestoreReport::default();
 
-        if matches!(scope, RebuildScope::All | RebuildScope::Text) {
+        if matches!(scope, RestoreScope::All | RestoreScope::Text) {
             let docs = self.db.load_search_documents()?;
             let count = self
                 .text_index
@@ -749,7 +741,7 @@ impl MemoryEngine {
             report.text_documents = count;
         }
 
-        if matches!(scope, RebuildScope::All | RebuildScope::Vector) {
+        if matches!(scope, RestoreScope::All | RestoreScope::Vector) {
             let docs = self.db.load_vector_documents()?;
             let count = self
                 .vector_index
@@ -769,35 +761,35 @@ impl MemoryEngine {
         Ok(report)
     }
 
-    pub fn refresh_pending_indexes(&self, scope: RebuildScope) -> Result<RebuildReport> {
+    pub fn restore(&self, scope: RestoreScope) -> Result<RestoreReport> {
         match scope {
-            RebuildScope::All => self.rebuild_indexes(RebuildScope::All),
-            RebuildScope::Text => {
+            RestoreScope::All => self.restore_full(RestoreScope::All),
+            RestoreScope::Text => {
                 if self.db.index_status("text")?.status == "pending" {
-                    self.rebuild_indexes(RebuildScope::Text)
+                    self.restore_full(RestoreScope::Text)
                 } else {
-                    Ok(RebuildReport::default())
+                    Ok(RestoreReport::default())
                 }
             }
-            RebuildScope::Vector => {
+            RestoreScope::Vector => {
                 if self.db.index_status("vector")?.status == "pending" {
-                    self.rebuild_indexes(RebuildScope::Vector)
+                    self.restore_full(RestoreScope::Vector)
                 } else {
-                    Ok(RebuildReport::default())
+                    Ok(RestoreReport::default())
                 }
             }
         }
     }
 
-    pub fn stats(&self) -> Result<EngineStats> {
+    pub fn state(&self) -> Result<SystemState> {
         let (episode_count, entity_count, fact_count, edge_count) = self.db.stats()?;
-        Ok(EngineStats {
+        Ok(SystemState {
             episode_count,
             entity_count,
             fact_count,
             edge_count,
             l3_cached: self.l3_cache.lock().expect("l3 mutex poisoned").len(),
-            consolidation_jobs: self.db.consolidation_job_stats()?,
+            dream_jobs: self.db.dream_job_stats()?,
             text_index: self.db.index_status("text")?,
             vector_index: self.db.index_status("vector")?,
         })
@@ -825,7 +817,7 @@ impl MemoryEngine {
         Ok(Some(Candidate {
             memory,
             score: 3.5,
-            reasons: vec![RetrieveReason::L0],
+            reasons: vec![RecallReason::L0],
         }))
     }
 
@@ -838,7 +830,7 @@ impl MemoryEngine {
                 result.push(Candidate {
                     memory: record.clone(),
                     score: 2.4,
-                    reasons: vec![RetrieveReason::L3],
+                    reasons: vec![RecallReason::L3],
                 });
             }
         }
@@ -873,11 +865,7 @@ impl MemoryEngine {
         Ok(())
     }
 
-    fn record_query_session(
-        &self,
-        normalized_query: &str,
-        results: &[RetrieveResult],
-    ) -> Result<()> {
+    fn record_query_session(&self, normalized_query: &str, results: &[RecallResult]) -> Result<()> {
         let mut session = self.session.lock().expect("session mutex poisoned");
         session.recent_topics.push(normalized_query.to_string());
         for result in results {
@@ -1024,7 +1012,7 @@ fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
 }
 
-fn should_auto_escalate_to_deep_search(result: &QueryResultSet) -> bool {
+fn should_auto_escalate_to_deep_search(result: &RecallResultSet) -> bool {
     if result.results.len() < 2 {
         return false;
     }
@@ -1033,7 +1021,7 @@ fn should_auto_escalate_to_deep_search(result: &QueryResultSet) -> bool {
     if first.reasons.iter().any(|reason| {
         matches!(
             reason,
-            RetrieveReason::L0 | RetrieveReason::L3 | RetrieveReason::Exact | RetrieveReason::Alias
+            RecallReason::L0 | RecallReason::L3 | RecallReason::Exact | RecallReason::Alias
         )
     }) {
         return false;

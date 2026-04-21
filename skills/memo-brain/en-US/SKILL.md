@@ -1,221 +1,181 @@
 ---
 name: memo-brain
-description: Manages and retrieves contextual memories across conversations using a vector database. Records experiences, solutions, and user habits. Provides context-aware assistance through semantic search. Use when needing to remember information, search memories, or when the user explicitly asks to "remember this" or "search memory".
+description: Manage and retrieve cross-conversation memory. Public action semantics follow command-philosophy. Use for "remember this", "search memory", "show current state", or restore flows.
 ---
 
 # Memo Brain Management
 
-Record and retrieve valuable knowledge using vector database semantic search.
+This skill follows the public action language defined in `docs/architecture/command-philosophy.md`.
 
-**⚠️ Shell Tool Parameters:**
+## Standard Actions
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| `required_permissions` | `["network"]` | All commands need network access (calling embedding/LLM APIs) |
-| `block_until_ms` | `120000` | `search` command takes 1-2 minutes (LLM query decomposition + multiple retrievals + synthesis), recommend 2-minute timeout |
+- `memo awaken`
+- `memo remember`
+- `memo recall`
+- `memo reflect`
+- `memo dream`
+- `memo state`
+- `memo restore`
 
-**Example:**
+## Current Capability Boundaries
 
-```json
-{
-  "command": "memo search \"...\" -n 10",
-  "required_permissions": ["network"],
-  "block_until_ms": 120000
-}
-```
+The current CLI does **not** provide these old interfaces. Do not reason or act as if they still exist:
 
-## Quick Reference
+- `memo embed`
+- `memo search`
+- `memo update`
+- `memo merge`
+- `memo delete`
+- `memo list`
+- `--tags`
+- `--after` / `--before`
 
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `memo embed <text>` | Record memory | `memo embed "Context:... Action:..." --tags rust,cli` |
-| `memo search <query>` | Search memories | `memo search "how to fix MySQL timeout"` |
-| `memo update <id>` | Update memory | `memo update abc123 --content "..." --tags rust` |
-| `memo merge <ids>...` | Merge memories | `memo merge id1 id2 --content "..." --tags rust` |
-| `memo delete <id>` | Delete memory | `memo delete abc123 --force` |
-| `memo list` | List memories | `memo list` |
+If the user speaks in that old product language, translate it into the standard action semantics. If the current system cannot support the request, say so directly instead of fabricating capabilities.
 
-**Duplicate Detection:** When embedding detects similar content (similarity > 0.85), prioritize merging or updating.
+## When to Use
 
----
+Use this skill when:
 
-## Five-Dimensional Memory Model
+- The user explicitly asks to remember or record something
+- The user wants to search or recall past memory
+- You need details for one memory record
+- You need to run dream / maintenance
+- You need current engine state
+- You need to restore derived layers
 
-All memories are described using five dimensions (dimensions are optional, keep at least "Action" and "Result" or "Insight"):
+Do not use this skill when:
 
-```
-Context → Background, situation, environment
-Intent  → What to do, what to solve
-Action  → What was done, approach, process
-Result  → Outcome, effectiveness
-Insight → What was learned, gotchas, reusable experience
-```
+- The task is ordinary code search inside the repository
+- The task does not need cross-conversation memory
+- The request depends on update/merge/delete/list behaviors that do not exist in the current CLI
 
-**Simple Knowledge Example (Action + Insight):**
+## Recommended Workflow
 
-```bash
-memo embed "Rust async-trait usage
-
-Action: Add #[async_trait] macro to both trait and impl
-Insight: Has slight performance overhead (Box allocation), suitable for non-critical paths" --tags rust,async
-```
-
-**Complete Problem-Solving Example (All Five Dimensions):**
+### Awaken a Memory Space
 
 ```bash
-memo embed "MySQL Connection Timeout - AWS Security Group
-
-Context: Works locally, times out after deploying to AWS
-Intent: Find root cause and fix connection failure
-Action:
-- Check connection pool config (max_connections, timeout) → No effect
-- Restart MySQL → No effect
-- Check MySQL logs, no connection records (key clue)
-- Check AWS security group, port 3306 not open
-Result: Connection restored after opening port 3306 in security group
-Insight: Cloud servers close all ports by default, must check security group before deployment" --tags mysql,cloud,debug
+memo awaken
 ```
 
-**Flexibility Principles:**
-- Dimensions are optional, order is flexible, labels can be omitted
-- Five dimensions are a thinking framework, not a format template
-- Goal is clear content, not format compliance
+### Remember Content
 
-See [examples.md](examples.md) for more examples
-
----
-
-## Core Workflows
-
-### When to Record
-
-**Should record:**
-- Solved complex problem (complete troubleshooting process)
-- Made technical decision (solution comparison and rationale)
-- Discovered valuable knowledge (reusable experience)
-- User explicitly asks ("remember this", "record this")
-
-**Recognition signals (trigger complete recording):**
-- Debugging, troubleshooting, fixing process in conversation
-- Tried multiple approaches ("tried X but didn't work")
-- Discussed tech selection, architectural decisions
-- User says "struggled for long time", "finally solved"
-
-**Should not record:**
-- Simple syntax queries, common knowledge
-- Duplicate content (search first, prioritize merge/update)
-
-### When to Search
-
-**Trigger scenarios:**
-- Similar problem ("how did we solve this before")
-- User explicitly asks ("search memory", "do you remember")
-- Check related experience before new task
-- Find recent work (use `--after`)
-
-**Search principles (based on Five-Dimensional Model):**
-
-Vector search relies on semantic understanding; queries should include sufficient context:
-- ✅ Include **Context** (scenario) and **Intent** (goal): Describe your situation and what you want to solve
-- ✅ Use complete question sentences: Like asking an experienced colleague
-- ✅ Search automatically decomposes the query into sub-questions via LLM, searches in parallel, and synthesizes a comprehensive answer
-- ❌ Don't just list keywords (e.g., "rust async trait")
-
-**Query construction:**
-
-| Intent Type | Query Construction | Example |
-|-------------|-------------------|---------|
-| Scenario Replay | Context + Symptoms + Problem | `memo search "MySQL connection keeps timing out after deploying to Alibaba Cloud, how to troubleshoot"` |
-| Decision Recall | Context + Requirements + Decision Point | `memo search "memo-brain needs local embedded vector database, why choose LanceDB"` |
-| Knowledge Query | Use Case + Technical Point | `memo search "Rust project needs async methods in traits, how to implement"` |
-
-**Comparison examples:**
+Standard action: `remember`
 
 ```bash
-# ❌ Queries lacking context
-memo search "why choose LanceDB"
-memo search "MySQL timeout"
-
-# ✅ Queries with context and intent
-memo search "memo-brain needs local embedded vector database, why choose LanceDB"
-memo search "MySQL connection keeps timing out after deploying to Alibaba Cloud, how to troubleshoot"
+memo remember "<content>"
 ```
 
-### Handling Duplicate Memories
-
-Decision priority when similar memories detected (similarity > 0.85):
-
-1. **Merge** - Content overlaps and can be consolidated (mind granularity)
-2. **Update** - New content supplements existing memory (avoid oversizing)
-3. **Split** - Existing memory is too large or has multiple topics
-4. **Add New** - Confirmed as completely independent knowledge
+If you already know structured information, add it explicitly:
 
 ```bash
-# Update existing memory
-memo update abc123 --content "..." --tags rust,async
-
-# Merge similar memories
-memo merge id1 id2 --content "..." --tags rust,error-handling
-
-# Delete and re-embed
-memo delete abc123 --force
-memo embed "..." --tags rust,optimization
+memo remember "<content>" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
 ```
 
-**Granularity control:**
-- Each memory 100-400 words, max 600 words
-- Single topic, focused on one core problem or experience
-- Clear five-dimensional structure, easy to understand
+If you are unsure what the final merged payload will look like, preview first:
 
----
+```bash
+memo remember "<content>" --dry-run
+```
 
-## Tagging Strategy
+### Recall Content
 
-Use multi-dimensional tags for classification and filtering (3-6 tags optimal):
+Standard action: `recall`
 
-| Dimension | Example |
-|-----------|---------|
-| Tech Stack | `rust,async,tokio` |
-| Scenario | `debug,performance,security` |
-| Importance | `important,decision,pitfall` |
-| Project | `memo-brain,project-x` |
+```bash
+memo recall "<query>" -n 10
+```
 
-**Principles:**
-- Include tech point + scenario/type
-- Avoid overly generic (e.g., "code", "fix")
-- Use specific, distinctive tags (e.g., "mysql" not "database")
+If fast-path retrieval is likely insufficient:
 
----
+```bash
+memo recall "<query>" -n 10 --deep
+```
 
-## Time Filtering
+### Reflect on One Memory
 
-| Scenario | Command Example |
-|----------|-----------------|
-| Recent memories | `memo search "what database optimization work have I done recently" --after 2026-01-20 -n 10` |
-| Time range | `memo search "what was the project progress and main issues in January" --after 2026-01-01 --before 2026-01-31` |
-| With time filtering | `memo search "what bugs did I fix in the past week and how did I solve them" --after 2026-01-25 -n 15` |
+Standard action: `reflect`
 
----
+```bash
+memo reflect <memory-id>
+```
+
+### Dream
+
+Standard action: `dream`
+
+```bash
+memo dream
+```
+
+### Inspect State
+
+Standard action: `state`
+
+```bash
+memo state
+```
+
+### Restore Derived Layers
+
+Standard action: `restore`
+
+```bash
+memo restore
+```
+
+For explicit full restore:
+
+```bash
+memo restore --full
+```
+
+## How to Choose the Action
+
+| User Intent | Standard Action | Current Execution |
+|-------------|-----------------|-------------------|
+| "remember this conclusion" | `remember` | `memo remember ...` |
+| "did we solve something like this before" | `recall` | `memo recall ...` |
+| "show me that memory in detail" | `reflect` | `memo reflect ...` |
+| "organize the memory" | `dream` | `memo dream` |
+| "what is the current system state" | `state` | `memo state` |
+| "indexes may be inconsistent, restore them" | `restore` | `memo restore` |
+
+## Retrieval and Recording Principles
+
+### Recording Principles
+
+- Record durable experience, facts, decisions, or troubleshooting outcomes worth keeping
+- Focus on the content first; add `--entity` and `--fact` when you can do so concretely
+- If provider extraction may change the final payload, use `--dry-run` first
+- Do not design workflows around nonexistent features such as tags, update, merge, or list
+
+### Retrieval Principles
+
+- Queries should include situation and intent, not only loose keywords
+- Start with default `memo recall`
+- Only use `--deep` when default results look weak, the topic spans multiple layers, or the user explicitly asks for deeper recall
+- Use `memo reflect` when you need detail on one returned record
 
 ## Common Mistakes
 
-| ❌ Don't | ✅ Do |
-|----------|--------|
-| Record entire code files | Extract key snippets and approach |
-| Record every answer | Only valuable insights and complete process |
-| Record without checking | Search first to avoid duplicates |
-| Skip when finding similar | Prioritize merge or update |
-| Use vague titles | Be specific and descriptive |
-| Too many generic tags | Keep tags focused and distinctive |
-| Keyword-only search | Use complete question sentences |
-| Limiting results too much | Increase `-n` parameter to get more related memories |
-| Force five-dimensional format | Natural expression, dimensions optional |
-
----
+| Don't | Do |
+|-------|----|
+| Keep calling `memo search` / `memo embed` | Translate into standard action semantics |
+| Pretend old commands are still the standard | Use `awaken/remember/recall/reflect/dream/state/restore` directly |
+| Fake update/merge/delete/list capabilities | State directly that they are not implemented in the current CLI |
+| Treat `extract` as the main memory entrypoint | Organize the workflow around public actions only |
+| Mix up restore and dream | Keep `restore` and `dream` as different actions |
 
 ## Trigger Phrases
 
 | Action | Trigger Phrases |
 |--------|-----------------|
-| **Record** | "remember this", "record this", "summarize experience", "save this" |
-| **Search** | "how did we do it", "search memory", "do you remember", "recently...", "any similar experience" |
+| `remember` | "remember this", "record this", "save this experience" |
+| `recall` | "how did we do it before", "search memory", "do you remember" |
+| `reflect` | "show that memory in detail", "open the details" |
+| `dream` | "organize memory", "run dream" |
+| `state` | "show current state" |
+| `restore` | "restore derived layer", "restore index state" |
+
+For executable examples, see [examples.md](examples.md).
+

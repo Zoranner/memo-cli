@@ -175,7 +175,7 @@ pub struct EpisodeInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IngestPreview {
+pub struct RememberPreview {
     pub content: String,
     pub layer: MemoryLayer,
     pub entities: Vec<EntityInput>,
@@ -343,7 +343,7 @@ impl MemoryRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RetrieveReason {
+pub enum RecallReason {
     L0,
     L3,
     Exact,
@@ -359,22 +359,22 @@ pub enum RetrieveReason {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetrieveResult {
+pub struct RecallResult {
     pub memory: MemoryRecord,
     pub score: f32,
     #[serde(default)]
-    pub reasons: Vec<RetrieveReason>,
+    pub reasons: Vec<RecallReason>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QueryResultSet {
-    pub results: Vec<RetrieveResult>,
+pub struct RecallResultSet {
+    pub results: Vec<RecallResult>,
     pub deep_search_used: bool,
     pub total_candidates: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RetrieveRequest {
+pub struct RecallRequest {
     pub query: String,
     #[serde(default = "default_limit")]
     pub limit: usize,
@@ -383,14 +383,14 @@ pub struct RetrieveRequest {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum ConsolidationTrigger {
+pub enum DreamTrigger {
     SessionEnd,
     Idle,
     BeforeCompaction,
     Manual,
 }
 
-impl ConsolidationTrigger {
+impl DreamTrigger {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::SessionEnd => "session_end",
@@ -401,7 +401,7 @@ impl ConsolidationTrigger {
     }
 }
 
-impl std::str::FromStr for ConsolidationTrigger {
+impl std::str::FromStr for DreamTrigger {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -416,7 +416,7 @@ impl std::str::FromStr for ConsolidationTrigger {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ConsolidationReport {
+pub struct DreamReport {
     pub trigger: String,
     pub promoted_to_l2: usize,
     pub promoted_to_l3: usize,
@@ -427,14 +427,14 @@ pub struct ConsolidationReport {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum RebuildScope {
+pub enum RestoreScope {
     All,
     Text,
     Vector,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RebuildReport {
+pub struct RestoreReport {
     pub text_documents: usize,
     pub vector_documents: usize,
 }
@@ -448,7 +448,7 @@ pub struct IndexStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ConsolidationJobStats {
+pub struct DreamJobStats {
     pub pending: usize,
     pub running: usize,
     pub completed: usize,
@@ -456,13 +456,13 @@ pub struct ConsolidationJobStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct EngineStats {
+pub struct SystemState {
     pub episode_count: usize,
     pub entity_count: usize,
     pub fact_count: usize,
     pub edge_count: usize,
     pub l3_cached: usize,
-    pub consolidation_jobs: ConsolidationJobStats,
+    pub dream_jobs: DreamJobStats,
     pub text_index: IndexStatus,
     pub vector_index: IndexStatus,
 }

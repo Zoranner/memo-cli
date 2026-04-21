@@ -38,8 +38,8 @@ Required concepts to include:
 |------------|-------------|
 | Local truth source | SQLite stores episodes, entities, facts, edges, and job/index state |
 | Hybrid retrieval | Query combines exact/alias/BM25/vector/graph signals with optional deep search |
-| Structured ingest | `memo ingest` can merge manual facts/entities with provider extraction |
-| Consolidation workflows | `memo dream` and `memo run-dream-jobs` promote, cool, and reconcile memory layers |
+| Structured remember | `memo remember` can merge manual facts/entities with provider extraction |
+| Consolidation workflows | `memo dream` promotes, cools, and reconciles memory layers |
 | Rebuildable indexes | Text/vector indexes are derived and can be refreshed or rebuilt from SQLite |
 | Provider-backed AI hooks | Extraction, embedding, and rerank are wired through provider config |
 ```
@@ -50,11 +50,11 @@ Remove old examples that use `memo search` and `memo embed`. Replace them with a
 
 ```md
 ```bash
-memo init
-memo ingest "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
-memo query "Where does Alice live?"
+memo awaken
+memo remember "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
+memo recall "Where does Alice live?"
 memo dream --trigger manual
-memo refresh-index --scope all
+memo restore
 ```
 ```
 
@@ -70,7 +70,7 @@ Keep installation and config sections, but ensure wording matches current archit
 
 ```md
 - Local config lives under the selected data dir (default `.memo`)
-- `memo init` writes `config.toml` and `providers.toml` templates into that data dir
+- `memo awaken` writes `config.toml` and `providers.toml` templates into that data dir
 - provider references use `<provider>.<service>` names such as `openai.embed` or `aliyun.rerank`
 ```
 
@@ -115,11 +115,11 @@ Remove old `memo search` / `memo embed` examples and replace them with a Chinese
 Use commands like:
 
 ```bash
-memo init
-memo ingest "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
-memo query "Alice 住在哪里？"
+memo awaken
+memo remember "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
+memo recall "Alice 住在哪里？"
 memo dream --trigger manual
-memo refresh-index --scope all
+memo restore
 ```
 
 - [ ] **Step 3: Keep claims aligned with English README**
@@ -251,3 +251,12 @@ Expected:
 - Spec coverage: README, Chinese README, and roadmap current-state reconciliation are each covered by a dedicated task.
 - Placeholder scan: No TBD/TODO placeholders remain.
 - Consistency: All tasks use the same command set and same scope boundary.
+
+
+
+
+
+
+
+
+

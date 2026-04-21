@@ -3,7 +3,7 @@
 [embed]
 # Reference format: <provider>.<service>
 embedding_provider = "openai.embed"
-# Reserved for duplicate handling during ingest.
+# Reserved for duplicate handling during remember.
 duplicate_threshold = 0.85
 
 [extract]
@@ -15,6 +15,8 @@ min_confidence = 0.5
 normalize_predicates = true
 
 [rerank]
-# Optional deep-search rerank provider. Only used when query --deep is enabled.
+# Optional deep-search rerank provider. Only used when recall --deep is enabled.
 # Rerank is currently supported by providers like aliyun.rerank and zhipu.rerank.
 # rerank_provider = "aliyun.rerank"
+
+

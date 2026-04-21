@@ -1,221 +1,181 @@
 ---
 name: memo-brain
-description: 管理和检索跨对话的上下文记忆，使用向量数据库记录经验、解决方案和用户习惯。通过语义搜索提供上下文感知的协助。当需要记住信息、搜索记忆、或用户明确要求"记住这个"、"查记忆"时使用。
+description: 管理和检索跨对话的上下文记忆。公开动作语义以 command-philosophy 为准。适用于“记住这个”“查记忆”“看看当前状态”“恢复索引”等场景。
 ---
 
 # Memo Brain 记忆管理
 
-使用向量数据库语义搜索记录和检索有价值的知识。
+这个 skill 的动作语义，以 `docs/architecture/command-philosophy.md` 为准。
 
-**⚠️ Shell 工具参数设置：**
+## 标准动作
 
-| 参数 | 值 | 说明 |
-|------|-----|------|
-| `required_permissions` | `["network"]` | 所有命令需要网络访问（调用嵌入/LLM API） |
-| `block_until_ms` | `120000` | `search` 命令需要 1-2 分钟（LLM 拆解查询 + 多次检索 + 汇总），建议 2 分钟超时 |
+- `memo awaken`
+- `memo remember`
+- `memo recall`
+- `memo reflect`
+- `memo dream`
+- `memo state`
+- `memo restore`
 
-**示例：**
+## 当前能力边界
 
-```json
-{
-  "command": "memo search \"...\" -n 10",
-  "required_permissions": ["network"],
-  "block_until_ms": 120000
-}
-```
+当前 CLI **没有**这些旧接口，禁止再按它们思考或执行：
 
-## 命令速查
+- `memo embed`
+- `memo search`
+- `memo update`
+- `memo merge`
+- `memo delete`
+- `memo list`
+- `--tags`
+- `--after` / `--before`
 
-| 命令 | 用途 | 示例 |
-|---------|---------|---------|
-| `memo embed <text>` | 记录记忆 | `memo embed "境：... 行：..." --tags rust,cli` |
-| `memo search <query>` | 搜索记忆 | `memo search "如何解决 MySQL 连接超时"` |
-| `memo update <id>` | 更新记忆 | `memo update abc123 --content "..." --tags rust` |
-| `memo merge <ids>...` | 合并记忆 | `memo merge id1 id2 --content "..." --tags rust` |
-| `memo delete <id>` | 删除记忆 | `memo delete abc123 --force` |
-| `memo list` | 列出记忆 | `memo list` |
+如果用户表达的是这些旧产品心智，要翻译成标准动作语义；如果当前系统做不到，就直接说明缺口，不要伪造能力。
 
-**重复检测：** 嵌入时如果检测到相似内容（相似度 > 0.85）会提示，应优先考虑合并或更新。
+## 何时使用
 
----
+适用场景：
 
-## 五维记忆模型
+- 用户明确要求“记住这个”“记录下来”“保存经验”
+- 用户要“查记忆”“之前怎么做的”“还记得吗”
+- 需要检查某条记忆的详情
+- 需要执行一次 dream / maintenance
+- 需要查看当前引擎状态
+- 需要恢复派生层
 
-所有记忆用五个维度描述（维度可选，至少保留"行"和"果"或"悟"）：
+不适用场景：
 
-```
-境（Context）  → 背景、情况、环境
-欲（Intent）   → 想做什么、解决什么
-行（Action）   → 做了什么、思路、过程
-果（Result）   → 结果、效果
-悟（Insight）  → 学到什么、注意事项、可复用经验
-```
+- 只是普通代码搜索或仓库内文本检索
+- 当前任务不需要跨对话记忆
+- 需要的能力是 update/merge/delete/list 这一类当前尚未落地的旧接口
 
-**简单知识点示例（行 + 悟）：**
+## 推荐工作流
 
-```bash
-memo embed "Rust async-trait 使用
-
-行：在 trait 和 impl 上添加 #[async_trait] 宏
-悟：会有轻微性能开销（Box 分配），适合非性能关键路径" --tags rust,async
-```
-
-**完整问题解决示例（五维）：**
+### 唤醒记忆空间
 
 ```bash
-memo embed "MySQL 连接超时排查 - 阿里云安全组
-
-境：本地正常，部署到阿里云后连接一直超时
-欲：找到连接失败原因并解决
-行：
-- 检查连接池配置（max_connections, timeout）→ 无效
-- 重启 MySQL → 无效
-- 检查 MySQL 日志，无连接记录（关键线索）
-- 检查阿里云安全组，发现 3306 端口未开放
-果：开放安全组 3306 端口后连接恢复
-悟：云服务器默认关闭所有端口，部署前必须检查安全组配置" --tags mysql,cloud,debug
+memo awaken
 ```
 
-**灵活性原则：**
-- 维度可选、顺序灵活、可省略标签名
-- 五维是思维框架，不是格式模板
-- 目标是内容清晰，不是格式规范
+### 记住内容
 
-更多示例见 [examples.md](examples.md)
-
----
-
-## 核心工作流程
-
-### 何时记录
-
-**应该记录：**
-- 解决了复杂问题（完整的排查和解决过程）
-- 做出了技术决策（方案对比和选择原因）
-- 发现了有价值的知识点（可复用的经验）
-- 用户明确要求（"记住这个"、"记录下来"）
-
-**识别信号（触发完整记录）：**
-- 对话中出现调试、排查、修复过程
-- 尝试了多个方案（"试过 X 但不行"）
-- 讨论了技术选型、架构决策
-- 用户说"折腾了很久"、"终于解决了"
-
-**不应该记录：**
-- 简单语法查询、常识性知识
-- 重复内容（先搜索，优先合并/更新）
-
-### 何时搜索
-
-**触发场景：**
-- 遇到类似问题（"之前怎么解决的"）
-- 用户明确要求（"查记忆"、"还记得吗"）
-- 开始新任务前检查相关经验
-- 查找最近工作（使用 `--after`）
-
-**搜索原则（基于五维模型）：**
-
-向量搜索依赖语义理解，查询应包含足够的上下文信息：
-- ✅ 包含**境**（场景）和**欲**（意图）：描述你的情况和想解决什么
-- ✅ 使用完整问题句式：就像在问一个有经验的同事
-- ✅ 搜索会自动由 LLM 拆解为多个子问题并行检索，最终综合总结
-- ❌ 不要只罗列关键词（如 "rust async trait"）
-
-**搜索查询构建：**
-
-| 意图类型 | 查询构建 | 示例 |
-|---------|---------|------|
-| 情景复现 | 场景 + 症状 + 问题 | `memo search "部署到阿里云后 MySQL 连接一直超时，如何排查"` |
-| 决策回溯 | 场景 + 需求 + 决策点 | `memo search "memo-brain 需要本地嵌入式向量数据库，为什么选择 LanceDB"` |
-| 知识查询 | 使用场景 + 技术点 | `memo search "Rust 项目中 trait 需要异步方法，如何实现"` |
-
-**对比示例：**
+标准动作：`remember`
 
 ```bash
-# ❌ 缺乏上下文的查询
-memo search "为什么选择 LanceDB"
-memo search "MySQL 连接超时"
-
-# ✅ 包含场景和意图的查询
-memo search "memo-brain 需要本地嵌入式向量数据库，为什么选择 LanceDB"
-memo search "部署到阿里云后 MySQL 连接一直超时，如何排查"
+memo remember "<content>"
 ```
 
-### 处理重复记忆
-
-检测到相似记忆（相似度 > 0.85）时的决策优先级：
-
-1. **合并** - 内容有重叠且可整合（注意粒度控制）
-2. **更新** - 新内容是对现有记忆的补充（注意不要过大）
-3. **拆分** - 现有记忆已过大或包含多个独立主题
-4. **新增** - 确认是完全独立的新知识点
+如果你已经知道结构化信息，优先补充：
 
 ```bash
-# 更新现有记忆
-memo update abc123 --content "..." --tags rust,async
-
-# 合并相似记忆
-memo merge id1 id2 --content "..." --tags rust,error-handling
-
-# 删除后重新嵌入
-memo delete abc123 --force
-memo embed "..." --tags rust,optimization
+memo remember "<content>" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
 ```
 
-**粒度控制：**
-- 每条记忆 100-400 字，不超过 600 字
-- 单一主题，聚焦一个核心问题或经验
-- 五维结构清晰，易于理解
+如果你不确定最终合并结果，先预览：
 
----
+```bash
+memo remember "<content>" --dry-run
+```
 
-## 标签策略
+### 回忆内容
 
-使用多维度标签便于分类和过滤（3-6 个标签最佳）：
+标准动作：`recall`
 
-| 维度 | 示例 |
-|------|------|
-| 技术栈 | `rust,async,tokio` |
-| 场景 | `debug,performance,security` |
-| 重要性 | `important,decision,pitfall` |
-| 项目 | `memo-brain,project-x` |
+```bash
+memo recall "<query>" -n 10
+```
 
-**原则：**
-- 包含技术点 + 场景/类型
-- 避免过于通用（如 "code"、"fix"）
-- 使用具体、有区分度的标签（如 "mysql" 而非 "database"）
+如果你怀疑快路径不够：
 
----
+```bash
+memo recall "<query>" -n 10 --deep
+```
 
-## 时间过滤
+### 反观单条记忆
 
-| 场景 | 命令示例 |
-|------|---------|
-| 最近记忆 | `memo search "最近做过哪些数据库性能优化工作" --after 2026-01-20 -n 10` |
-| 时间段 | `memo search "一月份项目的开发进展和遇到的主要问题" --after 2026-01-01 --before 2026-01-31` |
-| 结合时间过滤 | `memo search "最近一周修复了哪些 bug，解决思路是什么" --after 2026-01-25 -n 15` |
+标准动作：`reflect`
 
----
+```bash
+memo reflect <memory-id>
+```
+
+### 整理记忆
+
+标准动作：`dream`
+
+```bash
+memo dream
+```
+
+### 查看状态
+
+标准动作：`state`
+
+```bash
+memo state
+```
+
+### 恢复派生层
+
+标准动作：`restore`
+
+```bash
+memo restore
+```
+
+如果需要更完整的恢复：
+
+```bash
+memo restore --full
+```
+
+## 如何判断用哪个动作
+
+| 用户意图 | 标准动作 | 当前执行建议 |
+|---------|----------|-------------|
+| “记住这个结论” | `remember` | `memo remember ...` |
+| “之前有没有类似经验” | `recall` | `memo recall ...` |
+| “把这条记忆展开看看” | `reflect` | `memo reflect ...` |
+| “整理一下记忆” | `dream` | `memo dream` |
+| “现在系统里有什么状态” | `state` | `memo state` |
+| “索引可能不一致，恢复一下” | `restore` | `memo restore` |
+
+## 搜索与记录原则
+
+### 记录原则
+
+- 只记录值得长期保留的经验、事实、决策或排障过程
+- 优先写清内容本身，必要时补 `--entity` 和 `--fact`
+- 如果不确定 provider 抽取会产出什么，先 `--dry-run`
+- 当前没有 tags/update/merge/list 这类接口，不要围绕这些假能力设计工作流
+
+### 检索原则
+
+- 查询要包含场景和意图，不要只丢几个关键词
+- 先走默认 `memo recall`
+- 只有当默认结果不稳、主题跨度大或用户明确要求更深回忆时，再用 `--deep`
+- 如果要看某条结果的详情，再接 `memo reflect`
 
 ## 常见错误
 
 | ❌ 不要 | ✅ 应该 |
-|----------|--------|
-| 记录整个代码文件 | 只提取关键片段和思路 |
-| 记录每个答案 | 只记录有价值的见解和完整过程 |
-| 不检查就记录 | 先搜索避免重复 |
-| 遇到相似记忆跳过 | 优先合并或更新 |
-| 使用模糊标题 | 具体且描述性强 |
-| 太多通用标签 | 保持标签集中且有区分度 |
-| 只用关键词搜索 | 使用完整问题句式 |
-| 限制搜索结果太少 | 适当增加 `-n` 参数以获取更多相关记忆 |
-| 强求五维格式 | 自然表达，维度可选 |
-
----
+|--------|--------|
+| 继续调用 `memo search` / `memo embed` | 先转成标准动作语义 |
+| 假装旧命令仍然是标准 | 直接使用 `awaken/remember/recall/reflect/dream/state/restore` |
+| 伪造 update/merge/delete/list 能力 | 直接说明当前未实现 |
+| 把 `extract` 当成主记忆入口 | 只围绕公开动作语言组织心智 |
+| 恢复动作和整理动作混为一谈 | 区分 `dream` 与 `restore` |
 
 ## 触发短语
 
-| 操作 | 触发短语 |
-|--------|---------|
-| **记录** | "记住这个", "记录下来", "总结经验", "总结并记录", "保存这个" |
-| **搜索** | "之前怎么做的", "查记忆", "还记得吗", "最近有没有...", "搜索记忆", "有没有类似的经验" |
+| 动作 | 触发短语 |
+|------|---------|
+| `remember` | “记住这个”“记录下来”“保存这个经验” |
+| `recall` | “之前怎么做的”“查记忆”“还记得吗” |
+| `reflect` | “把这条记忆展开看看”“看看详情” |
+| `dream` | “整理一下记忆”“跑一次 dream” |
+| `state` | “看看现在状态” |
+| `restore` | “恢复派生层”“恢复索引状态” |
+
+更多可执行示例见 [examples.md](examples.md)。
+

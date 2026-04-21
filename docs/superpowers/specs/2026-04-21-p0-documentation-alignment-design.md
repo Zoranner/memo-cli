@@ -14,7 +14,7 @@ The repository now exposes the current CLI through `src/main.rs` and documents i
 If left unchanged, future contributors and Claude sessions will form the wrong mental model:
 
 - they may assume the primary workflow is `memo search` / `memo embed`
-- they may miss the current ingest/query/consolidation/index maintenance flow
+- they may miss the current remember/recall/dream/restore flow
 - they may misread roadmap status for ANN, rerank, and deep search behavior
 
 ## Non-goals
@@ -58,7 +58,7 @@ If older README wording conflicts with the above, README should be updated rathe
 - replace the old product-style capability table with a capability summary that matches the current engine
 - replace old `memo search` / `memo embed` usage examples with current CLI examples
 - describe the repository as a local single-process memory engine with SQLite truth source and derived text/vector indexes
-- mention current maintenance workflow explicitly: ingest marks indexes pending; refresh/rebuild and dream job processing are separate actions
+- mention current maintenance workflow explicitly: remember marks indexes pending; dream and restore remain separate actions
 
 #### Required content direction
 
@@ -66,7 +66,7 @@ The README should communicate these concepts clearly:
 
 - SQLite is the truth source
 - text and vector indexes are rebuildable derived layers
-- current user workflow centers on `init`, `ingest`, `query`, `inspect`, `dream`, `refresh-index`, `rebuild-index`, `stats`, and `benchmark`
+- current user workflow centers on `awaken`, `remember`, `recall`, `reflect`, `dream`, `state`, and `restore`
 - extraction, embedding, and rerank are provider-backed features in the current architecture
 - consolidation is now part of the product surface, not hidden behavior
 
@@ -74,7 +74,7 @@ The README should communicate these concepts clearly:
 
 - examples that show `memo search`
 - examples that show `memo embed`
-- claims that imply the old multi-query memory product UX is still the primary CLI
+- claims that imply the old database-style memory product UX is still the primary CLI
 - configuration descriptions for sections that no longer exist in current templates
 
 ### `docs/zh-CN/README.md`
@@ -174,3 +174,7 @@ Implement P0 as a documentation-only change set touching exactly:
 - `ROADMAP.md`
 
 Use current code and command docs as truth. Remove old CLI examples, align repository positioning to the current engine, and update roadmap status text without expanding scope into implementation work.
+
+
+
+

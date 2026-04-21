@@ -2,10 +2,10 @@ use std::{path::Path, sync::Arc};
 
 use anyhow::Result;
 use memo_engine::{
-    ConsolidationTrigger, EmbeddingProvider, EngineConfig, EntityInput, EpisodeInput,
-    ExtractedEntity, ExtractedFact, ExtractionProvider, ExtractionResult, ExtractionSource,
-    FactInput, MemoryEngine, MemoryLayer, MemoryRecord, RebuildScope, RerankProvider, RerankScore,
-    RetrieveReason, RetrieveRequest,
+    DreamTrigger, EmbeddingProvider, EngineConfig, EntityInput, EpisodeInput, ExtractedEntity,
+    ExtractedFact, ExtractionProvider, ExtractionResult, ExtractionSource, FactInput, MemoryEngine,
+    MemoryLayer, MemoryRecord, RecallReason, RecallRequest, RerankProvider, RerankScore,
+    RestoreScope,
 };
 use tempfile::TempDir;
 
@@ -110,11 +110,11 @@ fn open_engine_with_rerank(path: &Path) -> Result<MemoryEngine> {
 }
 
 #[test]
-fn preview_ingest_merges_provider_and_manual_inputs() -> Result<()> {
+fn preview_remember_merges_provider_and_manual_inputs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_extraction(temp.path())?;
 
-    let preview = engine.preview_ingest(&EpisodeInput {
+    let preview = engine.preview_remember(&EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -154,7 +154,7 @@ fn preview_ingest_merges_provider_and_manual_inputs() -> Result<()> {
 fn alias_query_hits_entity_record() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "I met Alice this morning.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -173,7 +173,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
     drop(engine);
 
     let reopened = open_engine(temp.path())?;
-    let result = reopened.query(RetrieveRequest {
+    let result = reopened.recall(RecallRequest {
         query: "ally".to_string(),
         limit: 5,
         deep: false,
@@ -187,7 +187,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
     assert!(entity
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::Alias)));
+        .any(|reason| matches!(reason, RecallReason::Alias)));
     Ok(())
 }
 
@@ -195,7 +195,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
 fn bm25_query_hits_episode() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "Riverbank Robotics builds warehouse drones.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -206,7 +206,7 @@ fn bm25_query_hits_episode() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
@@ -220,7 +220,7 @@ fn bm25_query_hits_episode() -> Result<()> {
     assert!(episode
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::Bm25)));
+        .any(|reason| matches!(reason, RecallReason::Bm25)));
     Ok(())
 }
 
@@ -228,7 +228,7 @@ fn bm25_query_hits_episode() -> Result<()> {
 fn vector_query_hits_semantic_neighbor() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_vectors(temp.path())?;
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "我今天很高兴".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -239,7 +239,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
@@ -255,7 +255,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
     assert!(episode
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::Vector)));
+        .any(|reason| matches!(reason, RecallReason::Vector)));
     Ok(())
 }
 
@@ -263,7 +263,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
 fn graph_expansion_returns_related_fact() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -295,7 +295,7 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 5,
         deep: false,
@@ -311,7 +311,7 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
     assert!(fact
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::GraphHop { .. })));
+        .any(|reason| matches!(reason, RecallReason::GraphHop { .. })));
     Ok(())
 }
 
@@ -319,7 +319,7 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
 fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_rerank(temp.path())?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Paris travel checklist for May.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -336,7 +336,7 @@ fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Paris travel".to_string(),
         limit: 3,
         deep: true,
@@ -352,7 +352,7 @@ fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
     assert!(first
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::Rerank)));
+        .any(|reason| matches!(reason, RecallReason::Rerank)));
     Ok(())
 }
 
@@ -360,7 +360,7 @@ fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
 fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_rerank(temp.path())?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Paris travel checklist for May.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -376,7 +376,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Paris tram maintenance window for May.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -393,7 +393,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Paris travel".to_string(),
         limit: 3,
         deep: false,
@@ -410,7 +410,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
     assert!(first
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::Rerank)));
+        .any(|reason| matches!(reason, RecallReason::Rerank)));
     Ok(())
 }
 
@@ -418,7 +418,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
 fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_extraction(temp.path())?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -429,7 +429,7 @@ fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 5,
         deep: false,
@@ -449,7 +449,7 @@ fn reaccessed_entity_ranks_ahead_of_stale_alias_peer() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice handled the launch checklist.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -468,7 +468,7 @@ fn reaccessed_entity_ranks_ahead_of_stale_alias_peer() -> Result<()> {
         ),
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Bob reviewed the logistics board.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -488,13 +488,13 @@ fn reaccessed_entity_ranks_ahead_of_stale_alias_peer() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let _ = engine.query(RetrieveRequest {
+    let _ = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 5,
         deep: false,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "captain".to_string(),
         limit: 5,
         deep: false,
@@ -518,7 +518,7 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    let alpha_id = engine.ingest_episode(EpisodeInput {
+    let alpha_id = engine.remember(EpisodeInput {
         content: "warehouse memo alpha".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -531,7 +531,7 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
         ),
         confidence: 0.9,
     })?;
-    let beta_id = engine.ingest_episode(EpisodeInput {
+    let beta_id = engine.remember(EpisodeInput {
         content: "warehouse memo beta".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -546,13 +546,13 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
     })?;
 
     let _ = beta_id;
-    let _ = engine.query(RetrieveRequest {
+    let _ = engine.recall(RecallRequest {
         query: "warehouse memo alpha".to_string(),
         limit: 5,
         deep: false,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "warehouse memo".to_string(),
         limit: 5,
         deep: false,
@@ -575,7 +575,7 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
 fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    let first = engine.ingest_episode(EpisodeInput {
+    let first = engine.remember(EpisodeInput {
         content: "Alice likes jasmine tea.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -585,7 +585,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
-    let second = engine.ingest_episode(EpisodeInput {
+    let second = engine.remember(EpisodeInput {
         content: "Alice likes jasmine tea.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -596,12 +596,12 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let first_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let first_report = engine.dream(DreamTrigger::Manual)?;
     assert_eq!(first_report.archived_records, 1);
     assert!(first_report.promoted_to_l2 >= 1);
 
-    let first_record = engine.inspect_memory(&first)?;
-    let second_record = engine.inspect_memory(&second)?;
+    let first_record = engine.reflect(&first)?;
+    let second_record = engine.reflect(&second)?;
     let (survivor_id, archived_id) = match (&first_record, &second_record) {
         (MemoryRecord::Episode(first_record), MemoryRecord::Episode(second_record))
             if first_record.archived_at.is_none() && second_record.archived_at.is_some() =>
@@ -616,23 +616,23 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         other => panic!("unexpected duplicate consolidation state: {other:?}"),
     };
 
-    match engine.inspect_memory(&archived_id)? {
+    match engine.reflect(&archived_id)? {
         MemoryRecord::Episode(record) => assert!(record.archived_at.is_some()),
         other => panic!("expected archived episode, got {other:?}"),
     }
 
     for _ in 0..2 {
-        let _ = engine.query(RetrieveRequest {
+        let _ = engine.recall(RecallRequest {
             query: "Alice likes jasmine tea.".to_string(),
             limit: 1,
             deep: false,
         })?;
     }
 
-    let second_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let second_report = engine.dream(DreamTrigger::Manual)?;
     assert!(second_report.promoted_to_l3 >= 1);
 
-    match engine.inspect_memory(&survivor_id)? {
+    match engine.reflect(&survivor_id)? {
         MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L3),
         other => panic!("expected surviving episode, got {other:?}"),
     }
@@ -644,7 +644,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
 fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -676,21 +676,21 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let _ = engine.query(RetrieveRequest {
+    let _ = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 5,
         deep: false,
     })?;
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.promoted_to_l2 >= 3);
 
-    match engine.inspect_memory(&episode_id)? {
+    match engine.reflect(&episode_id)? {
         MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
         other => panic!("expected episode record, got {other:?}"),
     }
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -726,7 +726,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice joined the design review today.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -742,7 +742,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice sent the updated roadmap tonight.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -759,10 +759,10 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
         confidence: 0.9,
     })?;
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.promoted_to_l2 >= 1);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -785,7 +785,7 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
 fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -816,7 +816,7 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -848,10 +848,10 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.archived_records >= 3);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -882,7 +882,7 @@ fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice joined the design review today.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -898,7 +898,7 @@ fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice sent the updated roadmap tonight.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![EntityInput {
@@ -915,9 +915,9 @@ fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<
         confidence: 0.9,
     })?;
 
-    let _ = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let _ = engine.dream(DreamTrigger::Manual)?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -941,7 +941,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -974,7 +974,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
     })?;
 
     let paris_fact_id = engine
-        .query(RetrieveRequest {
+        .recall(RecallRequest {
             query: "Paris".to_string(),
             limit: 20,
             deep: true,
@@ -986,7 +986,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
             _ => None,
         })
         .expect("expected Paris fact before consolidation");
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in London.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -1018,10 +1018,10 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.invalidated_records >= 2);
 
-    let invalidated_fact = match engine.inspect_memory(&paris_fact_id)? {
+    let invalidated_fact = match engine.reflect(&paris_fact_id)? {
         MemoryRecord::Fact(fact) => fact,
         other => panic!("expected fact record, got {other:?}"),
     };
@@ -1030,7 +1030,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
     assert!(invalidated_fact.valid_to.is_some());
     assert!(invalidated_fact.valid_from <= invalidated_fact.valid_to);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -1081,7 +1081,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -1114,7 +1114,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
     })?;
 
     let paris_edge_id = engine
-        .query(RetrieveRequest {
+        .recall(RecallRequest {
             query: "Paris".to_string(),
             limit: 20,
             deep: true,
@@ -1127,7 +1127,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         })
         .expect("expected Paris edge before consolidation");
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in London.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -1159,9 +1159,9 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let _ = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let _ = engine.dream(DreamTrigger::Manual)?;
 
-    let invalidated_paris_edge = match engine.inspect_memory(&paris_edge_id)? {
+    let invalidated_paris_edge = match engine.reflect(&paris_edge_id)? {
         MemoryRecord::Edge(edge) => edge,
         other => panic!("expected edge record, got {other:?}"),
     };
@@ -1174,7 +1174,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         "expected edge validity window to close in order"
     );
 
-    let london_result = engine.query(RetrieveRequest {
+    let london_result = engine.recall(RecallRequest {
         query: "London".to_string(),
         limit: 20,
         deep: true,
@@ -1219,7 +1219,7 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
             "2026-01-05T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![
@@ -1254,11 +1254,11 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.promoted_to_l3 >= 1);
     assert!(report.archived_records >= 4);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -1293,7 +1293,7 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice currently lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -1324,7 +1324,7 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice has been based in Paris for years.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -1356,10 +1356,10 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
         confidence: 0.9,
     })?;
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert_eq!(report.promoted_to_l3, 0);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -1396,7 +1396,7 @@ fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
             "2026-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![
@@ -1431,10 +1431,10 @@ fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert_eq!(report.promoted_to_l3, 0);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -1476,7 +1476,7 @@ fn consolidation_requires_fact_support_span_for_l3_promotion() -> Result<()> {
             "2026-01-01T18:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![
@@ -1511,10 +1511,10 @@ fn consolidation_requires_fact_support_span_for_l3_promotion() -> Result<()> {
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert_eq!(report.promoted_to_l3, 0);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -1541,7 +1541,7 @@ fn ingest_propagates_recorded_at_to_structured_memory_timestamps() -> Result<()>
     let recorded_at =
         chrono::DateTime::parse_from_rfc3339("2024-01-15T08:30:00Z")?.with_timezone(&chrono::Utc);
 
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice lives in Paris.".to_string(),
         layer: MemoryLayer::L1,
         entities: vec![
@@ -1573,7 +1573,7 @@ fn ingest_propagates_recorded_at_to_structured_memory_timestamps() -> Result<()>
         confidence: 0.9,
     })?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: true,
@@ -1638,7 +1638,7 @@ fn consolidation_requires_entity_support_span_for_l3_promotion() -> Result<()> {
             "2026-01-01T18:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![EntityInput {
@@ -1658,10 +1658,10 @@ fn consolidation_requires_entity_support_span_for_l3_promotion() -> Result<()> {
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert_eq!(report.promoted_to_l3, 0);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -1702,7 +1702,7 @@ fn consolidation_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
             "2024-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![EntityInput {
@@ -1722,10 +1722,10 @@ fn consolidation_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.downgraded_records >= 1);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -1766,7 +1766,7 @@ fn consolidation_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
             "2024-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![EntityInput {
@@ -1786,10 +1786,10 @@ fn consolidation_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
         })?;
     }
 
-    let first_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let first_report = engine.dream(DreamTrigger::Manual)?;
     assert!(first_report.downgraded_records >= 1);
 
-    let warmed = engine.query(RetrieveRequest {
+    let warmed = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -1804,11 +1804,11 @@ fn consolidation_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
         .expect("expected Alice entity after warm query");
     assert_eq!(warmed_entity.layer, MemoryLayer::L2);
 
-    let second_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let second_report = engine.dream(DreamTrigger::Manual)?;
     assert!(second_report.promoted_to_l3 >= 1);
     assert_eq!(second_report.downgraded_records, 0);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -1835,7 +1835,7 @@ fn consolidation_preserves_fact_observation_timestamp_when_promoting_layers() ->
         chrono::DateTime::parse_from_rfc3339("2024-01-01T09:00:00Z")?.with_timezone(&chrono::Utc);
 
     for session_id in ["session-a", "session-b", "session-c"] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: "Alice still lives in Paris.".to_string(),
             layer: MemoryLayer::L1,
             entities: vec![
@@ -1868,9 +1868,9 @@ fn consolidation_preserves_fact_observation_timestamp_when_promoting_layers() ->
         })?;
     }
 
-    let _ = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let _ = engine.dream(DreamTrigger::Manual)?;
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice Paris".to_string(),
         limit: 20,
         deep: false,
@@ -1919,7 +1919,7 @@ fn consolidation_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
             "2024-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![
@@ -1954,10 +1954,10 @@ fn consolidation_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.downgraded_records >= 1);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
@@ -2004,7 +2004,7 @@ fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
             "2024-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![
@@ -2039,10 +2039,10 @@ fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
         })?;
     }
 
-    let first_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let first_report = engine.dream(DreamTrigger::Manual)?;
     assert!(first_report.downgraded_records >= 1);
 
-    let warmed = engine.query(RetrieveRequest {
+    let warmed = engine.recall(RecallRequest {
         query: "Alice Paris".to_string(),
         limit: 20,
         deep: false,
@@ -2063,11 +2063,11 @@ fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
         .expect("expected Alice lives_in Paris fact after warm query");
     assert_eq!(warmed_fact.layer, MemoryLayer::L2);
 
-    let second_report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let second_report = engine.dream(DreamTrigger::Manual)?;
     assert!(second_report.promoted_to_l3 >= 1);
     assert_eq!(second_report.downgraded_records, 0);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Alice Paris".to_string(),
         limit: 20,
         deep: false,
@@ -2114,7 +2114,7 @@ fn consolidation_refreshes_l3_cache_after_cooling_entity_support() -> Result<()>
             "2024-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![EntityInput {
@@ -2134,11 +2134,11 @@ fn consolidation_refreshes_l3_cache_after_cooling_entity_support() -> Result<()>
         })?;
     }
 
-    let result = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let result = engine.dream(DreamTrigger::Manual)?;
     assert!(result.downgraded_records >= 1);
-    assert_eq!(engine.stats()?.l3_cached, 0);
+    assert_eq!(engine.state()?.l3_cached, 0);
 
-    let query = engine.query(RetrieveRequest {
+    let query = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -2153,7 +2153,7 @@ fn consolidation_refreshes_l3_cache_after_cooling_entity_support() -> Result<()>
     assert!(!entity
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RetrieveReason::L3)));
+        .any(|reason| matches!(reason, RecallReason::L3)));
     Ok(())
 }
 
@@ -2179,7 +2179,7 @@ fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> 
             "2026-01-03T09:00:00Z",
         ),
     ] {
-        engine.ingest_episode(EpisodeInput {
+        engine.remember(EpisodeInput {
             content: content.to_string(),
             layer: MemoryLayer::L1,
             entities: vec![EntityInput {
@@ -2199,10 +2199,10 @@ fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> 
         })?;
     }
 
-    let report = engine.consolidate(ConsolidationTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.promoted_to_l3 >= 1);
 
-    let result = engine.query(RetrieveRequest {
+    let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
@@ -2226,7 +2226,7 @@ fn scheduled_consolidation_stays_pending_until_worker_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "Alice likes jasmine tea.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -2236,7 +2236,7 @@ fn scheduled_consolidation_stays_pending_until_worker_runs() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice likes jasmine tea.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -2247,14 +2247,14 @@ fn scheduled_consolidation_stays_pending_until_worker_runs() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let _job_id = engine.schedule_consolidation(ConsolidationTrigger::Manual)?;
-    let stats = engine.stats()?;
-    assert_eq!(stats.consolidation_jobs.pending, 1);
-    assert_eq!(stats.consolidation_jobs.running, 0);
-    assert_eq!(stats.consolidation_jobs.completed, 0);
-    assert_eq!(stats.consolidation_jobs.failed, 0);
+    let _job_id = engine.schedule_dream(DreamTrigger::Manual)?;
+    let stats = engine.state()?;
+    assert_eq!(stats.dream_jobs.pending, 1);
+    assert_eq!(stats.dream_jobs.running, 0);
+    assert_eq!(stats.dream_jobs.completed, 0);
+    assert_eq!(stats.dream_jobs.failed, 0);
 
-    match engine.inspect_memory(&episode_id)? {
+    match engine.reflect(&episode_id)? {
         MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L1),
         other => panic!("expected episode record, got {other:?}"),
     }
@@ -2263,11 +2263,11 @@ fn scheduled_consolidation_stays_pending_until_worker_runs() -> Result<()> {
 }
 
 #[test]
-fn running_pending_consolidation_jobs_promotes_and_completes_job() -> Result<()> {
+fn running_pending_dream_jobs_promotes_and_completes_job() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "Alice likes jasmine tea.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -2277,7 +2277,7 @@ fn running_pending_consolidation_jobs_promotes_and_completes_job() -> Result<()>
         recorded_at: None,
         confidence: 0.9,
     })?;
-    engine.ingest_episode(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "Alice likes jasmine tea.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -2288,18 +2288,18 @@ fn running_pending_consolidation_jobs_promotes_and_completes_job() -> Result<()>
         confidence: 0.9,
     })?;
 
-    engine.schedule_consolidation(ConsolidationTrigger::Manual)?;
-    let reports = engine.run_pending_consolidation_jobs(1)?;
+    engine.schedule_dream(DreamTrigger::Manual)?;
+    let reports = engine.run_pending_dreams(1)?;
     assert_eq!(reports.len(), 1);
     assert!(reports[0].promoted_to_l2 >= 1);
 
-    let stats = engine.stats()?;
-    assert_eq!(stats.consolidation_jobs.pending, 0);
-    assert_eq!(stats.consolidation_jobs.running, 0);
-    assert_eq!(stats.consolidation_jobs.completed, 1);
-    assert_eq!(stats.consolidation_jobs.failed, 0);
+    let stats = engine.state()?;
+    assert_eq!(stats.dream_jobs.pending, 0);
+    assert_eq!(stats.dream_jobs.running, 0);
+    assert_eq!(stats.dream_jobs.completed, 1);
+    assert_eq!(stats.dream_jobs.failed, 0);
 
-    match engine.inspect_memory(&episode_id)? {
+    match engine.reflect(&episode_id)? {
         MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
         other => panic!("expected episode record, got {other:?}"),
     }
@@ -2311,7 +2311,7 @@ fn running_pending_consolidation_jobs_promotes_and_completes_job() -> Result<()>
 fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "Riverbank Robotics builds warehouse drones.".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -2322,10 +2322,10 @@ fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let pending_stats = engine.stats()?;
+    let pending_stats = engine.state()?;
     assert_eq!(pending_stats.text_index.status, "pending");
 
-    let before_refresh = engine.query(RetrieveRequest {
+    let before_refresh = engine.recall(RecallRequest {
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
@@ -2335,16 +2335,16 @@ fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
             && item
                 .reasons
                 .iter()
-                .any(|reason| matches!(reason, RetrieveReason::Bm25))
+                .any(|reason| matches!(reason, RecallReason::Bm25))
     ));
 
-    let refresh = engine.refresh_pending_indexes(RebuildScope::Text)?;
+    let refresh = engine.restore(RestoreScope::Text)?;
     assert_eq!(refresh.text_documents, 1);
 
-    let ready_stats = engine.stats()?;
+    let ready_stats = engine.state()?;
     assert_eq!(ready_stats.text_index.status, "ready");
 
-    let after_refresh = engine.query(RetrieveRequest {
+    let after_refresh = engine.recall(RecallRequest {
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
@@ -2354,7 +2354,7 @@ fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
             && item
                 .reasons
                 .iter()
-                .any(|reason| matches!(reason, RetrieveReason::Bm25))
+                .any(|reason| matches!(reason, RecallReason::Bm25))
     ));
     Ok(())
 }
@@ -2363,7 +2363,7 @@ fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
 fn ingest_marks_vector_index_pending_until_refresh_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_vectors(temp.path())?;
-    let episode_id = engine.ingest_episode(EpisodeInput {
+    let episode_id = engine.remember(EpisodeInput {
         content: "我今天很高兴".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -2374,10 +2374,10 @@ fn ingest_marks_vector_index_pending_until_refresh_runs() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let pending_stats = engine.stats()?;
+    let pending_stats = engine.state()?;
     assert_eq!(pending_stats.vector_index.status, "pending");
 
-    let before_refresh = engine.query(RetrieveRequest {
+    let before_refresh = engine.recall(RecallRequest {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
@@ -2387,16 +2387,16 @@ fn ingest_marks_vector_index_pending_until_refresh_runs() -> Result<()> {
             && item
                 .reasons
                 .iter()
-                .any(|reason| matches!(reason, RetrieveReason::Vector))
+                .any(|reason| matches!(reason, RecallReason::Vector))
     ));
 
-    let refresh = engine.refresh_pending_indexes(RebuildScope::Vector)?;
+    let refresh = engine.restore(RestoreScope::Vector)?;
     assert_eq!(refresh.vector_documents, 1);
 
-    let ready_stats = engine.stats()?;
+    let ready_stats = engine.state()?;
     assert_eq!(ready_stats.vector_index.status, "ready");
 
-    let after_refresh = engine.query(RetrieveRequest {
+    let after_refresh = engine.recall(RecallRequest {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
@@ -2406,7 +2406,7 @@ fn ingest_marks_vector_index_pending_until_refresh_runs() -> Result<()> {
             && item
                 .reasons
                 .iter()
-                .any(|reason| matches!(reason, RetrieveReason::Vector))
+                .any(|reason| matches!(reason, RecallReason::Vector))
     ));
     Ok(())
 }

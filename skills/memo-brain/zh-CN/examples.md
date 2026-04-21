@@ -1,257 +1,131 @@
 # 记忆示例集
 
-五维记忆模型的详细使用示例。
+这些示例直接使用公开动作语言。
 
----
-
-## 示例分类
-
-- [简单知识点](#简单知识点最小化) - 只需"行"和"悟"
-- [问题解决](#问题解决完整五维) - 完整的排查过程
-- [技术决策](#技术决策侧重欲行悟) - 方案对比和选择
-- [配置说明](#配置说明侧重行) - 配置和命令
-- [渐进式记录](#渐进式记录从简单到丰富) - 逐步完善记忆
-
----
-
-## 简单知识点（最小化）
-
-快速记录 API 用法、配置说明等静态知识，通常只需"行"和"悟"。
-
-### 示例 1：Rust async-trait
+## 唤醒记忆空间
 
 ```bash
-memo embed "Rust async-trait 使用
-
-行：在 trait 定义和 impl 块上都添加 #[async_trait] 宏
-悟：会有轻微的性能开销（Box 分配），适合非性能关键路径" --tags rust,async
+memo awaken
 ```
 
-### 示例 2：自然表达（不标注维度名）
+## remember：写入一条结构化记忆
 
 ```bash
-memo embed "Rust async-trait 使用方法
-
-在 trait 和 impl 上添加 #[async_trait] 宏即可让 trait 支持 async fn。
-
-注意：会有轻微的性能开销（Box 分配），适合非性能关键路径。" --tags rust,async
+memo remember "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
 ```
 
----
+适用场景：
 
-## 问题解决（完整五维）
+- 你已经知道核心实体和事实
+- 希望后续 recall 时更容易命中结构化结果
 
-记录完整的问题排查和解决过程，五维全部使用。
-
-### 示例：MySQL 连接超时排查
+## remember：先 dry-run 再落库
 
 ```bash
-memo embed "MySQL 连接超时排查 - 阿里云安全组问题
-
-境：本地开发环境连接正常，部署到阿里云 ECS 后数据库连接一直超时
-
-欲：找到连接失败的根本原因并解决
-
-行：按照常规思路逐步排查
-1. 检查连接池配置（max_connections, timeout）→ 参数正常，无效
-2. 重启 MySQL 服务 → 无效
-3. 检查 MySQL 错误日志 → 没有任何连接记录（关键线索）
-4. 意识到可能是网络层问题，检查阿里云安全组配置
-5. 发现入站规则中没有开放 3306 端口
-
-果：在安全组中添加入站规则开放 3306 端口后，连接立即恢复正常
-
-悟：云服务器默认关闭所有端口，部署应用前必须检查：
-- 数据库端口（MySQL 3306, PostgreSQL 5432）
-- 应用端口（Web 服务 80/443/8080 等）
-- 如果 MySQL 日志中没有连接记录，优先检查网络层（防火墙/安全组）" --tags mysql,cloud,debug,network
+memo remember "Alice lives in Paris and often signs as Ally." --entity person:Alice:Ally --dry-run
 ```
 
----
-
-## 技术决策（侧重欲、行、悟）
-
-记录技术选型和架构决策，重点在对比分析和结论。
-
-### 示例：向量数据库选型
+看完预览后再正式写入：
 
 ```bash
-memo embed "向量数据库选型 - 为什么选择 LanceDB
-
-境：memo-brain 需要本地嵌入式向量数据库，要求高性能、易部署
-
-欲：从多个向量数据库方案中选择最适合的
-
-行：评估了三个主流方案
-- ChromaDB：轻量级、Python/JS API 简单，但性能一般，纯 Python 实现
-- LanceDB：Rust 原生、高性能、支持 ACID 事务、多模态，但学习曲线略陡
-- Qdrant：功能强大、企业级，但需要独立服务部署，不适合嵌入式场景
-
-果：最终选择 LanceDB
-
-悟：嵌入式场景的选择要点
-- 优先考虑性能（向量检索是核心操作）
-- 部署便利性很重要（单个二进制 > 独立服务）
-- 语言生态匹配（Rust 项目选 Rust 库，集成更自然）
-- LanceDB 的 Lance 列式格式和 HNSW 索引是性能保证" --tags architecture,decision,vector-db
+memo remember "Alice lives in Paris and often signs as Ally." --entity person:Alice:Ally
 ```
 
----
+适用场景：
 
-## 配置说明（侧重行）
+- 你不确定 provider 抽取和手工输入合并后的结果
+- 你想先检查 entities/facts 是否合理
 
-记录配置、命令等操作型知识。
-
-### 示例：Cargo workspace 配置
+## recall：默认回忆
 
 ```bash
-memo embed "Cargo workspace 依赖管理
-
-行：在根目录 Cargo.toml 中配置
-
-[workspace]
-members = [\"types\", \"local\", \"cli\"]
-
-[workspace.dependencies]
-serde = { version = \"1\", features = [\"derive\"] }
-tokio = { version = \"1\", features = [\"rt-multi-thread\"] }
-
-子 crate 中引用：
-[dependencies]
-serde.workspace = true
-
-悟：workspace 统一管理依赖版本，避免版本冲突，减少编译时间" --tags rust,cargo,config
+memo recall "Where does Alice live?" -n 5
 ```
 
----
+适用场景：
 
-## 渐进式记录（从简单到丰富）
+- 正常查找历史记忆
+- 先让系统走默认快路径
 
-展示如何从快速记录开始，逐步完善记忆。
-
-### 第一步：快速记录核心内容
+## recall：强制 deep search
 
 ```bash
-memo embed "记忆树搜索实现
-
-行：使用递归向量搜索 + 漏斗式阈值策略
-- 第一层：0.60（广撒网）
-- 后续逐层递增：0.10/0.07/0.05
-- 标签过滤 + 全局去重
-
-果：实现自动关联的层次化搜索，无需手动指定深度" --tags memo-cli,algorithm,vector-search
+memo recall "Alice travel history and city relationships" -n 10 --deep
 ```
 
-### 第二步：补充背景和洞察
+适用场景：
+
+- 主题跨度较大
+- 默认 recall 结果不稳
+- 你明确需要更深一层的回忆
+
+## reflect：查看单条记忆详情
 
 ```bash
-memo update abc123 --content "记忆树搜索实现
-
-境：纯向量搜索只能找到直接相关的记忆，无法发现间接关联的知识网络
-
-欲：实现自动关联的递归搜索，让 AI 能发现完整的知识链路
-
-行：使用递归向量搜索 + 漏斗式阈值策略
-- 第一层：0.60（广撒网，比普通搜索更宽松）
-- 后续逐层递增：根据起始阈值自适应调整增量
-- 标签过滤：第二层开始要求至少一个标签重叠
-- 全局去重：visited set 确保每个记忆只出现一次
-
-果：实现自动关联的层次化搜索，无需手动指定深度
-
-悟：
-- 漏斗式阈值是关键：起始宽松保证召回，逐层收紧保证精度
-- 向量本身包含语义信息，可以直接作为搜索种子（不需要提取关键词）
-- 这是其他向量数据库（Mem0/ChromaDB）都没有的独特功能" --tags memo-cli,algorithm,vector-search,innovation
+memo reflect <memory-id>
 ```
 
----
+适用场景：
 
-## 更多场景
+- 想确认某条 recall 结果的完整内容
+- 想看 layer、reasons 或关联细节
 
-### 性能优化记录
+## dream：整理和巩固记忆
 
 ```bash
-memo embed "批量嵌入性能优化
-
-境：memo embed 处理大量文件时很慢，需要逐个调用 API
-欲：提升批量嵌入的性能
-行：
-- 使用 rayon 并行扫描文件
-- 批量调用 embedding API（减少网络往返）
-- 数据库批量写入（insert_batch）
-果：预期性能提升 30-50%
-悟：I/O 密集型任务三个优化方向：文件扫描、API 调用、数据库写入" --tags rust,performance,rayon
+memo dream
 ```
 
-### 架构重构记录
+适用场景：
+
+- 刚写入了一批记忆，想手动整理一次
+- 想推进记忆晋升、冷却、归档和冲突收敛
+
+## state：查看当前状态
 
 ```bash
-memo embed "配置加载逻辑重构
-
-境：每个 service 模块都重复实现配置加载，代码冗余
-欲：提取通用的配置加载模式
-行：创建 ConfigLoader 结构体
-- load() 方法：按优先级加载配置（命令行 > 本地 > 全局 > 默认）
-- validate() 方法：验证必需字段
-- 所有 service 复用同一套逻辑
-果：消除了 200+ 行重复代码
-悟：识别重复模式并提取是重构的第一步，优先级系统是配置管理的核心" --tags rust,refactoring,design-pattern
+memo state
 ```
 
-### Bug 修复记录
+适用场景：
+
+- 想看 episode/entity/fact/edge 数量
+- 想确认 text/vector 索引是否 pending
+- 想看 dream 队列状态
+
+## restore：刷新 pending 派生索引
 
 ```bash
-memo embed "update 操作数据安全问题修复
-
-境：memo update 先删除旧记忆再插入新记忆，删除后插入失败会丢失数据
-欲：保证 update 操作的原子性
-行：改为先插入新记忆，成功后再删除旧记忆
-- 插入失败：不影响原记忆
-- 删除失败：记录错误但保留新记忆
-果：消除了数据丢失风险
-悟：涉及数据修改的操作要考虑失败场景，先创建后删除比先删除后创建更安全" --tags rust,bug-fix,data-safety
+memo restore
 ```
 
----
+适用场景：
 
-## 使用技巧
+- remember 之后索引还处于 pending
+- 想走较保守的 restore 路径
 
-### 根据内容选择维度
-
-不是所有记忆都需要五维完整：
-- **纯知识点**：行 + 悟（如 API 用法）
-- **快速问答**：欲 + 行（如配置问题）
-- **完整案例**：境 + 欲 + 行 + 果 + 悟（如复杂 bug 排查）
-
-### 维度可以合并表达
+## restore：全量重建派生索引
 
 ```bash
-# 果和悟可以合并
-"最终选择了 LanceDB，因为性能好且易集成（果+悟）"
-
-# 境和欲可以自然衔接
-"遇到 MySQL 超时问题，需要快速定位原因（境+欲）"
+memo restore --full
 ```
 
-### 不强求标注维度名
+适用场景：
 
-```bash
-# 有标注（结构清晰）
-"境：... 行：... 悟：..."
+- 派生索引可能损坏
+- 你明确要基于 SQLite 真相源做全量恢复
 
-# 无标注（自然流畅）
-"遇到问题... 尝试了几种方案... 最终发现是..."
-```
+## 当前不支持的旧接口
 
-两种都可以，以内容清晰为目标。
+下面这些旧命令和参数，不要继续使用：
 
-### 标题要包含关键信息
+- `memo embed`
+- `memo search`
+- `memo update`
+- `memo merge`
+- `memo delete`
+- `memo list`
+- `--tags`
+- `--after` / `--before`
 
-```bash
-✅ 好标题："MySQL 连接超时 - 阿里云安全组问题"
-   包含：问题 + 根本原因
 
-❌ 差标题："数据库问题"
-   过于笼统，搜索时难以识别
-```

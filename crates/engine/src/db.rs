@@ -10,8 +10,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::types::{
-    ConsolidationJobStats, EdgeRecord, EntityInput, EntityRecord, EpisodeInput, EpisodeRecord,
-    FactInput, FactRecord, IndexStatus, MemoryLayer, MemoryRecord,
+    DreamJobStats, EdgeRecord, EntityInput, EntityRecord, EpisodeInput, EpisodeRecord, FactInput,
+    FactRecord, IndexStatus, MemoryLayer, MemoryRecord,
 };
 
 pub struct Database {
@@ -777,7 +777,7 @@ impl Database {
         }))
     }
 
-    pub fn create_consolidation_job(&self, trigger: &str, status: &str) -> Result<String> {
+    pub fn create_dream_job(&self, trigger: &str, status: &str) -> Result<String> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let id = Uuid::new_v4().to_string();
         conn.execute(
@@ -789,7 +789,7 @@ impl Database {
         Ok(id)
     }
 
-    pub fn claim_pending_consolidation_jobs(&self, limit: usize) -> Result<Vec<(String, String)>> {
+    pub fn claim_pending_dream_jobs(&self, limit: usize) -> Result<Vec<(String, String)>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stmt = conn.prepare(
             "SELECT id, trigger FROM consolidation_jobs
@@ -814,7 +814,7 @@ impl Database {
         Ok(jobs)
     }
 
-    pub fn complete_consolidation_job(&self, job_id: &str) -> Result<()> {
+    pub fn complete_dream_job(&self, job_id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.execute(
             "UPDATE consolidation_jobs SET status = 'completed', updated_at = ?2 WHERE id = ?1",
@@ -823,7 +823,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn fail_consolidation_job(&self, job_id: &str) -> Result<()> {
+    pub fn fail_dream_job(&self, job_id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.execute(
             "UPDATE consolidation_jobs SET status = 'failed', updated_at = ?2 WHERE id = ?1",
@@ -832,9 +832,9 @@ impl Database {
         Ok(())
     }
 
-    pub fn consolidation_job_stats(&self) -> Result<ConsolidationJobStats> {
+    pub fn dream_job_stats(&self) -> Result<DreamJobStats> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let mut stats = ConsolidationJobStats::default();
+        let mut stats = DreamJobStats::default();
         let mut stmt =
             conn.prepare("SELECT status, COUNT(*) FROM consolidation_jobs GROUP BY status")?;
         let rows = stmt.query_map([], |row| {
