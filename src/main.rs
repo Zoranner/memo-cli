@@ -291,9 +291,9 @@ fn render_dream_report(report: &DreamReport, full: bool, json: bool) -> Result<S
     }
 
     Ok(format!(
-        "Dream {}complete\njobs_processed: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
+        "Dream {}complete\npasses_run: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
         if full { "(full) " } else { "" },
-        report.jobs_processed,
+        report.passes_run,
         report.promoted_to_l2,
         report.promoted_to_l3,
         report.downgraded_records,
@@ -308,16 +308,17 @@ fn render_state(state: &SystemState, json: bool) -> Result<String> {
     }
 
     Ok(format!(
-        "State\nrecords: episodes={} entities={} facts={} edges={}\nl3_cached: {}\ndream_jobs: pending={} running={} completed={} failed={}\ntext_index: {}\nvector_index: {}",
+        "State\nrecords: episodes={} entities={} facts={} edges={}\nlayers: l1={} l2={} l3={} archived={} invalidated={}\nl3_cached: {}\ntext_index: {}\nvector_index: {}",
         state.episode_count,
         state.entity_count,
         state.fact_count,
         state.edge_count,
+        state.layers.l1,
+        state.layers.l2,
+        state.layers.l3,
+        state.layers.archived,
+        state.layers.invalidated,
         state.l3_cached,
-        state.dream_jobs.pending,
-        state.dream_jobs.running,
-        state.dream_jobs.completed,
-        state.dream_jobs.failed,
         index_summary(&state.text_index),
         index_summary(&state.vector_index),
     ))
@@ -478,10 +479,10 @@ fn parse_recorded_at(raw: Option<&str>) -> Result<Option<DateTime<Utc>>> {
 mod tests {
     use chrono::{TimeZone, Utc};
 
-    use super::{render_recall_result, render_state, Cli, Command};
+    use super::{render_dream_report, render_recall_result, render_state, Cli, Command};
     use clap::Parser;
     use memo_engine::{
-        DreamJobStats, EpisodeRecord, IndexStatus, MemoryLayer, MemoryRecord, RecallReason,
+        DreamReport, EpisodeRecord, IndexStatus, MemoryLayer, MemoryRecord, RecallReason,
         RecallResult, RecallResultSet, SystemState,
     };
 
@@ -557,11 +558,12 @@ mod tests {
                 fact_count: 1,
                 edge_count: 1,
                 l3_cached: 4,
-                dream_jobs: DreamJobStats {
-                    pending: 1,
-                    running: 0,
-                    completed: 2,
-                    failed: 0,
+                layers: memo_engine::LayerSummary {
+                    l1: 2,
+                    l2: 1,
+                    l3: 0,
+                    archived: 3,
+                    invalidated: 1,
                 },
                 text_index: IndexStatus {
                     name: "text".to_string(),
@@ -581,8 +583,9 @@ mod tests {
         .expect("expected human state output");
 
         assert!(output.contains("State"));
-        assert!(output.contains("dream_jobs: pending=1"));
+        assert!(output.contains("layers: l1=2 l2=1 l3=0 archived=3 invalidated=1"));
         assert!(output.contains("vector_index: pending docs=5"));
+        assert!(!output.contains("dream_jobs"));
     }
 
     #[test]
@@ -639,6 +642,29 @@ mod tests {
 
         let parsed: serde_json::Value =
             serde_json::from_str(&output).expect("expected valid json output");
-        assert!(parsed.get("dream_jobs").is_some());
+        assert!(parsed.get("dream_jobs").is_none());
+        assert_eq!(parsed["layers"]["l1"], 0);
+        assert_eq!(parsed["layers"]["archived"], 0);
+    }
+
+    #[test]
+    fn render_full_dream_report_uses_pass_count() {
+        let output = render_dream_report(
+            &DreamReport {
+                passes_run: 2,
+                promoted_to_l2: 3,
+                promoted_to_l3: 1,
+                downgraded_records: 0,
+                archived_records: 2,
+                invalidated_records: 1,
+                ..Default::default()
+            },
+            true,
+            false,
+        )
+        .expect("expected human dream output");
+
+        assert!(output.contains("Dream (full) complete"));
+        assert!(output.contains("passes_run: 2"));
     }
 }

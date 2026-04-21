@@ -2222,7 +2222,7 @@ fn dream_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<(
 }
 
 #[test]
-fn scheduled_dream_stays_pending_until_worker_runs() -> Result<()> {
+fn full_dream_runs_extra_stabilization_pass() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -2247,105 +2247,50 @@ fn scheduled_dream_stays_pending_until_worker_runs() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let _job_id = engine.schedule_dream(DreamTrigger::Manual)?;
-    let stats = engine.state()?;
-    assert_eq!(stats.dream_jobs.pending, 1);
-    assert_eq!(stats.dream_jobs.running, 0);
-    assert_eq!(stats.dream_jobs.completed, 0);
-    assert_eq!(stats.dream_jobs.failed, 0);
+    let report = engine.dream_full(DreamTrigger::Manual)?;
+    assert_eq!(report.passes_run, 2);
+
+    let state = engine.state()?;
+    assert_eq!(state.layers.l1, 1);
+    assert_eq!(state.layers.l2, 1);
+    assert_eq!(state.layers.l3, 0);
+
+    match engine.reflect(&episode_id)? {
+        MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
+        other => panic!("expected episode record, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn full_dream_stops_after_first_pass_when_memory_is_stable() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice brewed a fresh cup of jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.dream_full(DreamTrigger::Manual)?;
+    assert_eq!(report.passes_run, 1);
+    assert_eq!(report.promoted_to_l2, 0);
+    assert_eq!(report.promoted_to_l3, 0);
+
+    let state = engine.state()?;
+    assert_eq!(state.layers.l1, 1);
+    assert_eq!(state.layers.l2, 0);
+    assert_eq!(state.layers.l3, 0);
 
     match engine.reflect(&episode_id)? {
         MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L1),
-        other => panic!("expected episode record, got {other:?}"),
-    }
-
-    Ok(())
-}
-
-#[test]
-fn running_pending_dream_jobs_promotes_and_completes_job() -> Result<()> {
-    let temp = TempDir::new()?;
-    let engine = open_engine(temp.path())?;
-
-    let episode_id = engine.remember(EpisodeInput {
-        content: "Alice likes jasmine tea.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: Vec::new(),
-        facts: Vec::new(),
-        source_episode_id: None,
-        session_id: None,
-        recorded_at: None,
-        confidence: 0.9,
-    })?;
-    engine.remember(EpisodeInput {
-        content: "Alice likes jasmine tea.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: Vec::new(),
-        facts: Vec::new(),
-        source_episode_id: None,
-        session_id: None,
-        recorded_at: None,
-        confidence: 0.9,
-    })?;
-
-    engine.schedule_dream(DreamTrigger::Manual)?;
-    let reports = engine.run_pending_dreams(1)?;
-    assert_eq!(reports.len(), 1);
-    assert!(reports[0].promoted_to_l2 >= 1);
-
-    let stats = engine.state()?;
-    assert_eq!(stats.dream_jobs.pending, 0);
-    assert_eq!(stats.dream_jobs.running, 0);
-    assert_eq!(stats.dream_jobs.completed, 1);
-    assert_eq!(stats.dream_jobs.failed, 0);
-
-    match engine.reflect(&episode_id)? {
-        MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
-        other => panic!("expected episode record, got {other:?}"),
-    }
-
-    Ok(())
-}
-
-#[test]
-fn full_dream_drains_pending_jobs_and_applies_promotions() -> Result<()> {
-    let temp = TempDir::new()?;
-    let engine = open_engine(temp.path())?;
-
-    let episode_id = engine.remember(EpisodeInput {
-        content: "Alice likes jasmine tea.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: Vec::new(),
-        facts: Vec::new(),
-        source_episode_id: None,
-        session_id: None,
-        recorded_at: None,
-        confidence: 0.9,
-    })?;
-    engine.remember(EpisodeInput {
-        content: "Alice likes jasmine tea.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: Vec::new(),
-        facts: Vec::new(),
-        source_episode_id: None,
-        session_id: None,
-        recorded_at: None,
-        confidence: 0.9,
-    })?;
-
-    engine.schedule_dream(DreamTrigger::Manual)?;
-
-    let report = engine.dream_full(DreamTrigger::Manual)?;
-    assert_eq!(report.jobs_processed, 2);
-
-    let stats = engine.state()?;
-    assert_eq!(stats.dream_jobs.pending, 0);
-    assert_eq!(stats.dream_jobs.running, 0);
-    assert_eq!(stats.dream_jobs.completed, 2);
-    assert_eq!(stats.dream_jobs.failed, 0);
-
-    match engine.reflect(&episode_id)? {
-        MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
         other => panic!("expected episode record, got {other:?}"),
     }
 

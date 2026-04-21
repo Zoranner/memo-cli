@@ -115,7 +115,7 @@ memo dream [--full] [--json]
 ### 行为
 
 - 默认执行一次手动 dream
-- `--full` 会执行更完整的一次 dream，并消费当前排队的 dream 工作
+- `--full` 会执行更完整的一次 dream；当第一次整理改变了记忆状态时，会追加一次稳定化 pass
 - `--json` 输出机器可读结果
 
 ---

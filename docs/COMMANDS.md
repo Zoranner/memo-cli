@@ -115,7 +115,7 @@ memo dream [--full] [--json]
 ### Behavior
 
 - Default mode runs one manual dream pass
-- `--full` runs a fuller dream pass and also drains queued dream work
+- `--full` runs a fuller dream pass with an extra stabilization pass when the first pass changes memory state
 - `--json` emits machine-readable output
 
 ---

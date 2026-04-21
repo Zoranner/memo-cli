@@ -418,12 +418,12 @@ impl std::str::FromStr for DreamTrigger {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DreamReport {
     pub trigger: String,
+    pub passes_run: usize,
     pub promoted_to_l2: usize,
     pub promoted_to_l3: usize,
     pub downgraded_records: usize,
     pub archived_records: usize,
     pub invalidated_records: usize,
-    pub jobs_processed: usize,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -448,11 +448,12 @@ pub struct IndexStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct DreamJobStats {
-    pub pending: usize,
-    pub running: usize,
-    pub completed: usize,
-    pub failed: usize,
+pub struct LayerSummary {
+    pub l1: usize,
+    pub l2: usize,
+    pub l3: usize,
+    pub archived: usize,
+    pub invalidated: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -461,8 +462,8 @@ pub struct SystemState {
     pub entity_count: usize,
     pub fact_count: usize,
     pub edge_count: usize,
+    pub layers: LayerSummary,
     pub l3_cached: usize,
-    pub dream_jobs: DreamJobStats,
     pub text_index: IndexStatus,
     pub vector_index: IndexStatus,
 }

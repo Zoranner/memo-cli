@@ -10,8 +10,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::types::{
-    DreamJobStats, EdgeRecord, EntityInput, EntityRecord, EpisodeInput, EpisodeRecord, FactInput,
-    FactRecord, IndexStatus, MemoryLayer, MemoryRecord,
+    EdgeRecord, EntityInput, EntityRecord, EpisodeInput, EpisodeRecord, FactInput, FactRecord,
+    IndexStatus, LayerSummary, MemoryLayer, MemoryRecord,
 };
 
 pub struct Database {
@@ -777,84 +777,6 @@ impl Database {
         }))
     }
 
-    pub fn create_dream_job(&self, trigger: &str, status: &str) -> Result<String> {
-        let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let id = Uuid::new_v4().to_string();
-        conn.execute(
-            "INSERT INTO dream_jobs
-             (id, trigger, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?4)",
-            params![id, trigger, status, now_ts()],
-        )?;
-        Ok(id)
-    }
-
-    pub fn claim_pending_dream_jobs(&self, limit: usize) -> Result<Vec<(String, String)>> {
-        let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let mut stmt = conn.prepare(
-            "SELECT id, trigger FROM dream_jobs
-             WHERE status = 'pending'
-             ORDER BY created_at ASC
-             LIMIT ?1",
-        )?;
-        let jobs = stmt
-            .query_map(params![limit as i64], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        drop(stmt);
-
-        for (job_id, _) in &jobs {
-            conn.execute(
-                "UPDATE dream_jobs SET status = 'running', updated_at = ?2 WHERE id = ?1",
-                params![job_id, now_ts()],
-            )?;
-        }
-
-        Ok(jobs)
-    }
-
-    pub fn complete_dream_job(&self, job_id: &str) -> Result<()> {
-        let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        conn.execute(
-            "UPDATE dream_jobs SET status = 'completed', updated_at = ?2 WHERE id = ?1",
-            params![job_id, now_ts()],
-        )?;
-        Ok(())
-    }
-
-    pub fn fail_dream_job(&self, job_id: &str) -> Result<()> {
-        let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        conn.execute(
-            "UPDATE dream_jobs SET status = 'failed', updated_at = ?2 WHERE id = ?1",
-            params![job_id, now_ts()],
-        )?;
-        Ok(())
-    }
-
-    pub fn dream_job_stats(&self) -> Result<DreamJobStats> {
-        let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let mut stats = DreamJobStats::default();
-        let mut stmt = conn.prepare("SELECT status, COUNT(*) FROM dream_jobs GROUP BY status")?;
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?.max(0) as usize,
-            ))
-        })?;
-        for row in rows {
-            let (status, count) = row?;
-            match status.as_str() {
-                "pending" => stats.pending = count,
-                "running" => stats.running = count,
-                "completed" => stats.completed = count,
-                "failed" => stats.failed = count,
-                _ => {}
-            }
-        }
-        Ok(stats)
-    }
-
     pub fn duplicate_l1_episode_groups(&self) -> Result<Vec<Vec<String>>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stmt = conn.prepare(
@@ -1181,6 +1103,40 @@ impl Database {
         let edge_count = count_table(&conn, "edges")?;
         Ok((episode_count, entity_count, fact_count, edge_count))
     }
+
+    pub fn layer_summary(&self) -> Result<LayerSummary> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut summary = LayerSummary::default();
+        let mut stmt = conn.prepare(
+            "SELECT layer, status, COUNT(*)
+             FROM memory_layers
+             GROUP BY layer, status",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?.max(0) as usize,
+            ))
+        })?;
+
+        for row in rows {
+            let (layer, status, count) = row?;
+            match status.as_str() {
+                "active" => match layer.as_str() {
+                    "L1" => summary.l1 += count,
+                    "L2" => summary.l2 += count,
+                    "L3" => summary.l3 += count,
+                    _ => {}
+                },
+                "archived" => summary.archived += count,
+                "invalidated" => summary.invalidated += count,
+                _ => {}
+            }
+        }
+
+        Ok(summary)
+    }
 }
 
 fn init_schema(conn: &Connection) -> Result<()> {
@@ -1293,14 +1249,6 @@ fn init_schema(conn: &Connection) -> Result<()> {
             PRIMARY KEY(memory_id, memory_kind)
         );
 
-        CREATE TABLE IF NOT EXISTS dream_jobs (
-            id TEXT PRIMARY KEY,
-            trigger TEXT NOT NULL,
-            status TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-        );
-
         CREATE TABLE IF NOT EXISTS index_state (
             index_name TEXT PRIMARY KEY,
             doc_count INTEGER NOT NULL,
@@ -1308,6 +1256,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             detail TEXT NULL,
             last_rebuilt_at INTEGER NULL
         );
+
+        DROP TABLE IF EXISTS dream_jobs;
         "#,
     )?;
     ensure_column(conn, "facts", "valid_from", "INTEGER NULL")?;
@@ -1465,7 +1415,7 @@ fn json_to_vec(raw: &str) -> Result<Vec<f32>> {
 mod tests {
     use super::Database;
     use anyhow::Result;
-    use rusqlite::Connection;
+    use rusqlite::{Connection, OptionalExtension};
     use tempfile::TempDir;
 
     #[test]
@@ -1564,13 +1514,6 @@ mod tests {
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY(memory_id, memory_kind)
             );
-            CREATE TABLE dream_jobs (
-                id TEXT PRIMARY KEY,
-                trigger TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
             CREATE TABLE index_state (
                 index_name TEXT PRIMARY KEY,
                 doc_count INTEGER NOT NULL,
@@ -1604,6 +1547,42 @@ mod tests {
                 column
             );
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn open_drops_obsolete_dream_jobs_table() -> Result<()> {
+        let temp = TempDir::new()?;
+        let db_path = temp.path().join("memory.db");
+
+        let conn = Connection::open(&db_path)?;
+        conn.execute_batch(
+            r#"
+            CREATE TABLE dream_jobs (
+                id TEXT PRIMARY KEY,
+                trigger TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            "#,
+        )?;
+        drop(conn);
+
+        let _db = Database::open(&db_path)?;
+        let conn = Connection::open(&db_path)?;
+        let exists = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dream_jobs' LIMIT 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        assert!(
+            exists.is_none(),
+            "expected obsolete dream_jobs table to be dropped"
+        );
 
         Ok(())
     }

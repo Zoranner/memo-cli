@@ -348,54 +348,22 @@ impl MemoryEngine {
     }
 
     pub fn dream(&self, trigger: DreamTrigger) -> Result<DreamReport> {
-        let job_id = self.db.create_dream_job(trigger.as_str(), "running")?;
-        let report = self.run_dream(trigger);
-        match report {
-            Ok(report) => {
-                self.db.complete_dream_job(&job_id)?;
-                Ok(report)
-            }
-            Err(error) => {
-                let _ = self.db.fail_dream_job(&job_id);
-                Err(error)
-            }
-        }
+        self.run_dream(trigger)
     }
 
     pub fn dream_full(&self, trigger: DreamTrigger) -> Result<DreamReport> {
-        let mut report = self.dream(trigger)?;
-        let pending = self.db.dream_job_stats()?.pending;
-        if pending == 0 {
-            return Ok(report);
-        }
+        const FULL_DREAM_MAX_PASSES: usize = 2;
 
-        for queued_report in self.run_pending_dreams(pending)? {
-            merge_dream_reports(&mut report, queued_report);
-        }
-
-        Ok(report)
-    }
-
-    pub fn schedule_dream(&self, trigger: DreamTrigger) -> Result<String> {
-        self.db.create_dream_job(trigger.as_str(), "pending")
-    }
-
-    pub fn run_pending_dreams(&self, limit: usize) -> Result<Vec<DreamReport>> {
-        let mut reports = Vec::new();
-        for (job_id, trigger) in self.db.claim_pending_dream_jobs(limit.max(1))? {
-            let trigger = trigger.parse::<DreamTrigger>()?;
-            match self.run_dream(trigger) {
-                Ok(report) => {
-                    self.db.complete_dream_job(&job_id)?;
-                    reports.push(report);
-                }
-                Err(error) => {
-                    let _ = self.db.fail_dream_job(&job_id);
-                    return Err(error);
-                }
+        let mut merged = DreamReport::default();
+        for pass in 0..FULL_DREAM_MAX_PASSES {
+            let report = self.run_dream(trigger)?;
+            let should_continue = dream_report_has_changes(&report);
+            merge_dream_reports(&mut merged, report);
+            if !should_continue || pass + 1 == FULL_DREAM_MAX_PASSES {
+                break;
             }
         }
-        Ok(reports)
+        Ok(merged)
     }
 
     fn run_dream(&self, trigger: DreamTrigger) -> Result<DreamReport> {
@@ -404,7 +372,7 @@ impl MemoryEngine {
 
         let mut report = DreamReport {
             trigger: trigger.as_str().to_string(),
-            jobs_processed: 1,
+            passes_run: 1,
             ..Default::default()
         };
 
@@ -802,8 +770,8 @@ impl MemoryEngine {
             entity_count,
             fact_count,
             edge_count,
+            layers: self.db.layer_summary()?,
             l3_cached: self.l3_cache.lock().expect("l3 mutex poisoned").len(),
-            dream_jobs: self.db.dream_job_stats()?,
             text_index: self.db.index_status("text")?,
             vector_index: self.db.index_status("vector")?,
         })
@@ -1018,12 +986,23 @@ fn add_candidate(target: &mut HashMap<String, Candidate>, candidate: Candidate) 
 }
 
 fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
+    if target.trigger.is_empty() {
+        target.trigger = next.trigger.clone();
+    }
+    target.passes_run += next.passes_run;
     target.promoted_to_l2 += next.promoted_to_l2;
     target.promoted_to_l3 += next.promoted_to_l3;
     target.downgraded_records += next.downgraded_records;
     target.archived_records += next.archived_records;
     target.invalidated_records += next.invalidated_records;
-    target.jobs_processed += next.jobs_processed;
+}
+
+fn dream_report_has_changes(report: &DreamReport) -> bool {
+    report.promoted_to_l2 > 0
+        || report.promoted_to_l3 > 0
+        || report.downgraded_records > 0
+        || report.archived_records > 0
+        || report.invalidated_records > 0
 }
 
 fn recency_boost(updated_at: chrono::DateTime<Utc>) -> f32 {

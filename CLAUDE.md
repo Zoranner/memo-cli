@@ -32,7 +32,7 @@ For any Rust code changes, always run in this order before finishing:
 This repository is a Rust workspace with three important layers:
 
 - Root crate `memo`: CLI entrypoint and local app wiring. `src/main.rs` defines commands and translates CLI input into `memo-engine` calls. `src/app_config.rs` resolves `.memo/config.toml` and `.memo/providers.toml`, builds provider adapters, and initializes local data directories.
-- `crates/engine`: stateful local memory engine. It owns SQLite persistence, Tantivy text search, HNSW vector search, retrieval ranking, layer promotion/cooling, and dream job orchestration.
+- `crates/engine`: stateful local memory engine. It owns SQLite persistence, Tantivy text search, HNSW vector search, retrieval ranking, and layer promotion/cooling.
 - `crates/lmkit`: reusable multi-provider AI client library. The root crate wraps it via adapters instead of letting `memo-engine` depend on network providers directly.
 
 Keep that boundary intact: provider/network concerns belong in root crate + `lmkit`, while storage/retrieval/dream logic belongs in `memo-engine`.
@@ -102,7 +102,7 @@ Key behaviors:
 - invalidate conflicting facts and matching edges
 - cool stale L3 records back to L2
 - refresh L3 cache after dream changes
-- support queued dream jobs in SQLite, not only synchronous runs
+- keep dream behavior deterministic when invoked explicitly from CLI or external schedulers
 
 If you touch promotion/cooling rules, read the engine integration tests first. Much of project intent is encoded there.
 
@@ -118,7 +118,7 @@ Current app config parser is hand-rolled and intentionally narrow. If adding con
 
 Most behavioral coverage lives in:
 
-- `crates/engine/tests/engine_flow.rs` for end-to-end engine behavior, ranking, dream behavior, index maintenance, and queued jobs
+- `crates/engine/tests/engine_flow.rs` for end-to-end engine behavior, ranking, dream behavior, and index maintenance
 - `src/app_config.rs` tests for local config/provider resolution
 - `src/main.rs` tests for CLI parsing and rendering helpers
 - `src/lmkit_extraction_adapter.rs` tests for extraction JSON normalization/cleanup
