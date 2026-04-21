@@ -19,12 +19,12 @@
 
 | Capability | Description |
 |------------|-------------|
-| 🤖 **Auto Recording** | Say "remember this" in conversation, AI automatically saves to knowledge base |
-| 🔍 **Multi-Query Search** | LLM decomposes your question into sub-queries, searches in parallel, and synthesizes a comprehensive answer |
-| ⏰ **Time Travel** | Quickly find development experience from "last week" or "last month" |
-| 👥 **Team Collaboration** | Personal knowledge base or project-level sharing, flexible choice |
-| 🔐 **Data Security** | Memory data stored entirely locally, fully under your control |
-| 🌐 **Flexible Options** | Supports OpenAI, Ollama local, Aliyun, ZhipuAI, and any OpenAI-compatible service |
+| 🗄️ **Local Truth Source** | SQLite stores episodes, entities, facts, edges, and job/index state as the single source of truth |
+| 🔎 **Hybrid Retrieval** | Queries combine exact, alias, BM25, vector, graph, recency, layer, and hit-frequency signals with optional deep search |
+| 🧩 **Structured Ingest** | `memo ingest` can merge raw text with manual entities/facts and optional provider extraction |
+| 💤 **Consolidation Workflows** | `memo dream` and `memo run-dream-jobs` promote, cool, archive, and reconcile memory layers |
+| ♻️ **Rebuildable Indexes** | Text and vector indexes are derived layers that can be refreshed or rebuilt from SQLite |
+| 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through local provider configuration |
 
 ## 🚀 Quick Start
 
@@ -40,96 +40,75 @@ irm https://memo.zoran.ink/install.ps1 | iex
 curl -fsSL https://memo.zoran.ink/install.sh | bash
 ```
 
-### Step 2: Start Using
+### Step 2: Initialize a Local Data Directory
 
-After installation, start using it directly in your AI coding tool:
-
+```bash
+memo init
 ```
-You: Database connection keeps timing out, how to fix it?
 
-AI: [Auto searches memory] memo search "database connection timeout" -n 5
-    [No memories found]
-    
-    Database timeouts are usually caused by connection pool settings...
-    Check max_connections, timeout parameters, etc.
+This creates a local `.memo` data directory with `config.toml` and `providers.toml` templates.
 
-You: Tried that, didn't work. Turns out the server firewall was blocking the port.
-    Had to open port 3306 in Alibaba Cloud security group settings.
+### Step 3: Ingest and Query Memory
 
-AI: Ah, that's an easy-to-miss issue! Let me record this:
-    
-    [Auto records] memo embed "Database Connection Timeout - Cloud Firewall Issue
-    
-    Problem: Database connection keeps timing out
-    Cause: Cloud server doesn't open database port by default
-    Solution: Login to cloud console → Security groups → Add rule → Open port 3306
-    Note: Also check server's local firewall" --tags database,cloud,troubleshooting
-    
-    ✓ Recorded to memory
-
----
-
-[Two weeks later, different project]
-
-You: Can't connect to MySQL on the new project?
-
-AI: [Auto searches memory] memo search "mysql connection" -n 5
-    [Memory found]
-    
-    Had a similar issue before! If it's a cloud server, check security group settings:
-    Login to cloud console → Security groups → Add rule → Open port 3306
-    Also check the server's local firewall settings
+```bash
+memo ingest "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
+memo query "Where does Alice live?"
+memo inspect <memory-id>
 ```
+
+`memo ingest` writes to SQLite first. Structured entities and facts can come from manual flags and optional provider extraction.
+
+### Step 4: Run Maintenance Workflows
+
+```bash
+memo dream --trigger manual
+memo refresh-index --scope all
+memo stats
+```
+
+`memo dream` runs consolidation over memory layers. `memo refresh-index` updates any derived indexes currently marked as pending. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
 
 ## ⚙️ Configuration
 
 ### Config File Locations
 
-- **Global config**: `~/.memo/config.toml` (recommended)
-- **Local config**: `./.memo/config.toml` (project-specific)
-- **Providers config**: `~/.memo/providers.toml` (API keys and service settings)
+- **Default local data dir**: `./.memo`
+- **Local config**: `./.memo/config.toml`
+- **Providers config**: `./.memo/providers.toml`
 
 ### Priority Order
 
-Command-line args > Local config > Global config > Defaults
+Command-line args > Local config > Defaults
 
 ### Quick Setup
 
-1. Copy example files:
+1. Initialize templates:
 ```bash
-cp providers.example.toml ~/.memo/providers.toml
-cp config.example.toml ~/.memo/config.toml
+memo init
 ```
 
-2. Edit `~/.memo/providers.toml` with your API keys
+2. Edit `./.memo/providers.toml` with your provider credentials
 
-3. Edit `~/.memo/config.toml` to select your preferred services
+3. Edit `./.memo/config.toml` to choose provider-backed extraction, embedding, or rerank services
 
 ### Configuration Parameters
 
 | Section | Parameter | Required | Description | Default |
 |---------|-----------|:--------:|-------------|---------|
-| `[embed]` | `embedding_provider` | ✅ | Embedding service reference (e.g., `aliyun.embed`) | - |
+| `[embed]` | `embedding_provider` | ❌ | Embedding service reference (for example `openai.embed`) | - |
 | `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
-| `[search]` | `rerank_provider` | ✅ | Rerank service reference (e.g., `aliyun.rerank`) | - |
-| `[search]` | `llm_provider` | ✅ | Default LLM for decompose & summarize (e.g., `aliyun.llm`) | - |
-| `[search]` | `results_limit` | ❌ | Maximum search results | `10` |
-| `[search]` | `similarity_threshold` | ❌ | Vector search similarity threshold (0-1) | `0.35` |
-| `[decompose]` | `llm_provider` | ❌ | LLM override for decompose (overrides `search.llm_provider`) | - |
-| `[decompose]` | `max_queries` | ❌ | Maximum number of sub-queries | `12` |
-| `[decompose]` | `strategy_prompt` | ❌ | Custom decompose strategy prompt | built-in 5D strategy |
-| `[merge]` | `candidates_per_query` | ❌ | Candidates retrieved per sub-query | `50` |
-| `[merge]` | `results_per_query` | ❌ | Results kept per sub-query before merge | `5` |
-| `[merge]` | `max_results` | ❌ | Maximum final results after merge | `20` |
-| `[merge]` | `dedup_threshold` | ❌ | Deduplication threshold (0-1) | `0.98` |
-| `[summarize]` | `llm_provider` | ❌ | LLM override for summarize (overrides `search.llm_provider`) | - |
-| `[summarize]` | `strategy_prompt` | ❌ | Custom summarize strategy prompt | built-in strategy |
+| `[extract]` | `extraction_provider` | ❌ | Extraction service reference (for example `openai.llm`) | - |
+| `[extract]` | `min_confidence` | ❌ | Minimum extraction confidence kept after cleanup | `0.5` |
+| `[extract]` | `normalize_predicates` | ❌ | Normalize extracted predicates into stable relation names | `true` |
+| `[rerank]` | `rerank_provider` | ❌ | Rerank service reference (for example `aliyun.rerank`) | - |
+
+Provider references use `<provider>.<service>` names such as `openai.embed` or `aliyun.rerank`.
 
 ---
 
 ## 📖 More Information
 
-- [Command Reference](docs/COMMANDS.md) - Detailed documentation for all commands
+- [Command Reference](docs/COMMANDS.md) - Detailed documentation for all current CLI commands
 - [AI Agent Skill](skills/memo-brain/en-US/SKILL.md) - AI coding assistant integration guide
 - `config.example.toml` - Main configuration example
 - `providers.example.toml` - Provider configuration example

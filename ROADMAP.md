@@ -15,18 +15,20 @@
 - `SQLite` 真相源已经落地，`episodes / entities / facts / edges / memory_layers / consolidation_jobs / index_state` 均已建模。
 - `Tantivy` 文本索引已经接入，支持重建和查询。
 - 查询链路已经具备 `L0 / L3 / exact / alias / BM25 / vector / graph hop / recency / layer boost / hit boost / MMR` 这些信号。
-- `L1 / L2 / L3` 分层与 consolidation 基础规则已经存在，包含晋升、归档、冲突失效和 L3 冷却。
-- 嵌入与实体抽取已经可以通过 provider 配置接入远端能力。
+- deep search 已经具备基础自动升级能力，并可在配置了 rerank 时触发精排。
+- `L1 / L2 / L3` 分层与 consolidation 基础规则已经存在，包含晋升、归档、冲突失效、L3 冷却和排队执行的 maintenance workflow。
+- 嵌入、实体抽取与 rerank 已经可以通过 provider 配置接入远端能力。
+- 向量检索已经具备持久化 `HNSW` 索引能力，仍保持“索引是派生层、SQLite 是真相源”的结构。
 
 当前实现仍有这些明显限制：
 
-- 向量检索还不是 `HNSW / USearch`，而是本地 JSON 持久化加内存全量余弦扫描。
+- 当前向量能力虽然已接入持久化 `HNSW` 索引，但距离 `NEXT.md` 里的最终本地 ANN 路线还没有完全收口。
 - 默认能力仍依赖远端 provider，不是 `NEXT.md` 目标中的本地 `ONNX Runtime`。
-- `rerank` 仅在类型层预留，没有接到配置装配和检索流程。
+- rerank 虽已接通配置与检索流程，但仍不是本地优先、按预算严格调度的最终形态。
 - 写入和索引更新仍是同步热路径，不是异步任务式流水线。
-- consolidation job 目前更像记录，不是后台调度系统。
+- consolidation job 目前已可排队和消费，但还不是完整后台调度系统。
 - 模块边界仍偏粗，`engine.rs` 承担了过多 orchestration 责任。
-- 对外文档仍有旧 CLI 产品形态残留，与当前 engine 化实现没有完全收口。
+- 对外文档收口仍未完成，README 仍需要继续和当前 engine 化实现对齐。
 
 ## 状态总览
 
@@ -35,13 +37,13 @@
 | SQLite 真相源 | 已完成 | 已成为唯一持久层 |
 | Tantivy 文本检索 | 已完成 | 可增量写入和全量重建 |
 | L0/L1/L2/L3 分层 | 部分完成 | L0 较轻，L1-L3 已具备基础机制 |
-| Consolidation / Dream | 部分完成 | 已有规则，但还不是后台任务系统 |
-| 向量 ANN 索引 | 未完成 | 当前为线性扫描 |
-| 本地 embedding / rerank / extraction | 未完成 | 当前主要依赖远端 provider |
-| Deep Search 按需升级 | 部分完成 | 只有 `deep` 开关，没有自动触发策略 |
+| Consolidation / Dream | 部分完成 | 已有规则与排队执行能力，但还不是后台任务系统 |
+| 向量 ANN 索引 | 部分完成 | 已接入持久化 HNSW 索引，但仍未达到 `NEXT` 目标中的最终本地 ANN 路线 |
+| 本地 embedding / rerank / extraction | 未完成 | rerank 已接通，但整体仍主要依赖远端 provider |
+| Deep Search 按需升级 | 部分完成 | 已有自动升级基础，但还不是完整策略驱动 |
 | 异步写入与索引任务 | 未完成 | 当前写入路径同步更新索引 |
 | 模块重构收敛 | 未完成 | 当前仍以 `engine.rs` 为中心 |
-| 文档与实现对齐 | 未完成 | README / COMMANDS 仍有旧接口表述 |
+| 文档与实现对齐 | 部分完成 | COMMANDS 与 CLAUDE 已较新，README 仍需继续收口 |
 
 ## 路线原则
 

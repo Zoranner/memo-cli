@@ -19,12 +19,12 @@
 
 | 能力 | 说明 |
 |------|------|
-| 🤖 **自动记录** | 对话中说"记住这个"，AI 自动保存到知识库 |
-| 🔍 **多维搜索** | LLM 将问题拆解为多个子问题并行搜索，最终综合生成一个完整回答 |
-| ⏰ **时光回溯** | 快速找到"上周"、"上个月"的开发经验 |
-| 👥 **团队协作** | 个人知识库或项目级共享，灵活选择 |
-| 🔐 **数据安全** | 记忆数据完全本地存储，完全掌控 |
-| 🌐 **灵活选择** | 支持 OpenAI、Ollama 本地、阿里云、智谱及任意 OpenAI 兼容服务 |
+| 🗄️ **本地真相源** | SQLite 作为唯一真相源，保存 episodes、entities、facts、edges 与任务/索引状态 |
+| 🔎 **混合检索** | 查询会组合 exact、alias、BM25、vector、graph、recency、layer、hit-frequency 等信号，并可按需进入 deep search |
+| 🧩 **结构化写入** | `memo ingest` 可以把原始文本、手工 entities/facts 与可选 provider 抽取结果合并写入 |
+| 💤 **consolidation 工作流** | `memo dream` 与 `memo run-dream-jobs` 负责记忆层级的晋升、冷却、归档与冲突收敛 |
+| ♻️ **可重建索引** | text 和 vector 索引都是派生层，可以从 SQLite 真相源刷新或全量重建 |
+| 🌐 **provider 扩展能力** | extraction、embedding 和 rerank 可通过本地 provider 配置接入 |
 
 ## 🚀 快速开始
 
@@ -40,96 +40,75 @@ irm https://memo.zoran.ink/install.ps1 | iex
 curl -fsSL https://memo.zoran.ink/install.sh | bash
 ```
 
-### 第 2 步：开始使用
+### 第 2 步：初始化本地数据目录
 
-安装后，直接在你的 AI 编程工具中使用：
-
+```bash
+memo init
 ```
-你：数据库连接一直超时，怎么办？
 
-AI：[自动搜索记忆] memo search "数据库连接超时" -n 5
-    [未找到相关记忆]
-    
-    数据库超时通常是连接池配置问题...
-    检查 max_connections、timeout 参数等
+这会创建本地 `.memo` 数据目录，并写入 `config.toml` 与 `providers.toml` 模板。
 
-你：试过了，不行。后来发现是服务器防火墙挡了端口。
-    要在阿里云安全组设置里开放 3306 端口。
+### 第 3 步：写入并查询记忆
 
-AI：这确实是个容易忽略的问题！让我记录一下：
-    
-    [自动记录] memo embed "数据库连接超时 - 云服务器防火墙问题
-    
-    问题：数据库连接一直超时
-    原因：云服务器默认不开放数据库端口
-    解决：登录云控制台 → 安全组 → 添加规则 → 开放 3306 端口
-    注意：还要检查服务器本地防火墙" --tags database,cloud,troubleshooting
-    
-    ✓ 已记录到记忆库
-
----
-
-[两周后，另一个项目]
-
-你：新项目连不上 MySQL？
-
-AI：[自动搜索记忆] memo search "mysql connection" -n 5
-    [找到相关记忆]
-    
-    之前遇到过类似问题！如果是云服务器，检查安全组设置：
-    登录云控制台 → 安全组 → 添加规则 → 开放 3306 端口
-    还要检查服务器本地防火墙设置
+```bash
+memo ingest "Alice lives in Paris" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
+memo query "Alice 住在哪里？"
+memo inspect <memory-id>
 ```
+
+`memo ingest` 会先写入 SQLite。结构化 entities 和 facts 可以来自手工参数，也可以来自可选的 provider 抽取。
+
+### 第 4 步：运行维护工作流
+
+```bash
+memo dream --trigger manual
+memo refresh-index --scope all
+memo stats
+```
+
+`memo dream` 会执行分层 consolidation。`memo refresh-index` 会刷新当前标记为 pending 的派生索引。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
 
 ## ⚙️ 配置说明
 
 ### 配置文件位置
 
-- **全局配置**：`~/.memo/config.toml`（推荐）
-- **本地配置**：`./.memo/config.toml`（项目独立）
-- **供应商配置**：`~/.memo/providers.toml`（API 密钥和服务设置）
+- **默认本地数据目录**：`./.memo`
+- **本地配置**：`./.memo/config.toml`
+- **供应商配置**：`./.memo/providers.toml`
 
 ### 配置优先级
 
-命令行参数 > 本地配置 > 全局配置 > 默认值
+命令行参数 > 本地配置 > 默认值
 
 ### 快速设置
 
-1. 复制示例文件：
+1. 初始化模板：
 ```bash
-cp providers.example.toml ~/.memo/providers.toml
-cp config.example.toml ~/.memo/config.toml
+memo init
 ```
 
-2. 编辑 `~/.memo/providers.toml` 填入你的 API 密钥
+2. 编辑 `./.memo/providers.toml`，填入 provider 凭据
 
-3. 编辑 `~/.memo/config.toml` 选择要使用的服务
+3. 编辑 `./.memo/config.toml`，选择 provider-backed 的 extraction、embedding 或 rerank 服务
 
 ### 配置参数
 
 | 节 | 参数 | 必填 | 说明 | 默认值 |
 |----|------|:----:|------|--------|
-| `[embed]` | `embedding_provider` | ✅ | Embedding 服务引用（如 `aliyun.embed`） | - |
-| `[embed]` | `duplicate_threshold` | ❌ | 重复检测相似度阈值（0-1） | `0.85` |
-| `[search]` | `rerank_provider` | ✅ | Rerank 服务引用（如 `aliyun.rerank`） | - |
-| `[search]` | `llm_provider` | ✅ | 默认 LLM，用于拆解和总结（如 `aliyun.llm`） | - |
-| `[search]` | `results_limit` | ❌ | 搜索结果数量上限 | `10` |
-| `[search]` | `similarity_threshold` | ❌ | 向量搜索相似度阈值（0-1） | `0.35` |
-| `[decompose]` | `llm_provider` | ❌ | 拆解专用 LLM（覆盖 `search.llm_provider`） | - |
-| `[decompose]` | `max_queries` | ❌ | 最大子查询数 | `12` |
-| `[decompose]` | `strategy_prompt` | ❌ | 自定义拆解策略提示词 | 内置五维策略 |
-| `[merge]` | `candidates_per_query` | ❌ | 每个子查询召回候选数 | `50` |
-| `[merge]` | `results_per_query` | ❌ | 合并前每个子查询保留结果数 | `5` |
-| `[merge]` | `max_results` | ❌ | 合并后最终结果数上限 | `20` |
-| `[merge]` | `dedup_threshold` | ❌ | 去重阈值（0-1） | `0.98` |
-| `[summarize]` | `llm_provider` | ❌ | 总结专用 LLM（覆盖 `search.llm_provider`） | - |
-| `[summarize]` | `strategy_prompt` | ❌ | 自定义总结策略提示词 | 内置策略 |
+| `[embed]` | `embedding_provider` | ❌ | Embedding 服务引用，例如 `openai.embed` | - |
+| `[embed]` | `duplicate_threshold` | ❌ | 重复检测阈值（0-1） | `0.85` |
+| `[extract]` | `extraction_provider` | ❌ | Extraction 服务引用，例如 `openai.llm` | - |
+| `[extract]` | `min_confidence` | ❌ | 清洗后保留的最小抽取置信度 | `0.5` |
+| `[extract]` | `normalize_predicates` | ❌ | 是否把抽取 predicate 归一化为稳定关系名 | `true` |
+| `[rerank]` | `rerank_provider` | ❌ | Rerank 服务引用，例如 `aliyun.rerank` | - |
+
+provider 引用使用 `<provider>.<service>` 形式，例如 `openai.embed` 或 `aliyun.rerank`。
 
 ---
 
 ## 📖 更多信息
 
-- [命令参考](COMMANDS.md) - 所有命令的详细文档
+- [命令参考](COMMANDS.md) - 所有当前 CLI 命令的详细文档
 - [AI Agent Skill](../../skills/memo-brain/zh-CN/SKILL.md) - AI 编码助手集成指南
 - `config.example.toml` - 主配置示例
 - `providers.example.toml` - 供应商配置示例
