@@ -39,7 +39,7 @@ Required concepts to include:
 | Local truth source | SQLite stores episodes, entities, facts, edges, and job/index state |
 | Hybrid retrieval | Query combines exact/alias/BM25/vector/graph signals with optional deep search |
 | Structured remember | `memo remember` can merge manual facts/entities with provider extraction |
-| Consolidation workflows | `memo dream` promotes, cools, and reconciles memory layers |
+| Dream workflows | `memo dream` promotes, cools, and reconciles memory layers |
 | Rebuildable indexes | Text/vector indexes are derived and can be refreshed or rebuilt from SQLite |
 | Provider-backed AI hooks | Extraction, embedding, and rerank are wired through provider config |
 ```
@@ -61,7 +61,7 @@ memo restore
 And explain the flow in prose:
 
 ```md
-This workflow initializes a local data directory, ingests one episode into SQLite, queries the engine through the current retrieval pipeline, runs consolidation, and refreshes any pending derived indexes.
+This workflow initializes a local data directory, remembers one episode into SQLite, queries the engine through the current retrieval pipeline, runs dream, and refreshes any pending derived indexes.
 ```
 
 - [ ] **Step 3: Tighten configuration wording**
@@ -104,7 +104,7 @@ Required terminology:
 - SQLite 真相源
 - 派生索引
 - fast path / deep search
-- consolidation
+- dream
 - provider 配置
 ```
 

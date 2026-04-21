@@ -68,7 +68,7 @@ The README should communicate these concepts clearly:
 - text and vector indexes are rebuildable derived layers
 - current user workflow centers on `awaken`, `remember`, `recall`, `reflect`, `dream`, `state`, and `restore`
 - extraction, embedding, and rerank are provider-backed features in the current architecture
-- consolidation is now part of the product surface, not hidden behavior
+- dream is now part of the product surface, not hidden behavior
 
 #### Content to remove or rewrite
 
@@ -91,7 +91,7 @@ The README should communicate these concepts clearly:
 - use stable terminology consistent with the current implementation:
   - SQLite 真相源
   - 派生索引
-  - consolidation
+- dream
   - fast path / deep search
 - avoid introducing extra claims that are not present in the English README
 

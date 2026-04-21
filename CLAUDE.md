@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Build workspace: `cargo build --all-features`
 - Run all tests: `cargo test --all-features`
 - Run a specific integration test file: `cargo test -p memo-engine --test engine_flow`
-- Run a specific engine test: `cargo test -p memo-engine --test engine_flow consolidation_promotes_repeated_fact_support_to_l3_without_query_heat`
+- Run a specific engine test: `cargo test -p memo-engine --test engine_flow dream_promotes_repeated_fact_support_to_l3_without_query_heat`
 - Run a specific CLI unit test: `cargo test cli_parses_awaken_with_optional_path`
 - Run formatting: `cargo fmt --all`
 - Run lint: `cargo clippy --all-targets --all-features -- -D warnings`
@@ -35,7 +35,7 @@ This repository is a Rust workspace with three important layers:
 - `crates/engine`: stateful local memory engine. It owns SQLite persistence, Tantivy text search, HNSW vector search, retrieval ranking, layer promotion/cooling, and dream job orchestration.
 - `crates/lmkit`: reusable multi-provider AI client library. The root crate wraps it via adapters instead of letting `memo-engine` depend on network providers directly.
 
-Keep that boundary intact: provider/network concerns belong in root crate + `lmkit`, while storage/retrieval/consolidation logic belongs in `memo-engine`.
+Keep that boundary intact: provider/network concerns belong in root crate + `lmkit`, while storage/retrieval/dream logic belongs in `memo-engine`.
 
 ## Core data model
 
@@ -52,7 +52,7 @@ Each record also carries a memory layer in `crates/engine/src/types.rs`:
 - `L2`: reinforced/promoted memory
 - `L3`: stable long-term memory used for hot cache behavior and stronger retrieval boosts
 
-Layer transitions are not cosmetic. Query ranking and consolidation both depend on them.
+Layer transitions are not cosmetic. Query ranking and dream behavior both depend on them.
 
 ## Remember pipeline
 
@@ -101,7 +101,7 @@ Key behaviors:
 - promote sufficiently reinforced memory to L3
 - invalidate conflicting facts and matching edges
 - cool stale L3 records back to L2
-- refresh L3 cache after consolidation changes
+- refresh L3 cache after dream changes
 - support queued dream jobs in SQLite, not only synchronous runs
 
 If you touch promotion/cooling rules, read the engine integration tests first. Much of project intent is encoded there.
@@ -118,7 +118,7 @@ Current app config parser is hand-rolled and intentionally narrow. If adding con
 
 Most behavioral coverage lives in:
 
-- `crates/engine/tests/engine_flow.rs` for end-to-end engine behavior, ranking, consolidation, index maintenance, and queued jobs
+- `crates/engine/tests/engine_flow.rs` for end-to-end engine behavior, ranking, dream behavior, index maintenance, and queued jobs
 - `src/app_config.rs` tests for local config/provider resolution
 - `src/main.rs` tests for CLI parsing and rendering helpers
 - `src/lmkit_extraction_adapter.rs` tests for extraction JSON normalization/cleanup

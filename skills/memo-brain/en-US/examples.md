@@ -70,7 +70,7 @@ Use this when:
 - You want the full content of one recall result
 - You want to inspect layer, reasons, or related detail
 
-## dream: Consolidate Memory
+## dream: Organize Memory
 
 ```bash
 memo dream
@@ -78,7 +78,7 @@ memo dream
 
 Use this when:
 
-- You just wrote a batch of memories and want a manual consolidation pass
+- You just wrote a batch of memories and want a manual dream pass
 - You want to advance promotion, cooling, archival, and conflict resolution
 
 ## state: Inspect Current State

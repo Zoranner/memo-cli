@@ -12,11 +12,11 @@
 
 当前实现已经具备这些核心能力：
 
-- `SQLite` 真相源已经落地，`episodes / entities / facts / edges / memory_layers / consolidation_jobs / index_state` 均已建模。
+- `SQLite` 真相源已经落地，`episodes / entities / facts / edges / memory_layers / dream_jobs / index_state` 均已建模。
 - `Tantivy` 文本索引已经接入，支持重建和查询。
 - 查询链路已经具备 `L0 / L3 / exact / alias / BM25 / vector / graph hop / recency / layer boost / hit boost / MMR` 这些信号。
 - deep search 已经具备基础自动升级能力，并可在配置了 rerank 时触发精排。
-- `L1 / L2 / L3` 分层与 consolidation 基础规则已经存在，包含晋升、归档、冲突失效、L3 冷却和排队执行的 maintenance workflow。
+- `L1 / L2 / L3` 分层与 dream 基础规则已经存在，包含晋升、归档、冲突失效、L3 冷却和排队执行的维护流程。
 - 嵌入、实体抽取与 rerank 已经可以通过 provider 配置接入远端能力。
 - 向量检索已经具备持久化 `HNSW` 索引能力，仍保持“索引是派生层、SQLite 是真相源”的结构。
 
@@ -26,7 +26,7 @@
 - 默认能力仍依赖远端 provider，不是 `NEXT.md` 目标中的本地 `ONNX Runtime`。
 - rerank 虽已接通配置与检索流程，但仍不是本地优先、按预算严格调度的最终形态。
 - 写入和索引更新仍是同步热路径，不是异步任务式流水线。
-- consolidation job 目前已可排队和消费，但还不是完整后台调度系统。
+- dream job 目前已可排队和消费，但还不是完整后台调度系统。
 - 模块边界仍偏粗，`engine.rs` 承担了过多 orchestration 责任。
 - 对外文档收口仍未完成，README 仍需要继续和当前 engine 化实现对齐。
 
@@ -37,7 +37,7 @@
 | SQLite 真相源 | 已完成 | 已成为唯一持久层 |
 | Tantivy 文本检索 | 已完成 | 可增量写入和全量重建 |
 | L0/L1/L2/L3 分层 | 部分完成 | L0 较轻，L1-L3 已具备基础机制 |
-| Consolidation / Dream | 部分完成 | 已有规则与排队执行能力，但还不是后台任务系统 |
+| Dream | 部分完成 | 已有规则与排队执行能力，但还不是后台任务系统 |
 | 向量 ANN 索引 | 部分完成 | 已接入持久化 HNSW 索引，但仍未达到 `NEXT` 目标中的最终本地 ANN 路线 |
 | 本地 embedding / rerank / extraction | 未完成 | rerank 已接通，但整体仍主要依赖远端 provider |
 | Deep Search 按需升级 | 部分完成 | 已有自动升级基础，但还不是完整策略驱动 |
@@ -62,7 +62,7 @@
 
 范围：
 
-- 继续补齐 `memo-engine` 测试，把当前检索与 consolidation 行为锁死。
+- 继续补齐 `memo-engine` 测试，把当前检索与 dream 行为锁死。
 - 梳理查询路径中的评分信号和阈值，避免后续替换底层索引时行为漂移不可控。
 - 收敛 README、COMMANDS 与当前 CLI/engine 实现的差距，明确当前不是旧版 `embed/search/update` 产品模型。
 
@@ -113,15 +113,15 @@
 范围：
 
 - 将写入路径拆成“写 SQLite + 更新 L0”和“索引更新任务”两段。
-- 将 consolidation 从手动入口演进为真正的后台任务模型。
-- `consolidation_jobs` 和 `index_state` 从记录表演进为实际调度和观测接口。
+- 将 dream 从手动入口演进为真正的后台任务模型。
+- `dream_jobs` 和 `index_state` 从记录表演进为实际调度和观测接口。
 - 为失败重试、重建和损坏恢复建立最小机制。
 
 完成标志：
 
 - `remember` 不再同步承担所有索引更新与整理工作。
 - 索引更新失败不会破坏真相源。
-- consolidation 可以独立调度和追踪，而不是只靠前台直接调用。
+- dream 可以独立调度和追踪，而不是只靠前台直接调用。
 
 ### Phase E
 
@@ -129,8 +129,8 @@
 
 范围：
 
-- 从当前 `engine.rs` 中拆出更清晰的子模块，例如 `retrieve / consolidate / session / nlp / storage / index_text / index_vector`。
-- 缩小单文件责任，避免查询、写入、consolidation、session cache 继续堆在同一个 orchestrator 中。
+- 从当前 `engine.rs` 中拆出更清晰的子模块，例如 `retrieve / dream / session / nlp / storage / index_text / index_vector`。
+- 缩小单文件责任，避免查询、写入、dream、session cache 继续堆在同一个 orchestrator 中。
 - 保持外部 API 稳定，内部逐步重构。
 
 完成标志：
@@ -161,7 +161,7 @@
 
 - 把向量索引替换成真实 ANN。
 - 接通 rerank 的配置与查询链路，但保持按需触发。
-- 拆出异步索引更新和 consolidation 任务模型。
+- 拆出异步索引更新和 dream 任务模型。
 - 再推进本地 `ONNX Runtime` 和模块边界重构。
 
 原因：
