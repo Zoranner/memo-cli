@@ -781,7 +781,7 @@ impl Database {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let id = Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO consolidation_jobs
+            "INSERT INTO dream_jobs
              (id, trigger, status, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?4)",
             params![id, trigger, status, now_ts()],
@@ -792,7 +792,7 @@ impl Database {
     pub fn claim_pending_dream_jobs(&self, limit: usize) -> Result<Vec<(String, String)>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, trigger FROM consolidation_jobs
+            "SELECT id, trigger FROM dream_jobs
              WHERE status = 'pending'
              ORDER BY created_at ASC
              LIMIT ?1",
@@ -806,7 +806,7 @@ impl Database {
 
         for (job_id, _) in &jobs {
             conn.execute(
-                "UPDATE consolidation_jobs SET status = 'running', updated_at = ?2 WHERE id = ?1",
+                "UPDATE dream_jobs SET status = 'running', updated_at = ?2 WHERE id = ?1",
                 params![job_id, now_ts()],
             )?;
         }
@@ -817,7 +817,7 @@ impl Database {
     pub fn complete_dream_job(&self, job_id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.execute(
-            "UPDATE consolidation_jobs SET status = 'completed', updated_at = ?2 WHERE id = ?1",
+            "UPDATE dream_jobs SET status = 'completed', updated_at = ?2 WHERE id = ?1",
             params![job_id, now_ts()],
         )?;
         Ok(())
@@ -826,7 +826,7 @@ impl Database {
     pub fn fail_dream_job(&self, job_id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.execute(
-            "UPDATE consolidation_jobs SET status = 'failed', updated_at = ?2 WHERE id = ?1",
+            "UPDATE dream_jobs SET status = 'failed', updated_at = ?2 WHERE id = ?1",
             params![job_id, now_ts()],
         )?;
         Ok(())
@@ -835,8 +835,7 @@ impl Database {
     pub fn dream_job_stats(&self) -> Result<DreamJobStats> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stats = DreamJobStats::default();
-        let mut stmt =
-            conn.prepare("SELECT status, COUNT(*) FROM consolidation_jobs GROUP BY status")?;
+        let mut stmt = conn.prepare("SELECT status, COUNT(*) FROM dream_jobs GROUP BY status")?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -1294,7 +1293,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             PRIMARY KEY(memory_id, memory_kind)
         );
 
-        CREATE TABLE IF NOT EXISTS consolidation_jobs (
+        CREATE TABLE IF NOT EXISTS dream_jobs (
             id TEXT PRIMARY KEY,
             trigger TEXT NOT NULL,
             status TEXT NOT NULL,
@@ -1565,7 +1564,7 @@ mod tests {
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY(memory_id, memory_kind)
             );
-            CREATE TABLE consolidation_jobs (
+            CREATE TABLE dream_jobs (
                 id TEXT PRIMARY KEY,
                 trigger TEXT NOT NULL,
                 status TEXT NOT NULL,

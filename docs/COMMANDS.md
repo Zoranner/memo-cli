@@ -30,11 +30,11 @@ memo awaken [path]
 
 ### Output
 
-Prints JSON with:
+Prints a human-readable summary with:
 
-- `data_dir`
-- `config_created`
-- `providers_created`
+- awaken target directory
+- whether `config.toml` was created or kept
+- whether `providers.toml` was created or kept
 
 ---
 
@@ -112,12 +112,10 @@ Dream entrypoint.
 memo dream [--full] [--json]
 ```
 
-### Options
-
 ### Behavior
 
-- Default mode runs ordinary consolidation
-- `--full` represents a more complete dream pass
+- Default mode runs one manual dream pass
+- `--full` runs a fuller dream pass and also drains queued dream work
 - `--json` emits machine-readable output
 
 ---

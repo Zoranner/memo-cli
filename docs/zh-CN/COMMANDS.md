@@ -30,11 +30,11 @@ memo awaken [path]
 
 ### 输出
 
-返回 JSON，包含：
+输出一段人类可读摘要，包含：
 
-- `data_dir`
-- `config_created`
-- `providers_created`
+- 唤醒的目录
+- `config.toml` 是新建还是保留
+- `providers.toml` 是新建还是保留
 
 ---
 
@@ -104,7 +104,7 @@ memo reflect <id> [--json]
 
 ## `memo dream`
 
-consolidation 入口。
+dream 入口。
 
 ### 语法
 
@@ -114,8 +114,8 @@ memo dream [--full] [--json]
 
 ### 行为
 
-- 默认执行常规 consolidation
-- `--full` 代表更完整的一次 dream
+- 默认执行一次手动 dream
+- `--full` 会执行更完整的一次 dream，并消费当前排队的 dream 工作
 - `--json` 输出机器可读结果
 
 ---

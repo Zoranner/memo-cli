@@ -410,7 +410,7 @@ impl std::str::FromStr for DreamTrigger {
             "idle" => Ok(Self::Idle),
             "before_compaction" => Ok(Self::BeforeCompaction),
             "manual" => Ok(Self::Manual),
-            _ => anyhow::bail!("invalid consolidation trigger: {}", s),
+            _ => anyhow::bail!("invalid dream trigger: {}", s),
         }
     }
 }
@@ -423,7 +423,7 @@ pub struct DreamReport {
     pub downgraded_records: usize,
     pub archived_records: usize,
     pub invalidated_records: usize,
-    pub jobs_created: usize,
+    pub jobs_processed: usize,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -481,4 +481,17 @@ fn default_confidence() -> f32 {
 
 fn default_extraction_source() -> ExtractionSource {
     ExtractionSource::Manual
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::DreamTrigger;
+
+    #[test]
+    fn invalid_dream_trigger_uses_dream_wording() {
+        let error = DreamTrigger::from_str("nope").expect_err("expected invalid trigger");
+        assert!(error.to_string().contains("invalid dream trigger"));
+    }
 }

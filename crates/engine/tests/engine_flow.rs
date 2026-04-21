@@ -415,7 +415,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
 }
 
 #[test]
-fn ingestion_merges_provider_extraction_into_memory() -> Result<()> {
+fn remember_merges_provider_extraction_into_memory() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_extraction(temp.path())?;
     engine.remember(EpisodeInput {
@@ -572,7 +572,7 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
 }
 
 #[test]
-fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
+fn dream_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
     let first = engine.remember(EpisodeInput {
@@ -613,7 +613,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
         {
             (second_record.id.clone(), first_record.id.clone())
         }
-        other => panic!("unexpected duplicate consolidation state: {other:?}"),
+        other => panic!("unexpected duplicate dream state: {other:?}"),
     };
 
     match engine.reflect(&archived_id)? {
@@ -641,7 +641,7 @@ fn consolidation_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
 }
 
 #[test]
-fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
+fn dream_promotes_related_entities_and_facts_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
     let episode_id = engine.remember(EpisodeInput {
@@ -700,7 +700,7 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         .results
         .iter()
         .find(|item| matches!(&item.memory, MemoryRecord::Entity(entity) if entity.canonical_name == "Alice"))
-        .expect("expected Alice entity after consolidation");
+        .expect("expected Alice entity after dream");
     match &entity.memory {
         MemoryRecord::Entity(record) => assert_eq!(record.layer, MemoryLayer::L2),
         other => panic!("expected entity record, got {other:?}"),
@@ -712,7 +712,7 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         .find(
             |item| matches!(&item.memory, MemoryRecord::Fact(fact) if fact.predicate == "lives_in"),
         )
-        .expect("expected fact after consolidation");
+        .expect("expected fact after dream");
     match &fact.memory {
         MemoryRecord::Fact(record) => assert_eq!(record.layer, MemoryLayer::L2),
         other => panic!("expected fact record, got {other:?}"),
@@ -722,7 +722,7 @@ fn consolidation_promotes_related_entities_and_facts_to_l2() -> Result<()> {
 }
 
 #[test]
-fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> Result<()> {
+fn dream_promotes_repeated_entity_support_to_l2_without_query_heat() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -775,14 +775,14 @@ fn consolidation_promotes_repeated_entity_support_to_l2_without_query_heat() -> 
             MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
             _ => None,
         })
-        .expect("expected Alice entity after support-based consolidation");
+        .expect("expected Alice entity after support-based dream");
 
     assert_eq!(entity.layer, MemoryLayer::L2);
     Ok(())
 }
 
 #[test]
-fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
+fn dream_archives_duplicate_related_facts_and_edges() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
     engine.remember(EpisodeInput {
@@ -878,7 +878,7 @@ fn consolidation_archives_duplicate_related_facts_and_edges() -> Result<()> {
 }
 
 #[test]
-fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<()> {
+fn dream_does_not_promote_same_session_entity_support_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -930,14 +930,14 @@ fn consolidation_does_not_promote_same_session_entity_support_to_l2() -> Result<
             MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
             _ => None,
         })
-        .expect("expected Alice entity after same-session consolidation");
+        .expect("expected Alice entity after same-session dream");
 
     assert_eq!(entity.layer, MemoryLayer::L1);
     Ok(())
 }
 
 #[test]
-fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
+fn dream_invalidates_conflicting_facts_and_edges() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -985,7 +985,7 @@ fn consolidation_invalidates_conflicting_facts_and_edges() -> Result<()> {
             MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact.id.clone()),
             _ => None,
         })
-        .expect("expected Paris fact before consolidation");
+        .expect("expected Paris fact before dream");
     engine.remember(EpisodeInput {
         content: "Alice lives in London.".to_string(),
         layer: MemoryLayer::L1,
@@ -1125,7 +1125,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
             MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge.id.clone()),
             _ => None,
         })
-        .expect("expected Paris edge before consolidation");
+        .expect("expected Paris edge before dream");
 
     engine.remember(EpisodeInput {
         content: "Alice lives in London.".to_string(),
@@ -1195,7 +1195,7 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
 }
 
 #[test]
-fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() -> Result<()> {
+fn dream_promotes_repeated_fact_support_to_l3_and_archives_duplicates() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1289,7 +1289,7 @@ fn consolidation_promotes_repeated_fact_support_to_l3_and_archives_duplicates() 
 }
 
 #[test]
-fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()> {
+fn dream_does_not_promote_same_session_fact_support_to_l3() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1380,7 +1380,7 @@ fn consolidation_does_not_promote_same_session_fact_support_to_l3() -> Result<()
 }
 
 #[test]
-fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
+fn dream_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1455,7 +1455,7 @@ fn consolidation_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
 }
 
 #[test]
-fn consolidation_requires_fact_support_span_for_l3_promotion() -> Result<()> {
+fn dream_requires_fact_support_span_for_l3_promotion() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1535,7 +1535,7 @@ fn consolidation_requires_fact_support_span_for_l3_promotion() -> Result<()> {
 }
 
 #[test]
-fn ingest_propagates_recorded_at_to_structured_memory_timestamps() -> Result<()> {
+fn remember_propagates_recorded_at_to_structured_memory_timestamps() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
     let recorded_at =
@@ -1617,7 +1617,7 @@ fn ingest_propagates_recorded_at_to_structured_memory_timestamps() -> Result<()>
 }
 
 #[test]
-fn consolidation_requires_entity_support_span_for_l3_promotion() -> Result<()> {
+fn dream_requires_entity_support_span_for_l3_promotion() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1674,14 +1674,14 @@ fn consolidation_requires_entity_support_span_for_l3_promotion() -> Result<()> {
             MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
             _ => None,
         })
-        .expect("expected Alice entity after repeated support consolidation");
+        .expect("expected Alice entity after repeated support dream");
 
     assert_eq!(entity.layer, MemoryLayer::L2);
     Ok(())
 }
 
 #[test]
-fn consolidation_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
+fn dream_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1738,14 +1738,14 @@ fn consolidation_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
             MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
             _ => None,
         })
-        .expect("expected Alice entity after stale consolidation");
+        .expect("expected Alice entity after stale dream");
 
     assert_eq!(entity.layer, MemoryLayer::L2);
     Ok(())
 }
 
 #[test]
-fn consolidation_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
+fn dream_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1821,14 +1821,14 @@ fn consolidation_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
             MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
             _ => None,
         })
-        .expect("expected Alice entity after reheated consolidation");
+        .expect("expected Alice entity after reheated dream");
 
     assert_eq!(entity.layer, MemoryLayer::L3);
     Ok(())
 }
 
 #[test]
-fn consolidation_preserves_fact_observation_timestamp_when_promoting_layers() -> Result<()> {
+fn dream_preserves_fact_observation_timestamp_when_promoting_layers() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
     let recorded_at =
@@ -1889,7 +1889,7 @@ fn consolidation_preserves_fact_observation_timestamp_when_promoting_layers() ->
             }
             _ => None,
         })
-        .expect("expected Alice lives_in Paris fact after consolidation");
+        .expect("expected Alice lives_in Paris fact after dream");
 
     assert_eq!(fact.created_at, recorded_at);
     assert_eq!(fact.updated_at, recorded_at);
@@ -1898,7 +1898,7 @@ fn consolidation_preserves_fact_observation_timestamp_when_promoting_layers() ->
 }
 
 #[test]
-fn consolidation_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
+fn dream_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -1976,14 +1976,14 @@ fn consolidation_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
             }
             _ => None,
         })
-        .expect("expected Alice lives_in Paris fact after stale consolidation");
+        .expect("expected Alice lives_in Paris fact after stale dream");
 
     assert_eq!(fact.layer, MemoryLayer::L2);
     Ok(())
 }
 
 #[test]
-fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
+fn dream_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -2086,14 +2086,14 @@ fn consolidation_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
             }
             _ => None,
         })
-        .expect("expected Alice lives_in Paris fact after reheated consolidation");
+        .expect("expected Alice lives_in Paris fact after reheated dream");
 
     assert_eq!(fact.layer, MemoryLayer::L3);
     Ok(())
 }
 
 #[test]
-fn consolidation_refreshes_l3_cache_after_cooling_entity_support() -> Result<()> {
+fn dream_refreshes_l3_cache_after_cooling_entity_support() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -2158,7 +2158,7 @@ fn consolidation_refreshes_l3_cache_after_cooling_entity_support() -> Result<()>
 }
 
 #[test]
-fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<()> {
+fn dream_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -2215,14 +2215,14 @@ fn consolidation_promotes_repeated_entity_support_to_l3_without_query_heat() -> 
             MemoryRecord::Entity(entity) if entity.canonical_name == "Alice" => Some(entity),
             _ => None,
         })
-        .expect("expected Alice entity after repeated cross-session consolidation");
+        .expect("expected Alice entity after repeated cross-session dream");
 
     assert_eq!(entity.layer, MemoryLayer::L3);
     Ok(())
 }
 
 #[test]
-fn scheduled_consolidation_stays_pending_until_worker_runs() -> Result<()> {
+fn scheduled_dream_stays_pending_until_worker_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
 
@@ -2308,7 +2308,52 @@ fn running_pending_dream_jobs_promotes_and_completes_job() -> Result<()> {
 }
 
 #[test]
-fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
+fn full_dream_drains_pending_jobs_and_applies_promotions() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    engine.schedule_dream(DreamTrigger::Manual)?;
+
+    let report = engine.dream_full(DreamTrigger::Manual)?;
+    assert_eq!(report.jobs_processed, 2);
+
+    let stats = engine.state()?;
+    assert_eq!(stats.dream_jobs.pending, 0);
+    assert_eq!(stats.dream_jobs.running, 0);
+    assert_eq!(stats.dream_jobs.completed, 2);
+    assert_eq!(stats.dream_jobs.failed, 0);
+
+    match engine.reflect(&episode_id)? {
+        MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L2),
+        other => panic!("expected episode record, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
     let episode_id = engine.remember(EpisodeInput {
@@ -2324,6 +2369,10 @@ fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
 
     let pending_stats = engine.state()?;
     assert_eq!(pending_stats.text_index.status, "pending");
+    assert_eq!(
+        pending_stats.text_index.detail.as_deref(),
+        Some("pending restore after remember")
+    );
 
     let before_refresh = engine.recall(RecallRequest {
         query: "warehouse drones".to_string(),
@@ -2360,7 +2409,7 @@ fn ingest_marks_text_index_pending_until_refresh_runs() -> Result<()> {
 }
 
 #[test]
-fn ingest_marks_vector_index_pending_until_refresh_runs() -> Result<()> {
+fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_vectors(temp.path())?;
     let episode_id = engine.remember(EpisodeInput {
@@ -2376,6 +2425,10 @@ fn ingest_marks_vector_index_pending_until_refresh_runs() -> Result<()> {
 
     let pending_stats = engine.state()?;
     assert_eq!(pending_stats.vector_index.status, "pending");
+    assert_eq!(
+        pending_stats.vector_index.detail.as_deref(),
+        Some("pending restore after remember")
+    );
 
     let before_refresh = engine.recall(RecallRequest {
         query: "开心".to_string(),

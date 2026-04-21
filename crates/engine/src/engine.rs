@@ -362,6 +362,20 @@ impl MemoryEngine {
         }
     }
 
+    pub fn dream_full(&self, trigger: DreamTrigger) -> Result<DreamReport> {
+        let mut report = self.dream(trigger)?;
+        let pending = self.db.dream_job_stats()?.pending;
+        if pending == 0 {
+            return Ok(report);
+        }
+
+        for queued_report in self.run_pending_dreams(pending)? {
+            merge_dream_reports(&mut report, queued_report);
+        }
+
+        Ok(report)
+    }
+
     pub fn schedule_dream(&self, trigger: DreamTrigger) -> Result<String> {
         self.db.create_dream_job(trigger.as_str(), "pending")
     }
@@ -390,7 +404,7 @@ impl MemoryEngine {
 
         let mut report = DreamReport {
             trigger: trigger.as_str().to_string(),
-            jobs_created: 1,
+            jobs_processed: 1,
             ..Default::default()
         };
 
@@ -901,14 +915,14 @@ impl MemoryEngine {
             "text",
             self.db.load_search_documents()?.len(),
             "pending",
-            Some("pending refresh after ingest"),
+            Some("pending restore after remember"),
         )?;
         if self.config.embedding_provider.is_some() {
             self.db.record_index_state(
                 "vector",
                 self.db.load_vector_documents()?.len(),
                 "pending",
-                Some("pending refresh after ingest"),
+                Some("pending restore after remember"),
             )?;
         }
         Ok(())
@@ -1001,6 +1015,15 @@ fn add_candidate(target: &mut HashMap<String, Candidate>, candidate: Candidate) 
             existing.reasons.extend(candidate.reasons.iter().cloned());
         })
         .or_insert(candidate);
+}
+
+fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
+    target.promoted_to_l2 += next.promoted_to_l2;
+    target.promoted_to_l3 += next.promoted_to_l3;
+    target.downgraded_records += next.downgraded_records;
+    target.archived_records += next.archived_records;
+    target.invalidated_records += next.invalidated_records;
+    target.jobs_processed += next.jobs_processed;
 }
 
 fn recency_boost(updated_at: chrono::DateTime<Utc>) -> f32 {

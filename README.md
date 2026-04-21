@@ -22,7 +22,7 @@
 | 🗄️ **Local Truth Source** | SQLite stores episodes, entities, facts, edges, and job/index state as the single source of truth |
 | 🔎 **Hybrid Retrieval** | Queries combine exact, alias, BM25, vector, graph, recency, layer, and hit-frequency signals with optional deep search |
 | 🧩 **Structured Remembering** | `memo remember` can merge raw text with manual entities/facts and optional provider extraction |
-| 💤 **Consolidation Workflows** | `memo dream` promotes, cools, archives, and reconciles memory layers |
+| 💤 **Dream Workflows** | `memo dream` promotes, cools, archives, and reconciles memory layers |
 | ♻️ **Rebuildable Indexes** | Text and vector indexes are derived layers that can be refreshed or rebuilt from SQLite |
 | 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through local provider configuration |
 
@@ -80,7 +80,7 @@ memo restore
 memo state
 ```
 
-`memo dream` runs consolidation over memory layers. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
+`memo dream` runs a dream pass over memory layers. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
 
 ## ⚙️ Configuration
 

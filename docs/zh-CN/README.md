@@ -22,7 +22,7 @@
 | 🗄️ **本地真相源** | SQLite 作为唯一真相源，保存 episodes、entities、facts、edges 与任务/索引状态 |
 | 🔎 **混合检索** | 查询会组合 exact、alias、BM25、vector、graph、recency、layer、hit-frequency 等信号，并可按需进入 deep search |
 | 🧩 **结构化记住** | `memo remember` 可以把原始文本、手工 entities/facts 与可选 provider 抽取结果合并写入 |
-| 💤 **consolidation 工作流** | `memo dream` 负责记忆层级的晋升、冷却、归档与冲突收敛 |
+| 💤 **dream 工作流** | `memo dream` 负责记忆层级的晋升、冷却、归档与冲突收敛 |
 | ♻️ **可重建索引** | text 和 vector 索引都是派生层，可以从 SQLite 真相源刷新或全量重建 |
 | 🌐 **provider 扩展能力** | extraction、embedding 和 rerank 可通过本地 provider 配置接入 |
 
@@ -80,7 +80,7 @@ memo restore
 memo state
 ```
 
-`memo dream` 会执行分层 consolidation。`memo restore` 用于在需要时恢复派生层。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
+`memo dream` 会执行一次记忆整理。`memo restore` 用于在需要时恢复派生层。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
 
 ## ⚙️ 配置说明
 

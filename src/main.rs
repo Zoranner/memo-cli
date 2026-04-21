@@ -139,7 +139,11 @@ fn main() -> Result<()> {
         }
         Command::Dream { full, json } => {
             let engine = open_engine()?;
-            let report = engine.dream(DreamTrigger::Manual)?;
+            let report = if full {
+                engine.dream_full(DreamTrigger::Manual)?
+            } else {
+                engine.dream(DreamTrigger::Manual)?
+            };
             println!("{}", render_dream_report(&report, full, json)?);
         }
         Command::State { json } => {
@@ -287,8 +291,9 @@ fn render_dream_report(report: &DreamReport, full: bool, json: bool) -> Result<S
     }
 
     Ok(format!(
-        "Dream {}complete\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
+        "Dream {}complete\njobs_processed: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
         if full { "(full) " } else { "" },
+        report.jobs_processed,
         report.promoted_to_l2,
         report.promoted_to_l3,
         report.downgraded_records,
