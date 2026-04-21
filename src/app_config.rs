@@ -11,6 +11,7 @@ use memo_engine::{EngineConfig, ExtractionProvider};
 
 use crate::lmkit_adapter::LmkitEmbeddingAdapter;
 use crate::lmkit_extraction_adapter::{ExtractionCleanupOptions, LmkitExtractionAdapter};
+use crate::lmkit_rerank_adapter::LmkitRerankAdapter;
 
 const CONFIG_TEMPLATE: &str = include_str!("templates/config.toml");
 const PROVIDERS_TEMPLATE: &str = include_str!("templates/providers.toml");
@@ -29,9 +30,15 @@ struct ExtractConfig {
 }
 
 #[derive(Debug, Default)]
+struct RerankConfig {
+    rerank_provider: Option<String>,
+}
+
+#[derive(Debug, Default)]
 struct FileConfig {
     embed: EmbedConfig,
     extract: ExtractConfig,
+    rerank: RerankConfig,
 }
 
 #[derive(Debug, Default)]
@@ -82,6 +89,12 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
             extraction_cleanup_options(&file_config.extract),
         )?;
         engine_config = engine_config.with_extraction_provider(Arc::new(adapter));
+    }
+
+    if let Some(provider_ref) = file_config.rerank.rerank_provider.as_deref() {
+        let provider_config = load_provider_config(&data_dir, provider_ref, "rerank")?;
+        let adapter = LmkitRerankAdapter::new(provider_config)?;
+        engine_config = engine_config.with_rerank_provider(Arc::new(adapter));
     }
 
     Ok(engine_config)
@@ -238,6 +251,11 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
                 }
                 _ => {}
             },
+            Some("rerank") => {
+                if key == "rerank_provider" {
+                    config.rerank.rerank_provider = Some(parse_string(value)?.to_string());
+                }
+            }
             _ => {}
         }
     }
@@ -381,6 +399,24 @@ mod tests {
     }
 
     #[test]
+    fn build_engine_config_loads_rerank_provider_from_local_files() -> Result<()> {
+        let temp = TempDir::new()?;
+        fs::write(
+            temp.path().join("config.toml"),
+            "[rerank]\nrerank_provider = \"aliyun.rerank\"\n",
+        )?;
+        fs::write(
+            temp.path().join("providers.toml"),
+            "[aliyun]\napi_key = \"sk-test\"\n[aliyun.rerank]\nbase_url = \"https://dashscope.aliyuncs.com/api/v1\"\nmodel = \"gte-rerank\"\n",
+        )?;
+
+        let config = build_engine_config(temp.path())?;
+
+        assert!(config.rerank_provider.is_some());
+        Ok(())
+    }
+
+    #[test]
     fn build_engine_config_rejects_invalid_provider_ref() -> Result<()> {
         let temp = TempDir::new()?;
         fs::write(
@@ -398,7 +434,10 @@ mod tests {
         };
         assert!(error
             .to_string()
-            .contains("must look like `<provider>.<service>`"));
+            .contains("failed to resolve embedding provider `openai`"));
+        assert!(error.chain().any(|cause| cause
+            .to_string()
+            .contains("must look like `<provider>.<service>`")));
         Ok(())
     }
 

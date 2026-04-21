@@ -350,6 +350,7 @@ pub enum RetrieveReason {
     Alias,
     Bm25,
     Vector,
+    Rerank,
     GraphHop { hops: usize },
     RecencyBoost,
     LayerBoost,
@@ -400,6 +401,20 @@ impl ConsolidationTrigger {
     }
 }
 
+impl std::str::FromStr for ConsolidationTrigger {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "session_end" => Ok(Self::SessionEnd),
+            "idle" => Ok(Self::Idle),
+            "before_compaction" => Ok(Self::BeforeCompaction),
+            "manual" => Ok(Self::Manual),
+            _ => anyhow::bail!("invalid consolidation trigger: {}", s),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConsolidationReport {
     pub trigger: String,
@@ -433,12 +448,21 @@ pub struct IndexStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ConsolidationJobStats {
+    pub pending: usize,
+    pub running: usize,
+    pub completed: usize,
+    pub failed: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EngineStats {
     pub episode_count: usize,
     pub entity_count: usize,
     pub fact_count: usize,
     pub edge_count: usize,
     pub l3_cached: usize,
+    pub consolidation_jobs: ConsolidationJobStats,
     pub text_index: IndexStatus,
     pub vector_index: IndexStatus,
 }

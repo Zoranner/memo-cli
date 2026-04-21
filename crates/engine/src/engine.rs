@@ -91,23 +91,6 @@ impl MemoryEngine {
             entity_records.insert(normalize_text(&record.canonical_name), record);
         }
 
-        let mut indexed_docs: Vec<(String, String, String, String)> = Vec::new();
-        indexed_docs.push((
-            episode.id.clone(),
-            "episode".to_string(),
-            episode.layer.as_str().to_string(),
-            episode.content.clone(),
-        ));
-
-        for record in entity_records.values() {
-            indexed_docs.push((
-                record.id.clone(),
-                "entity".to_string(),
-                record.layer.as_str().to_string(),
-                entity_text_for_ranking(record),
-            ));
-        }
-
         for fact in preview.facts {
             let subject_key = normalize_text(&fact.subject);
             let object_key = normalize_text(&fact.object);
@@ -132,12 +115,6 @@ impl MemoryEngine {
                     vector.as_deref(),
                 )?;
                 entity_records.insert(subject_key.clone(), record.clone());
-                indexed_docs.push((
-                    record.id.clone(),
-                    "entity".to_string(),
-                    record.layer.as_str().to_string(),
-                    entity_text_for_ranking(&record),
-                ));
                 record
             };
             let object_record = if let Some(record) = entity_records.get(&object_key) {
@@ -161,12 +138,6 @@ impl MemoryEngine {
                     vector.as_deref(),
                 )?;
                 entity_records.insert(object_key.clone(), record.clone());
-                indexed_docs.push((
-                    record.id.clone(),
-                    "entity".to_string(),
-                    record.layer.as_str().to_string(),
-                    entity_text_for_ranking(&record),
-                ));
                 record
             };
 
@@ -174,7 +145,7 @@ impl MemoryEngine {
                 "{} {} {}",
                 fact.subject, fact.predicate, fact.object
             ))?;
-            let fact_record = self.db.insert_fact(
+            self.db.insert_fact(
                 &fact,
                 input.layer,
                 Some(&subject_record.id),
@@ -196,16 +167,9 @@ impl MemoryEngine {
                     observed_at: episode.created_at,
                 },
             )?;
-            indexed_docs.push((
-                fact_record.id.clone(),
-                "fact".to_string(),
-                fact_record.layer.as_str().to_string(),
-                fact_text_for_ranking(&fact_record),
-            ));
         }
 
-        self.upsert_text_documents(&indexed_docs)?;
-        self.upsert_vector_documents_for_ids(&indexed_docs)?;
+        self.mark_indexes_pending()?;
         self.refresh_l3_cache()?;
         self.refresh_session_cache(&episode.id, &input.content, entity_records.values())?;
 
@@ -236,11 +200,31 @@ impl MemoryEngine {
     pub fn query(&self, request: RetrieveRequest) -> Result<QueryResultSet> {
         let started = Instant::now();
         let normalized = normalize_text(&request.query);
+        let mut result = self.execute_query(&request, request.deep)?;
+        if !request.deep && should_auto_escalate_to_deep_search(&result) {
+            result = self.execute_query(&request, true)?;
+        }
+
+        self.commit_query_results(&normalized, &result.results)?;
+
+        debug!(
+            query = %request.query,
+            deep = result.deep_search_used,
+            candidates = result.results.len(),
+            elapsed_ms = started.elapsed().as_millis(),
+            "memory query completed"
+        );
+
+        Ok(result)
+    }
+
+    fn execute_query(&self, request: &RetrieveRequest, deep: bool) -> Result<QueryResultSet> {
         let mut candidates: HashMap<String, Candidate> = HashMap::new();
         let limit = request.limit.max(1);
-        let text_limit = if request.deep { limit * 12 } else { limit * 6 };
-        let graph_limit = if request.deep { limit * 8 } else { limit * 4 };
-        let graph_hops = if request.deep { 2 } else { 1 };
+        let text_limit = if deep { limit * 12 } else { limit * 6 };
+        let graph_limit = if deep { limit * 8 } else { limit * 4 };
+        let graph_hops = if deep { 2 } else { 1 };
+        let normalized = normalize_text(&request.query);
 
         if let Some(candidate) = self.l0_match(&normalized)? {
             add_candidate(&mut candidates, candidate);
@@ -335,6 +319,7 @@ impl MemoryEngine {
                 candidate
             })
             .collect();
+        self.apply_rerank(deep, &request.query, limit, &mut scored)?;
         scored.sort_by(|a, b| b.score.total_cmp(&a.score));
 
         let selected = mmr_select(scored, limit);
@@ -350,22 +335,9 @@ impl MemoryEngine {
             })
             .collect::<Vec<_>>();
 
-        for result in &results {
-            let _ = self.db.increment_hit_count(&result.memory);
-        }
-        self.record_query_session(&normalized, &results)?;
-
-        debug!(
-            query = %request.query,
-            deep = request.deep,
-            candidates = results.len(),
-            elapsed_ms = started.elapsed().as_millis(),
-            "memory query completed"
-        );
-
         Ok(QueryResultSet {
             total_candidates: results.len(),
-            deep_search_used: request.deep,
+            deep_search_used: deep,
             results,
         })
     }
@@ -377,10 +349,49 @@ impl MemoryEngine {
     }
 
     pub fn consolidate(&self, trigger: ConsolidationTrigger) -> Result<ConsolidationReport> {
+        let job_id = self
+            .db
+            .create_consolidation_job(trigger.as_str(), "running")?;
+        let report = self.run_consolidation(trigger);
+        match report {
+            Ok(report) => {
+                self.db.complete_consolidation_job(&job_id)?;
+                Ok(report)
+            }
+            Err(error) => {
+                let _ = self.db.fail_consolidation_job(&job_id);
+                Err(error)
+            }
+        }
+    }
+
+    pub fn schedule_consolidation(&self, trigger: ConsolidationTrigger) -> Result<String> {
+        self.db
+            .create_consolidation_job(trigger.as_str(), "pending")
+    }
+
+    pub fn run_pending_consolidation_jobs(&self, limit: usize) -> Result<Vec<ConsolidationReport>> {
+        let mut reports = Vec::new();
+        for (job_id, trigger) in self.db.claim_pending_consolidation_jobs(limit.max(1))? {
+            let trigger = trigger.parse::<ConsolidationTrigger>()?;
+            match self.run_consolidation(trigger) {
+                Ok(report) => {
+                    self.db.complete_consolidation_job(&job_id)?;
+                    reports.push(report);
+                }
+                Err(error) => {
+                    let _ = self.db.fail_consolidation_job(&job_id);
+                    return Err(error);
+                }
+            }
+        }
+        Ok(reports)
+    }
+
+    fn run_consolidation(&self, trigger: ConsolidationTrigger) -> Result<ConsolidationReport> {
         const ENTITY_L3_MIN_SESSION_SPAN: Duration = Duration::days(1);
         const L3_STALE_AFTER: Duration = Duration::days(30);
 
-        self.db.create_consolidation_job(trigger.as_str())?;
         let mut report = ConsolidationReport {
             trigger: trigger.as_str().to_string(),
             jobs_created: 1,
@@ -447,9 +458,54 @@ impl MemoryEngine {
 
         report.downgraded_records += self.cool_stale_l3_records(Utc::now() - L3_STALE_AFTER)?;
 
-        let _ = self.db.complete_consolidation_jobs()?;
         self.refresh_l3_cache()?;
         Ok(report)
+    }
+
+    fn apply_rerank(
+        &self,
+        deep: bool,
+        query: &str,
+        limit: usize,
+        candidates: &mut [Candidate],
+    ) -> Result<()> {
+        if !deep || candidates.len() < 2 {
+            return Ok(());
+        }
+        let Some(provider) = &self.config.rerank_provider else {
+            return Ok(());
+        };
+
+        candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
+        let rerank_limit = candidates.len().min(limit.max(1) * 4);
+        let documents = candidates
+            .iter()
+            .take(rerank_limit)
+            .map(|candidate| candidate.memory.text_for_ranking())
+            .collect::<Vec<_>>();
+        let reranked = provider.rerank(query, &documents)?;
+
+        for item in reranked {
+            if item.index >= rerank_limit {
+                continue;
+            }
+            let candidate = &mut candidates[item.index];
+            candidate.score += 5.0 + item.score.max(0.0);
+            candidate.reasons.push(RetrieveReason::Rerank);
+        }
+
+        Ok(())
+    }
+
+    fn commit_query_results(
+        &self,
+        normalized_query: &str,
+        results: &[RetrieveResult],
+    ) -> Result<()> {
+        for result in results {
+            let _ = self.db.increment_hit_count(&result.memory);
+        }
+        self.record_query_session(normalized_query, results)
     }
 
     fn promote_episode_cluster_to_l2(&self, episode_id: &str) -> Result<usize> {
@@ -713,6 +769,26 @@ impl MemoryEngine {
         Ok(report)
     }
 
+    pub fn refresh_pending_indexes(&self, scope: RebuildScope) -> Result<RebuildReport> {
+        match scope {
+            RebuildScope::All => self.rebuild_indexes(RebuildScope::All),
+            RebuildScope::Text => {
+                if self.db.index_status("text")?.status == "pending" {
+                    self.rebuild_indexes(RebuildScope::Text)
+                } else {
+                    Ok(RebuildReport::default())
+                }
+            }
+            RebuildScope::Vector => {
+                if self.db.index_status("vector")?.status == "pending" {
+                    self.rebuild_indexes(RebuildScope::Vector)
+                } else {
+                    Ok(RebuildReport::default())
+                }
+            }
+        }
+    }
+
     pub fn stats(&self) -> Result<EngineStats> {
         let (episode_count, entity_count, fact_count, edge_count) = self.db.stats()?;
         Ok(EngineStats {
@@ -721,6 +797,7 @@ impl MemoryEngine {
             fact_count,
             edge_count,
             l3_cached: self.l3_cache.lock().expect("l3 mutex poisoned").len(),
+            consolidation_jobs: self.db.consolidation_job_stats()?,
             text_index: self.db.index_status("text")?,
             vector_index: self.db.index_status("vector")?,
         })
@@ -831,40 +908,21 @@ impl MemoryEngine {
         Ok(Some(provider.embed_text(text)?))
     }
 
-    fn upsert_text_documents(&self, docs: &[(String, String, String, String)]) -> Result<()> {
-        let mut text_index = self.text_index.lock().expect("tantivy mutex poisoned");
-        for (id, kind, layer, body) in docs {
-            text_index.upsert_document(id, kind, layer, body)?;
-        }
+    fn mark_indexes_pending(&self) -> Result<()> {
         self.db.record_index_state(
             "text",
             self.db.load_search_documents()?.len(),
-            "ready",
-            None,
+            "pending",
+            Some("pending refresh after ingest"),
         )?;
-        Ok(())
-    }
-
-    fn upsert_vector_documents_for_ids(
-        &self,
-        docs: &[(String, String, String, String)],
-    ) -> Result<()> {
-        if self.config.embedding_provider.is_none() {
-            return Ok(());
+        if self.config.embedding_provider.is_some() {
+            self.db.record_index_state(
+                "vector",
+                self.db.load_vector_documents()?.len(),
+                "pending",
+                Some("pending refresh after ingest"),
+            )?;
         }
-        let mut vector_index = self.vector_index.lock().expect("vector mutex poisoned");
-        let vectors = self.db.load_vector_documents()?;
-        for (id, kind, _, _) in docs {
-            if let Some((_, _, vector)) = vectors
-                .iter()
-                .into_iter()
-                .find(|(doc_id, doc_kind, _)| doc_id == id && doc_kind == kind)
-            {
-                vector_index.upsert(kind, id, vector)?;
-            }
-        }
-        self.db
-            .record_index_state("vector", vectors.len(), "ready", None)?;
         Ok(())
     }
 }
@@ -966,6 +1024,26 @@ fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
 }
 
+fn should_auto_escalate_to_deep_search(result: &QueryResultSet) -> bool {
+    if result.results.len() < 2 {
+        return false;
+    }
+
+    let first = &result.results[0];
+    if first.reasons.iter().any(|reason| {
+        matches!(
+            reason,
+            RetrieveReason::L0 | RetrieveReason::L3 | RetrieveReason::Exact | RetrieveReason::Alias
+        )
+    }) {
+        return false;
+    }
+
+    let second = &result.results[1];
+    let score_gap = (first.score - second.score).abs();
+    score_gap <= 0.25
+}
+
 fn should_cool_l3_record(record: &MemoryRecord, stale_before: chrono::DateTime<Utc>) -> bool {
     let Some(max_hit_count) = l3_cooldown_max_hit_count(record) else {
         return false;
@@ -1043,17 +1121,6 @@ fn text_similarity(a: String, b: String) -> f32 {
     } else {
         intersection / union
     }
-}
-
-fn entity_text_for_ranking(entity: &EntityRecord) -> String {
-    format!("{} {}", entity.canonical_name, entity.aliases.join(" "))
-}
-
-fn fact_text_for_ranking(fact: &crate::types::FactRecord) -> String {
-    format!(
-        "{} {} {}",
-        fact.subject_text, fact.predicate, fact.object_text
-    )
 }
 
 #[cfg(test)]

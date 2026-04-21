@@ -22,7 +22,7 @@ license = "GPL-3.0-only"
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
-lmkit = { path = "crates/lmkit", default-features = false, features = ["chat", "embed", "openai", "aliyun", "anthropic", "google", "ollama", "zhipu"] }
+lmkit = { path = "crates/lmkit", default-features = false, features = ["chat", "embed", "rerank", "openai", "aliyun", "anthropic", "google", "ollama", "zhipu"] }
 memo-engine = { path = "crates/engine" }
 serde.workspace = true
 serde_json.workspace = true

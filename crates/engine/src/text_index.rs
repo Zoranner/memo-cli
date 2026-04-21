@@ -7,7 +7,7 @@ use tantivy::{
     doc,
     query::QueryParser,
     schema::{Field, Schema, SchemaBuilder, TantivyDocument, Value, STORED, STRING, TEXT},
-    Index, IndexReader, IndexSettings, IndexWriter, ReloadPolicy, Term,
+    Index, IndexReader, IndexSettings, IndexWriter, ReloadPolicy,
 };
 
 #[derive(Debug, Clone)]
@@ -53,20 +53,6 @@ impl TextIndex {
             layer_field,
             body_field,
         })
-    }
-
-    pub fn upsert_document(&mut self, id: &str, kind: &str, layer: &str, body: &str) -> Result<()> {
-        self.writer
-            .delete_term(Term::from_field_text(self.id_field, id));
-        self.writer.add_document(doc!(
-            self.id_field => id.to_string(),
-            self.kind_field => kind.to_string(),
-            self.layer_field => layer.to_string(),
-            self.body_field => body.to_string(),
-        ))?;
-        self.writer.commit()?;
-        self.reader.reload()?;
-        Ok(())
     }
 
     pub fn rebuild(&mut self, documents: &[(String, String, String, String)]) -> Result<usize> {

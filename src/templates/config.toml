@@ -13,3 +13,8 @@ extraction_provider = "openai.extract"
 min_confidence = 0.5
 # Convert extracted predicates like "Lives In" to snake_case.
 normalize_predicates = true
+
+[rerank]
+# Optional deep-search rerank provider. Only used when query --deep is enabled.
+# Rerank is currently supported by providers like aliyun.rerank and zhipu.rerank.
+# rerank_provider = "aliyun.rerank"

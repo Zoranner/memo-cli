@@ -36,6 +36,10 @@ model = "qwen2.5:7b"
 # [aliyun.extract]
 # base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 # model = "qwen-plus"
+#
+# [aliyun.rerank]
+# base_url = "https://dashscope.aliyuncs.com/api/v1"
+# model = "gte-rerank"
 
 # [google]
 # api_key = "your-google-api-key"
@@ -60,3 +64,7 @@ model = "qwen2.5:7b"
 # [zhipu.extract]
 # base_url = "https://open.bigmodel.cn/api/paas/v4"
 # model = "glm-4-flash"
+#
+# [zhipu.rerank]
+# base_url = "https://open.bigmodel.cn/api/paas/v4"
+# model = "rerank"

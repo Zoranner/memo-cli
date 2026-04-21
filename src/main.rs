@@ -11,6 +11,7 @@ use memo_engine::{
 mod app_config;
 mod lmkit_adapter;
 mod lmkit_extraction_adapter;
+mod lmkit_rerank_adapter;
 
 #[derive(Parser)]
 #[command(name = "memo")]
@@ -57,6 +58,16 @@ enum Command {
     Dream {
         #[arg(long, default_value = "manual")]
         trigger: String,
+        #[arg(long)]
+        enqueue: bool,
+    },
+    RunDreamJobs {
+        #[arg(long, default_value_t = 1)]
+        limit: usize,
+    },
+    RefreshIndex {
+        #[arg(long, default_value = "all")]
+        scope: String,
     },
     RebuildIndex {
         #[arg(long, default_value = "all")]
@@ -144,9 +155,30 @@ fn main() -> Result<()> {
                     let record = engine.inspect_memory(&id)?;
                     println!("{}", serde_json::to_string_pretty(&record)?);
                 }
-                Command::Dream { trigger } => {
+                Command::Dream { trigger, enqueue } => {
                     let trigger = parse_trigger(&trigger)?;
-                    let report = engine.consolidate(trigger)?;
+                    if enqueue {
+                        let job_id = engine.schedule_consolidation(trigger)?;
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "job_id": job_id,
+                                "status": "pending",
+                                "trigger": trigger.as_str(),
+                            }))?
+                        );
+                    } else {
+                        let report = engine.consolidate(trigger)?;
+                        println!("{}", serde_json::to_string_pretty(&report)?);
+                    }
+                }
+                Command::RunDreamJobs { limit } => {
+                    let reports = engine.run_pending_consolidation_jobs(limit)?;
+                    println!("{}", serde_json::to_string_pretty(&reports)?);
+                }
+                Command::RefreshIndex { scope } => {
+                    let scope = parse_scope(&scope)?;
+                    let report = engine.refresh_pending_indexes(scope)?;
                     println!("{}", serde_json::to_string_pretty(&report)?);
                 }
                 Command::RebuildIndex { scope } => {
@@ -343,6 +375,39 @@ mod tests {
                 assert!(dry_run);
             }
             _ => panic!("expected ingest command"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_dream_enqueue_flag() {
+        let cli = Cli::parse_from(["memo", "dream", "--trigger", "idle", "--enqueue"]);
+
+        match cli.command {
+            Command::Dream { trigger, enqueue } => {
+                assert_eq!(trigger, "idle");
+                assert!(enqueue);
+            }
+            _ => panic!("expected dream command"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_run_dream_jobs_command() {
+        let cli = Cli::parse_from(["memo", "run-dream-jobs", "--limit", "3"]);
+
+        match cli.command {
+            Command::RunDreamJobs { limit } => assert_eq!(limit, 3),
+            _ => panic!("expected run-dream-jobs command"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_refresh_index_command() {
+        let cli = Cli::parse_from(["memo", "refresh-index", "--scope", "vector"]);
+
+        match cli.command {
+            Command::RefreshIndex { scope } => assert_eq!(scope, "vector"),
+            _ => panic!("expected refresh-index command"),
         }
     }
 }
