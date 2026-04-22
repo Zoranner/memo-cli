@@ -747,15 +747,17 @@ impl Database {
     }
 
     pub fn load_l3_records(&self, limit: usize) -> Result<Vec<MemoryRecord>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         let rows = {
             let conn = self.conn.lock().expect("sqlite mutex poisoned");
             let mut stmt = conn.prepare(
                 "SELECT memory_id, memory_kind FROM memory_layers
                  WHERE layer = 'L3' AND status = 'active'
-                 ORDER BY updated_at DESC
-                 LIMIT ?1",
+                 ORDER BY updated_at DESC",
             )?;
-            let rows = stmt.query_map(params![limit as i64], |row| {
+            let rows = stmt.query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?;
             rows.collect::<rusqlite::Result<Vec<_>>>()?
@@ -2283,6 +2285,19 @@ mod tests {
             },
             None,
         )?;
+        let gamma = db.insert_episode(
+            &EpisodeInput {
+                content: "gamma".to_string(),
+                layer: MemoryLayer::L3,
+                entities: Vec::new(),
+                facts: Vec::new(),
+                source_episode_id: None,
+                session_id: None,
+                recorded_at: None,
+                confidence: 0.9,
+            },
+            None,
+        )?;
 
         {
             let conn = db.conn.lock().expect("sqlite mutex poisoned");
@@ -2300,6 +2315,35 @@ mod tests {
                     beta.id,
                     3_i64,
                     dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 11, 0, 0).unwrap())
+                ],
+            )?;
+            conn.execute(
+                "UPDATE memory_layers SET updated_at = ?2 WHERE memory_id = ?1 AND memory_kind = 'episode'",
+                rusqlite::params![
+                    alpha.id,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 9, 0, 0).unwrap())
+                ],
+            )?;
+            conn.execute(
+                "UPDATE memory_layers SET updated_at = ?2 WHERE memory_id = ?1 AND memory_kind = 'episode'",
+                rusqlite::params![
+                    beta.id,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 11, 30, 0).unwrap())
+                ],
+            )?;
+            conn.execute(
+                "UPDATE episodes SET hit_count = ?2, last_seen_at = ?3 WHERE id = ?1",
+                rusqlite::params![
+                    gamma.id,
+                    1_i64,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 8, 0, 0).unwrap())
+                ],
+            )?;
+            conn.execute(
+                "UPDATE memory_layers SET updated_at = ?2 WHERE memory_id = ?1 AND memory_kind = 'episode'",
+                rusqlite::params![
+                    gamma.id,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 12, 0, 0).unwrap())
                 ],
             )?;
         }
