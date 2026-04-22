@@ -24,11 +24,13 @@
 | 🧩 **Structured Remembering** | `memo remember` can merge raw text with manual entities/facts and optional provider extraction |
 | 💤 **Dream Workflows** | `memo dream` promotes, cools, archives, and reconciles memory layers |
 | ♻️ **Rebuildable Indexes** | Text and vector indexes are derived layers that can be refreshed or rebuilt from SQLite |
-| 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through local provider configuration |
+| 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through provider configuration |
 
 ## 🧭 Public Command Standard
 
 The public command language is defined by [Command Philosophy](docs/architecture/command-philosophy.md). That document is the product standard.
+
+The system architecture, runtime flow, model boundaries, and memory lifecycle are defined by [Memory Engine Architecture](docs/architecture/memory-engine-architecture.md).
 
 Memo should be described and learned through this public action language:
 
@@ -123,6 +125,7 @@ Provider references use `<provider>.<service>` names such as `openai.embed` or `
 ## 📖 More Information
 
 - [Command Philosophy](docs/architecture/command-philosophy.md) - Public command language standard
+- [Memory Engine Architecture](docs/architecture/memory-engine-architecture.md) - System layers, command flows, model boundaries, and lifecycle design
 - [Command Reference](docs/COMMANDS.md) - Public command reference
 - [AI Agent Skill](skills/memo-brain/en-US/SKILL.md) - AI coding assistant integration guide
 - `config.example.toml` - Main configuration example

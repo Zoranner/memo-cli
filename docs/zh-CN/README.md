@@ -24,11 +24,13 @@
 | 🧩 **结构化记住** | `memo remember` 可以把原始文本、手工 entities/facts 与可选 provider 抽取结果合并写入 |
 | 💤 **dream 工作流** | `memo dream` 负责记忆层级的晋升、冷却、归档与冲突收敛 |
 | ♻️ **可重建索引** | text 和 vector 索引都是派生层，可以从 SQLite 真相源刷新或全量重建 |
-| 🌐 **provider 扩展能力** | extraction、embedding 和 rerank 可通过本地 provider 配置接入 |
+| 🌐 **provider 扩展能力** | extraction、embedding 和 rerank 可通过 provider 配置接入 |
 
 ## 🧭 公开命令标准
 
 公开命令语言以 [命令设计哲学](../architecture/command-philosophy.md) 为准。那个文档定义的是产品标准，不是临时说明。
+
+系统分层、命令流程、模型边界与记忆生命周期，以 [记忆引擎架构](../architecture/memory-engine-architecture.md) 为准。
 
 Memo 应当通过这套公开动作语言被学习和理解：
 
@@ -123,6 +125,7 @@ provider 引用使用 `<provider>.<service>` 形式，例如 `openai.embed` 或 
 ## 📖 更多信息
 
 - [命令设计哲学](../architecture/command-philosophy.md) - 公开命令语言标准
+- [记忆引擎架构](../architecture/memory-engine-architecture.md) - 系统分层、命令流程、模型职责与生命周期设计
 - [命令参考](COMMANDS.md) - 公开命令参考
 - [AI Agent Skill](../../skills/memo-brain/zh-CN/SKILL.md) - AI 编码助手集成指南
 - `config.example.toml` - 主配置示例
