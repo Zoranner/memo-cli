@@ -21,8 +21,8 @@
 |------------|-------------|
 | 🗄️ **Local Truth Source** | SQLite stores episodes, entities, facts, edges, and job/index state as the single source of truth |
 | 🔎 **Hybrid Retrieval** | Queries combine exact, alias, BM25, vector, graph, recency, layer, and hit-frequency signals with optional deep search |
-| 🧩 **Structured Remembering** | `memo remember` can merge raw text with manual entities/facts and optional provider extraction |
-| 💤 **Dream Workflows** | `memo dream` promotes, cools, archives, and reconciles memory layers |
+| 🧩 **Structured Remembering** | `memo remember` writes manual entities/facts immediately, and `memo dream` can enrich unstructured episodes through provider-backed extraction |
+| 💤 **Dream Workflows** | `memo dream` promotes, cools, archives, reconciles memory layers, and performs slow-path structural consolidation |
 | ♻️ **Rebuildable Indexes** | Text and vector indexes are derived layers that can be refreshed or rebuilt from SQLite |
 | 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through provider configuration |
 
@@ -72,7 +72,7 @@ memo recall "Where does Alice live?"
 memo reflect <memory-id>
 ```
 
-`memo remember` writes memory into the local truth source. Structured entities and facts can come from manual flags and optional provider extraction. `memo recall` retrieves relevant memory, and `memo reflect` inspects one memory record in detail.
+`memo remember` writes memory into the local truth source. Manual entities and facts are written immediately; `memo remember --dry-run` can still preview provider-backed extraction without mutating state. `memo recall` retrieves relevant memory, and `memo reflect` inspects one memory record in detail.
 
 ### Step 4: Dream, Restore, and Inspect State
 
@@ -82,7 +82,7 @@ memo restore
 memo state
 ```
 
-`memo dream` runs a dream pass over memory layers. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
+`memo dream` runs a dream pass over memory layers, including slow-path provider extraction for still-unstructured episodes when configured. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
 
 ## ⚙️ Configuration
 

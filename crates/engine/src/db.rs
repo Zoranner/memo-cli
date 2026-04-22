@@ -387,6 +387,73 @@ impl Database {
         .map_err(Into::into)
     }
 
+    pub fn load_unstructured_episodes(&self, layers: &[MemoryLayer]) -> Result<Vec<EpisodeRecord>> {
+        if layers.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let placeholders = (1..=layers.len())
+            .map(|index| format!("?{}", index))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT ep.id, ep.content, ep.layer, ep.confidence, ep.source_episode_id, ep.session_id,
+                    ep.created_at, ep.updated_at, ep.last_seen_at, ep.archived_at, ep.invalidated_at, ep.hit_count
+             FROM episodes ep
+             WHERE ep.archived_at IS NULL
+               AND ep.invalidated_at IS NULL
+               AND ep.structured_at IS NULL
+               AND ep.layer IN ({})
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM entities e
+                    WHERE e.source_episode_id = ep.id
+                      AND e.archived_at IS NULL
+                      AND e.invalidated_at IS NULL
+               )
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM facts f
+                    WHERE f.source_episode_id = ep.id
+                      AND f.archived_at IS NULL
+                      AND f.invalidated_at IS NULL
+               )
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM edges ed
+                    WHERE ed.source_episode_id = ep.id
+                      AND ed.archived_at IS NULL
+                      AND ed.invalidated_at IS NULL
+               )
+               AND NOT EXISTS (
+                    SELECT 1
+                    FROM mentions m
+                    WHERE m.episode_id = ep.id
+               )
+             ORDER BY ep.created_at ASC",
+            placeholders
+        );
+        let args = layers
+            .iter()
+            .map(|layer| layer.as_str())
+            .collect::<Vec<_>>();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), map_episode)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn mark_episode_structured(&self, episode_id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        conn.execute(
+            "UPDATE episodes
+             SET structured_at = COALESCE(structured_at, ?2)
+             WHERE id = ?1",
+            params![episode_id, now_ts()],
+        )?;
+        Ok(())
+    }
+
     pub fn get_entity(&self, id: &str) -> Result<Option<EntityRecord>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let row = conn
@@ -1830,6 +1897,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             archived_at INTEGER NULL,
             invalidated_at INTEGER NULL,
             hit_count INTEGER NOT NULL DEFAULT 0,
+            structured_at INTEGER NULL,
             vector_json TEXT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_episodes_normalized ON episodes(normalized_content);
@@ -1953,6 +2021,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
     ensure_column(conn, "edges", "valid_from", "INTEGER NULL")?;
     ensure_column(conn, "edges", "valid_to", "INTEGER NULL")?;
     ensure_column(conn, "episodes", "session_id", "TEXT NULL")?;
+    ensure_column(conn, "episodes", "structured_at", "INTEGER NULL")?;
     Ok(())
 }
 

@@ -21,8 +21,8 @@
 |------|------|
 | 🗄️ **本地真相源** | SQLite 作为唯一真相源，保存 episodes、entities、facts、edges 与任务/索引状态 |
 | 🔎 **混合检索** | 查询会组合 exact、alias、BM25、vector、graph、recency、layer、hit-frequency 等信号，并可按需进入 deep search |
-| 🧩 **结构化记住** | `memo remember` 可以把原始文本、手工 entities/facts 与可选 provider 抽取结果合并写入 |
-| 💤 **dream 工作流** | `memo dream` 负责记忆层级的晋升、冷却、归档与冲突收敛 |
+| 🧩 **结构化记住** | `memo remember` 立即写入手工 entities/facts，`memo dream` 再通过 provider 慢路径补齐仍未结构化的 episode |
+| 💤 **dream 工作流** | `memo dream` 负责记忆层级的晋升、冷却、归档、冲突收敛与慢路径结构化整理 |
 | ♻️ **可重建索引** | text 和 vector 索引都是派生层，可以从 SQLite 真相源刷新或全量重建 |
 | 🌐 **provider 扩展能力** | extraction、embedding 和 rerank 可通过 provider 配置接入 |
 
@@ -72,7 +72,7 @@ memo recall "Alice 住在哪里？"
 memo reflect <memory-id>
 ```
 
-`memo remember` 会先写入本地真相源。结构化 entities 和 facts 可以来自手工参数，也可以来自可选的 provider 抽取。`memo recall` 负责回忆相关内容，`memo reflect` 负责查看单条记忆详情。
+`memo remember` 会先写入本地真相源。手工 entities 和 facts 会立即落库；`memo remember --dry-run` 仍可在不改动状态的前提下预览 provider 抽取结果。`memo recall` 负责回忆相关内容，`memo reflect` 负责查看单条记忆详情。
 
 ### 第四步：dream、restore 与 state
 
@@ -82,7 +82,7 @@ memo restore
 memo state
 ```
 
-`memo dream` 会执行一次记忆整理。`memo restore` 用于在需要时恢复派生层。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
+`memo dream` 会执行一次记忆整理；配置了 provider 时，它也会在慢路径补齐仍未结构化的 episode。`memo restore` 用于在需要时恢复派生层。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
 
 ## ⚙️ 配置说明
 

@@ -490,9 +490,10 @@ entity resolution 的规则也应明确：
 
 `entity_aliases` 的写入时机也应明确：
 
-- remember 阶段在创建或 upsert entity 时，就应把手工输入或 provider 返回中的别名一并写入 `entity_aliases`；
+- remember 阶段在创建或 upsert entity 时，就应把手工输入中的别名一并写入 `entity_aliases`；
+- 如果 dream 的慢路径 provider extraction 形成了新的别名信息，也应在那一阶段把新 alias 持久化；
 - recall 的 alias 路径消费的就是这批持久化别名，而不是临时会话态；
-- dream 只有在后续整理真实产生了新的别名信息时，才需要补充 alias，而不是每轮都默认重写别名表。
+- dream 不应每轮都默认重写 alias 表，只有真实产生了新的 alias 信息时才补充。
 
 默认不做：
 

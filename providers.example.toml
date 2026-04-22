@@ -1,74 +1,70 @@
-# ============================================
-# Providers configuration example
-# Copy this file to ~/.memo/providers.toml and fill in your credentials
-# ============================================
+# Providers configuration example for the local engine.
+# Copy this file to ./.memo/providers.toml and fill in the services you want to use.
 
-# OpenAI
 [openai]
-name = "OpenAI"
 api_key = "sk-your-openai-api-key"
 
-  # Embedding service
-  [openai.embed]
-  base_url = "https://api.openai.com/v1"
-  model = "text-embedding-3-small"
-  dimension = 1536
+[openai.embed]
+base_url = "https://api.openai.com/v1"
+model = "text-embedding-3-small"
+dimension = 1536
 
-  # LLM service
-  [openai.llm]
-  base_url = "https://api.openai.com/v1"
-  model = "gpt-4o"
+[openai.extract]
+base_url = "https://api.openai.com/v1"
+model = "gpt-4o-mini"
 
-  # Multiple LLM services can be defined for the same provider with custom names,
-  # then referenced individually in config.toml (e.g. decompose.llm_provider and summarize.llm_provider)
-  # [openai.llm_mini]
-  # base_url = "https://api.openai.com/v1"
-  # model = "gpt-4o-mini"
-
-# Ollama (local deployment, no API key required)
 [ollama]
-name = "Ollama Local"
 api_key = ""
 
-  # Embedding service
-  [ollama.embed]
-  base_url = "http://localhost:11434"
-  model = "bge-m3"
-  dimension = 1024
+[ollama.embed]
+base_url = "http://127.0.0.1:11434/v1"
+model = "bge-m3"
+dimension = 1024
 
-  # LLM service
-  [ollama.llm]
-  base_url = "http://localhost:11434"
-  model = "qwen3"
+[ollama.extract]
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5:7b"
 
-# Alibaba Cloud DashScope
 # [aliyun]
-# name = "Alibaba Cloud DashScope"
 # api_key = "sk-your-dashscope-api-key"
+#
+# [aliyun.embed]
+# base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# model = "text-embedding-v4"
+# dimension = 1024
+#
+# [aliyun.extract]
+# base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# model = "qwen-plus"
+#
+# [aliyun.rerank]
+# base_url = "https://dashscope.aliyuncs.com/api/v1"
+# model = "gte-rerank"
 
-  # [aliyun.embed]
-  # base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  # model = "text-embedding-v4"
-  # dimension = 1024
+# [google]
+# api_key = "your-google-api-key"
+#
+# [google.embed]
+# base_url = "https://generativelanguage.googleapis.com/v1beta"
+# model = "text-embedding-004"
+# dimension = 768
+#
+# [google.extract]
+# base_url = "https://generativelanguage.googleapis.com/v1beta"
+# model = "gemini-2.0-flash"
 
-  # [aliyun.rerank]
-  # base_url = "https://dashscope.aliyuncs.com/compatible-api/v1"
-  # model = "qwen3-rerank"
-
-  # [aliyun.llm]
-  # base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  # model = "qwen-max"
-
-# Zhipu AI
 # [zhipu]
-# name = "Zhipu AI"
 # api_key = "your-zhipu-api-key.xxx"
-
-  # [zhipu.embed]
-  # base_url = "https://open.bigmodel.cn/api/paas/v4"
-  # model = "embedding-3"
-  # dimension = 2048
-
-  # [zhipu.rerank]
-  # base_url = "https://open.bigmodel.cn/api/paas/v4"
-  # model = "rerank"
+#
+# [zhipu.embed]
+# base_url = "https://open.bigmodel.cn/api/paas/v4"
+# model = "embedding-3"
+# dimension = 2048
+#
+# [zhipu.extract]
+# base_url = "https://open.bigmodel.cn/api/paas/v4"
+# model = "glm-4-flash"
+#
+# [zhipu.rerank]
+# base_url = "https://open.bigmodel.cn/api/paas/v4"
+# model = "rerank"

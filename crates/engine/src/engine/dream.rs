@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
+use tracing::warn;
 
 use crate::types::{DreamReport, DreamTrigger, MemoryLayer, MemoryRecord};
 
@@ -47,6 +48,8 @@ impl MemoryEngine {
                 }
             }
         }
+
+        self.structure_pending_episodes(&mut report)?;
 
         for episode_id in self.db.eligible_episode_ids_for_l2()? {
             report.promoted_to_l2 += self.promote_episode_cluster_to_l2(&episode_id)?;
@@ -100,6 +103,36 @@ impl MemoryEngine {
 
         self.refresh_l3_cache()?;
         Ok(report)
+    }
+
+    fn structure_pending_episodes(&self, report: &mut DreamReport) -> Result<()> {
+        let Some(_) = &self.config.extraction_provider else {
+            return Ok(());
+        };
+
+        for episode in self
+            .db
+            .load_unstructured_episodes(&[MemoryLayer::L1, MemoryLayer::L2])?
+        {
+            match self.structure_episode_with_provider(&episode) {
+                Ok(Some(summary)) => {
+                    report.structured_episodes += 1;
+                    report.structured_entities += summary.entities;
+                    report.structured_facts += summary.facts;
+                }
+                Ok(None) => return Ok(()),
+                Err(error) => {
+                    warn!(
+                        episode_id = %episode.id,
+                        error = %error,
+                        "dream provider extraction failed; continuing with rule-based maintenance"
+                    );
+                    report.extraction_failures += 1;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn backfill_mentions_from_active_facts(&self) -> Result<usize> {
@@ -373,6 +406,10 @@ fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
         target.trigger = next.trigger.clone();
     }
     target.passes_run += next.passes_run;
+    target.structured_episodes += next.structured_episodes;
+    target.structured_entities += next.structured_entities;
+    target.structured_facts += next.structured_facts;
+    target.extraction_failures += next.extraction_failures;
     target.promoted_to_l2 += next.promoted_to_l2;
     target.promoted_to_l3 += next.promoted_to_l3;
     target.downgraded_records += next.downgraded_records;
@@ -381,7 +418,10 @@ fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
 }
 
 fn dream_report_has_changes(report: &DreamReport) -> bool {
-    report.promoted_to_l2 > 0
+    report.structured_episodes > 0
+        || report.structured_entities > 0
+        || report.structured_facts > 0
+        || report.promoted_to_l2 > 0
         || report.promoted_to_l3 > 0
         || report.downgraded_records > 0
         || report.archived_records > 0
@@ -418,13 +458,40 @@ fn compare_fact_strength(
 
 #[cfg(test)]
 mod tests {
-    use chrono::{TimeZone, Utc};
+    use std::{path::Path, sync::Arc};
 
+    use anyhow::{anyhow, Result};
+    use chrono::{TimeZone, Utc};
+    use tempfile::tempdir;
+
+    use crate::model::{ExtractionProvider, ExtractionResult};
     use crate::types::{
-        EdgeRecord, EntityRecord, EpisodeRecord, FactRecord, MemoryLayer, MemoryRecord,
+        EdgeRecord, EngineConfig, EntityRecord, EpisodeInput, EpisodeRecord, FactRecord,
+        MemoryLayer, MemoryRecord,
     };
+    use crate::{DreamTrigger, ExtractedEntity, ExtractedFact, MemoryEngine};
 
     use super::{l3_cooldown_max_hit_count, should_cool_l3_record};
+
+    #[derive(Clone)]
+    struct StubExtractionProvider {
+        result: Option<ExtractionResult>,
+        error_message: Option<String>,
+    }
+
+    impl ExtractionProvider for StubExtractionProvider {
+        fn extract(&self, _text: &str) -> Result<ExtractionResult> {
+            if let Some(message) = &self.error_message {
+                return Err(anyhow!(message.clone()));
+            }
+            Ok(self.result.clone().unwrap_or_default())
+        }
+    }
+
+    fn build_engine(temp_dir: &Path, provider: StubExtractionProvider) -> Result<MemoryEngine> {
+        let config = EngineConfig::new(temp_dir).with_extraction_provider(Arc::new(provider));
+        MemoryEngine::open(config)
+    }
 
     #[test]
     fn episode_l3_cooldown_allows_two_historical_hits() {
@@ -523,5 +590,99 @@ mod tests {
 
         assert_eq!(l3_cooldown_max_hit_count(&record), None);
         assert!(!should_cool_l3_record(&record, stale_before));
+    }
+
+    #[test]
+    fn dream_structures_unstructured_episodes_via_provider_extraction() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let engine = build_engine(
+            temp_dir.path(),
+            StubExtractionProvider {
+                result: Some(ExtractionResult {
+                    entities: vec![
+                        ExtractedEntity {
+                            entity_type: "person".to_string(),
+                            name: "Alice".to_string(),
+                            aliases: vec!["Ally".to_string()],
+                            confidence: 0.91,
+                        },
+                        ExtractedEntity {
+                            entity_type: "organization".to_string(),
+                            name: "Memo".to_string(),
+                            aliases: Vec::new(),
+                            confidence: 0.88,
+                        },
+                    ],
+                    facts: vec![ExtractedFact {
+                        subject: "Alice".to_string(),
+                        predicate: "works_at".to_string(),
+                        object: "Memo".to_string(),
+                        confidence: 0.86,
+                    }],
+                }),
+                error_message: None,
+            },
+        )?;
+
+        engine.remember(EpisodeInput {
+            content: "Alice works at Memo".to_string(),
+            layer: MemoryLayer::L1,
+            entities: Vec::new(),
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: None,
+            recorded_at: None,
+            confidence: 0.85,
+        })?;
+
+        let first_report = engine.dream(DreamTrigger::Manual)?;
+        let first_state = engine.state()?;
+        assert_eq!(first_report.structured_episodes, 1);
+        assert_eq!(first_report.structured_entities, 2);
+        assert_eq!(first_report.structured_facts, 1);
+        assert_eq!(first_state.entity_count, 2);
+        assert_eq!(first_state.fact_count, 1);
+
+        let second_report = engine.dream(DreamTrigger::Manual)?;
+        let second_state = engine.state()?;
+        assert_eq!(second_report.structured_episodes, 0);
+        assert_eq!(second_report.structured_entities, 0);
+        assert_eq!(second_report.structured_facts, 0);
+        assert_eq!(second_state.entity_count, 2);
+        assert_eq!(second_state.fact_count, 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn dream_degrades_gracefully_when_provider_extraction_fails() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let engine = build_engine(
+            temp_dir.path(),
+            StubExtractionProvider {
+                result: None,
+                error_message: Some("provider offline".to_string()),
+            },
+        )?;
+
+        engine.remember(EpisodeInput {
+            content: "Alice works at Memo".to_string(),
+            layer: MemoryLayer::L1,
+            entities: Vec::new(),
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: None,
+            recorded_at: None,
+            confidence: 0.85,
+        })?;
+
+        let report = engine.dream(DreamTrigger::Manual)?;
+        let state = engine.state()?;
+        assert_eq!(report.extraction_failures, 1);
+        assert_eq!(report.structured_episodes, 0);
+        assert_eq!(state.entity_count, 0);
+        assert_eq!(state.fact_count, 0);
+
+        Ok(())
     }
 }

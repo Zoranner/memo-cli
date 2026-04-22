@@ -61,7 +61,8 @@ memo remember <content> [OPTIONS]
 ### 说明
 
 - `--dry-run` 会输出最终 remember payload，再决定是否落库
-- 结构化 entities 和 facts 可以来自手工参数，也可以来自可选 provider 抽取
+- 默认 `memo remember` 只会立即写入手工 entities 和 facts
+- 如果用户已经显式配置 extraction provider，`--dry-run` 可以把 provider 抽取结果一起预览出来
 
 ---
 
@@ -116,6 +117,7 @@ memo dream [--full] [--json]
 
 - 默认执行一次手动 dream
 - `--full` 会执行更完整的一次 dream；当第一次整理改变了记忆状态时，会追加一次稳定化 pass
+- 配置了 extraction provider 时，dream 可以在慢路径补齐仍未结构化的 episode，而不会改变 `remember` 的默认延迟边界
 - `--json` 输出机器可读结果
 
 ---

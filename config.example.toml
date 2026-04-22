@@ -1,59 +1,21 @@
-# Memo configuration example
-# Copy this file to ~/.memo/config.toml and modify as needed
+# Memo local engine config example
+# Copy this file to ./.memo/config.toml and adjust the provider references you want to use.
 
-# ============================================
-# Embed configuration (when recording memories)
-# ============================================
 [embed]
-# Embedding service reference
-embedding_provider = "aliyun.embed"
-# Duplicate detection threshold (0.0-1.0)
+# Reference format: <provider>.<service>
+embedding_provider = "openai.embed"
+# Reserved for duplicate handling during remember.
 duplicate_threshold = 0.85
 
-# ============================================
-# Search configuration
-# ============================================
-[search]
-# Rerank service reference
-rerank_provider = "aliyun.rerank"
-# LLM service reference (default for decompose and summarize)
-llm_provider = "aliyun.llm"
-# Maximum number of results to return
-results_limit = 10
-# Vector search similarity threshold (0.0-1.0)
-similarity_threshold = 0.35
+[extract]
+# Reference format: <provider>.<service>
+# Used by `memo remember --dry-run` and slow-path `memo dream` extraction.
+extraction_provider = "openai.extract"
+# Drop noisy provider results below this threshold.
+min_confidence = 0.5
+# Convert extracted predicates like "Lives In" to snake_case.
+normalize_predicates = true
 
-# ============================================
-# Search > Decompose configuration
-# ============================================
-[decompose]
-# LLM service reference (optional, overrides search.llm_provider)
-# llm_provider = "openai.llm"
-# Maximum number of sub-queries
-max_queries = 12
-# Decompose strategy prompt (optional, overrides built-in strategy)
-# strategy_prompt = "Decompose using the five-dimension model: core, why, how, case, note"
-
-# ============================================
-# Search > Merge configuration
-# ============================================
-[merge]
-# Number of candidates to retrieve per sub-query
-candidates_per_query = 50
-# Number of results to keep per sub-query
-results_per_query = 5
-# Maximum number of final results
-max_results = 20
-# Deduplication threshold (0.0-1.0)
-dedup_threshold = 0.98
-
-# ============================================
-# Search > Summarize configuration
-# ============================================
-[summarize]
-# LLM service reference (optional, overrides search.llm_provider)
-# You can define multiple services per provider in providers.toml (with custom names)
-# e.g. search.llm_provider = "aliyun.llm" (more capable), summarize.llm_provider = "aliyun.llm_flash" (faster)
-# llm_provider = "aliyun.llm_flash"
-# Summarize strategy prompt (optional, overrides built-in strategy)
-# strategy_prompt = "Synthesize the memories and provide a concise, structured answer..."
+[rerank]
+# Optional deep-search rerank provider. Only used when recall enters deep search.
+# rerank_provider = "aliyun.rerank"

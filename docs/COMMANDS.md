@@ -61,7 +61,8 @@ memo remember <content> [OPTIONS]
 ### Notes
 
 - `--dry-run` prints the final remember payload before writing
-- Structured entities and facts can come from manual flags and optional provider extraction
+- default `memo remember` writes only manual entities and facts immediately
+- `--dry-run` may include provider-backed extraction when the user has explicitly configured an extraction provider
 
 ---
 
@@ -116,6 +117,7 @@ memo dream [--full] [--json]
 
 - Default mode runs one manual dream pass
 - `--full` runs a fuller dream pass with an extra stabilization pass when the first pass changes memory state
+- when an extraction provider is configured, dream can enrich still-unstructured episodes on the slow path without changing `remember` default latency
 - `--json` emits machine-readable output
 
 ---

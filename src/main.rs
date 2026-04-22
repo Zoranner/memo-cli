@@ -353,9 +353,13 @@ fn render_dream_report(report: &DreamReport, full: bool, json: bool) -> Result<S
     }
 
     Ok(format!(
-        "Dream {}complete\npasses_run: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
+        "Dream {}complete\npasses_run: {}\nstructured_episodes: {}\nstructured_entities: {}\nstructured_facts: {}\nextraction_failures: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
         if full { "(full) " } else { "" },
         report.passes_run,
+        report.structured_episodes,
+        report.structured_entities,
+        report.structured_facts,
+        report.extraction_failures,
         report.promoted_to_l2,
         report.promoted_to_l3,
         report.downgraded_records,

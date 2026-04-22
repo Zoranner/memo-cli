@@ -430,6 +430,10 @@ impl std::str::FromStr for DreamTrigger {
 pub struct DreamReport {
     pub trigger: String,
     pub passes_run: usize,
+    pub structured_episodes: usize,
+    pub structured_entities: usize,
+    pub structured_facts: usize,
+    pub extraction_failures: usize,
     pub promoted_to_l2: usize,
     pub promoted_to_l3: usize,
     pub downgraded_records: usize,
