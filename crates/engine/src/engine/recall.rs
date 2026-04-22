@@ -15,12 +15,22 @@ use crate::{
 
 use super::{Candidate, MemoryEngine};
 
+enum RecallSearchStrategy {
+    Fast,
+    Deep,
+}
+
 impl MemoryEngine {
     pub fn recall(&self, request: RecallRequest) -> Result<RecallResultSet> {
         let started = Instant::now();
         let normalized = normalize_text(&request.query);
         let mut result = self.execute_query(&request, request.deep)?;
-        if !request.deep && should_auto_escalate_to_deep_search(&result) {
+        if !request.deep
+            && matches!(
+                select_recall_search_strategy(&result),
+                RecallSearchStrategy::Deep
+            )
+        {
             result = self.execute_query(&request, true)?;
         }
 
@@ -330,24 +340,49 @@ fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
 }
 
+#[cfg(test)]
 fn should_auto_escalate_to_deep_search(result: &RecallResultSet) -> bool {
-    if result.results.len() < 2 {
-        return false;
+    matches!(
+        select_recall_search_strategy(result),
+        RecallSearchStrategy::Deep
+    )
+}
+
+fn select_recall_search_strategy(result: &RecallResultSet) -> RecallSearchStrategy {
+    const WEAK_SINGLE_RESULT_SCORE_THRESHOLD: f32 = 0.9;
+    const AMBIGUOUS_SCORE_GAP_THRESHOLD: f32 = 0.25;
+
+    let Some(first) = result.results.first() else {
+        return RecallSearchStrategy::Deep;
+    };
+    if has_decisive_reason(&first.reasons) {
+        return RecallSearchStrategy::Fast;
     }
 
-    let first = &result.results[0];
-    if first.reasons.iter().any(|reason| {
-        matches!(
-            reason,
-            RecallReason::L0 | RecallReason::L3 | RecallReason::Exact | RecallReason::Alias
-        )
-    }) {
-        return false;
+    if result.results.len() == 1 {
+        return if first.score <= WEAK_SINGLE_RESULT_SCORE_THRESHOLD {
+            RecallSearchStrategy::Deep
+        } else {
+            RecallSearchStrategy::Fast
+        };
     }
 
     let second = &result.results[1];
     let score_gap = (first.score - second.score).abs();
-    score_gap <= 0.25
+    if score_gap <= AMBIGUOUS_SCORE_GAP_THRESHOLD {
+        RecallSearchStrategy::Deep
+    } else {
+        RecallSearchStrategy::Fast
+    }
+}
+
+fn has_decisive_reason(reasons: &[RecallReason]) -> bool {
+    reasons.iter().any(|reason| {
+        matches!(
+            reason,
+            RecallReason::L0 | RecallReason::L3 | RecallReason::Exact | RecallReason::Alias
+        )
+    })
 }
 
 fn mmr_select(mut candidates: Vec<Candidate>, limit: usize) -> Vec<Candidate> {
@@ -398,5 +433,57 @@ fn text_similarity(a: String, b: String) -> f32 {
         0.0
     } else {
         intersection / union
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use crate::types::{EpisodeRecord, MemoryLayer, MemoryRecord, RecallResult, RecallResultSet};
+
+    use super::should_auto_escalate_to_deep_search;
+
+    fn episode_result(score: f32, reasons: Vec<crate::types::RecallReason>) -> RecallResult {
+        RecallResult {
+            memory: MemoryRecord::Episode(EpisodeRecord {
+                id: "episode-1".to_string(),
+                content: "Paris travel checklist for May.".to_string(),
+                layer: MemoryLayer::L1,
+                confidence: 0.9,
+                source_episode_id: None,
+                session_id: None,
+                created_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
+                updated_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
+                last_seen_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
+                archived_at: None,
+                invalidated_at: None,
+                hit_count: 0,
+            }),
+            score,
+            reasons,
+        }
+    }
+
+    #[test]
+    fn weak_single_candidate_can_trigger_deep_search() {
+        let result = RecallResultSet {
+            deep_search_used: false,
+            total_candidates: 1,
+            results: vec![episode_result(0.72, vec![crate::types::RecallReason::Bm25])],
+        };
+
+        assert!(should_auto_escalate_to_deep_search(&result));
+    }
+
+    #[test]
+    fn decisive_exact_hit_stays_on_fast_path() {
+        let result = RecallResultSet {
+            deep_search_used: false,
+            total_candidates: 1,
+            results: vec![episode_result(3.2, vec![crate::types::RecallReason::Exact])],
+        };
+
+        assert!(!should_auto_escalate_to_deep_search(&result));
     }
 }

@@ -40,9 +40,9 @@
 | Dream | 部分完成 | 已有整理规则与显式命令入口，运行责任已收口到显式调用或外部调度 |
 | 向量 ANN 索引 | 部分完成 | 已接入持久化 HNSW 索引，但仍未达到 `NEXT` 目标中的最终本地 ANN 路线 |
 | 本地 embedding / rerank / extraction | 未完成 | rerank 已接通，但整体仍主要依赖远端 provider |
-| Deep Search 按需升级 | 部分完成 | 已有自动升级基础，但还不是完整策略驱动 |
+| Deep Search 按需升级 | 已完成 | 默认快路径已保留，深搜会按内部策略在模糊或弱命中时自动升级 |
 | 异步写入与索引任务 | 已完成 | 已拆为 SQLite 真相源写入 + 内部索引更新任务，由显式 `restore` 消费 |
-| 模块重构收敛 | 未完成 | 当前仍以 `engine.rs` 为中心 |
+| 模块重构收敛 | 已完成 | `engine.rs` 已收敛为 orchestrator 壳，核心职责已拆到子模块 |
 | 文档与实现对齐 | 部分完成 | COMMANDS 与 CLAUDE 已较新，README 仍需继续收口 |
 
 ## 路线原则

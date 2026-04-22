@@ -179,6 +179,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
         deep: false,
     })?;
 
+    assert!(!result.deep_search_used);
     let entity = result
         .results
         .iter()
