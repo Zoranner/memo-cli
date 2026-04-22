@@ -458,6 +458,8 @@ pub struct IndexStatus {
     pub detail: Option<String>,
     pub pending_updates: usize,
     pub failed_updates: usize,
+    pub failed_attempts_max: usize,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -966,6 +966,8 @@ impl Database {
                         detail: row.get(3)?,
                         pending_updates: 0,
                         failed_updates: 0,
+                        failed_attempts_max: 0,
+                        last_error: None,
                     })
                 },
             )
@@ -977,11 +979,16 @@ impl Database {
                 detail: None,
                 pending_updates: 0,
                 failed_updates: 0,
+                failed_attempts_max: 0,
+                last_error: None,
             });
 
-        let (pending_updates, failed_updates) = index_job_counts(&conn, name)?;
+        let (pending_updates, failed_updates, failed_attempts_max, last_error) =
+            index_job_observability(&conn, name)?;
         status.pending_updates = pending_updates;
         status.failed_updates = failed_updates;
+        status.failed_attempts_max = failed_attempts_max;
+        status.last_error = last_error;
         if failed_updates > 0 {
             status.status = "failed".to_string();
             if status.detail.is_none() {
@@ -1605,7 +1612,10 @@ fn fail_index_jobs_by_ids(
     Ok(())
 }
 
-fn index_job_counts(conn: &Connection, index_name: &str) -> Result<(usize, usize)> {
+fn index_job_observability(
+    conn: &Connection,
+    index_name: &str,
+) -> Result<(usize, usize, usize, Option<String>)> {
     let mut stmt = conn.prepare(
         "SELECT status, COUNT(*)
          FROM index_jobs
@@ -1628,7 +1638,30 @@ fn index_job_counts(conn: &Connection, index_name: &str) -> Result<(usize, usize
             _ => {}
         }
     }
-    Ok((pending, failed))
+
+    let failed_attempts_max = conn.query_row(
+        "SELECT COALESCE(MAX(attempts), 0)
+         FROM index_jobs
+         WHERE index_name = ?1
+           AND status = 'failed'",
+        params![index_name],
+        |row| Ok(row.get::<_, i64>(0)?.max(0) as usize),
+    )?;
+    let last_error = conn
+        .query_row(
+            "SELECT last_error
+             FROM index_jobs
+             WHERE index_name = ?1
+               AND status = 'failed'
+             ORDER BY updated_at DESC, created_at DESC
+             LIMIT 1",
+            params![index_name],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+
+    Ok((pending, failed, failed_attempts_max, last_error))
 }
 
 fn record_index_ready(
@@ -2294,6 +2327,44 @@ mod tests {
             first.first(),
             Some(MemoryRecord::Episode(record)) if record.id == beta.id
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn index_status_exposes_failed_attempts_and_latest_error() -> Result<()> {
+        let temp = TempDir::new()?;
+        let db = Database::open(&temp.path().join("memory.db"))?;
+
+        {
+            let conn = db.conn.lock().expect("sqlite mutex poisoned");
+            conn.execute(
+                "INSERT INTO index_jobs
+                 (id, index_name, memory_kind, memory_id, operation, status, attempts, last_error, created_at, updated_at)
+                 VALUES (?1, 'vector', 'episode', 'ep-1', 'upsert', 'failed', 2, ?2, ?3, ?3)",
+                rusqlite::params![
+                    "job-1",
+                    "first vector failure",
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap())
+                ],
+            )?;
+            conn.execute(
+                "INSERT INTO index_jobs
+                 (id, index_name, memory_kind, memory_id, operation, status, attempts, last_error, created_at, updated_at)
+                 VALUES (?1, 'vector', 'episode', 'ep-2', 'upsert', 'failed', 3, ?2, ?3, ?4)",
+                rusqlite::params![
+                    "job-2",
+                    "latest vector failure",
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap()),
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 11, 0, 0).unwrap())
+                ],
+            )?;
+        }
+
+        let status = db.index_status("vector")?;
+        assert_eq!(status.status, "failed");
+        assert_eq!(status.failed_updates, 2);
+        assert_eq!(status.failed_attempts_max, 3);
+        assert_eq!(status.last_error.as_deref(), Some("latest vector failure"));
         Ok(())
     }
 }

@@ -463,6 +463,12 @@ fn index_summary(index: &IndexStatus) -> String {
     if index.failed_updates > 0 {
         segments.push(format!("failed_updates={}", index.failed_updates));
     }
+    if index.failed_attempts_max > 0 {
+        segments.push(format!("failed_attempts_max={}", index.failed_attempts_max));
+    }
+    if let Some(last_error) = index.last_error.as_deref() {
+        segments.push(format!("last_error={last_error}"));
+    }
     if let Some(detail) = index.detail.as_deref() {
         segments.push(format!("detail={detail}"));
     }
@@ -637,14 +643,18 @@ mod tests {
                     detail: None,
                     pending_updates: 0,
                     failed_updates: 0,
+                    failed_attempts_max: 0,
+                    last_error: None,
                 },
                 vector_index: IndexStatus {
                     name: "vector".to_string(),
                     doc_count: 5,
-                    status: "pending".to_string(),
-                    detail: Some("pending restore after queued updates".to_string()),
-                    pending_updates: 2,
-                    failed_updates: 0,
+                    status: "failed".to_string(),
+                    detail: Some("restore failed for queued updates".to_string()),
+                    pending_updates: 0,
+                    failed_updates: 2,
+                    failed_attempts_max: 3,
+                    last_error: Some("vector dimension mismatch".to_string()),
                 },
             },
             false,
@@ -653,8 +663,10 @@ mod tests {
 
         assert!(output.contains("State"));
         assert!(output.contains("layers: l1=2 l2=1 l3=0 archived=3 invalidated=1"));
-        assert!(output.contains("vector_index: pending docs=5"));
-        assert!(output.contains("pending_updates=2"));
+        assert!(output.contains("vector_index: failed docs=5"));
+        assert!(output.contains("failed_updates=2"));
+        assert!(output.contains("failed_attempts_max=3"));
+        assert!(output.contains("last_error=vector dimension mismatch"));
         assert!(!output.contains("dream_jobs"));
     }
 
