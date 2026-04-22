@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 
@@ -18,6 +18,7 @@ impl MemoryEngine {
         let episode = self.db.insert_episode(&input, episode_vector.as_deref())?;
 
         let mut entity_records = HashMap::<String, EntityRecord>::new();
+        let mut mentioned_entity_ids = HashSet::<String>::new();
         for entity in preview.entities {
             let entity_vector = self.embed_if_available(&entity.name)?;
             let record = self.db.upsert_entity(
@@ -29,8 +30,10 @@ impl MemoryEngine {
                 },
                 entity_vector.as_deref(),
             )?;
-            self.db
-                .add_mention(&episode.id, &record.id, "mentioned", entity.confidence)?;
+            if mentioned_entity_ids.insert(record.id.clone()) {
+                self.db
+                    .add_mention(&episode.id, &record.id, "mentioned", entity.confidence)?;
+            }
             entity_records.insert(normalize_text(&record.canonical_name), record);
         }
 
@@ -60,6 +63,14 @@ impl MemoryEngine {
                 entity_records.insert(subject_key.clone(), record.clone());
                 record
             };
+            if mentioned_entity_ids.insert(subject_record.id.clone()) {
+                self.db.add_mention(
+                    &episode.id,
+                    &subject_record.id,
+                    "mentioned",
+                    fact.confidence,
+                )?;
+            }
             let object_record = if let Some(record) = entity_records.get(&object_key) {
                 record.clone()
             } else {
@@ -83,6 +94,14 @@ impl MemoryEngine {
                 entity_records.insert(object_key.clone(), record.clone());
                 record
             };
+            if mentioned_entity_ids.insert(object_record.id.clone()) {
+                self.db.add_mention(
+                    &episode.id,
+                    &object_record.id,
+                    "mentioned",
+                    fact.confidence,
+                )?;
+            }
 
             let vector = self.embed_if_available(&format!(
                 "{} {} {}",

@@ -13,6 +13,7 @@ use memo_engine::{
     MemoryLayer, MemoryRecord, RecallReason, RecallRequest, RerankProvider, RerankScore,
     RestoreScope,
 };
+use rusqlite::Connection;
 use tempfile::TempDir;
 
 #[derive(Clone)]
@@ -313,6 +314,38 @@ fn recall_skips_query_embedding_when_vector_index_is_empty() -> Result<()> {
     })?;
 
     assert_eq!(calls.load(Ordering::SeqCst), calls_after_remember);
+    Ok(())
+}
+
+#[test]
+fn remember_fact_only_creates_mentions_for_fallback_entities() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let mention_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mentions WHERE episode_id = ?1",
+        rusqlite::params![episode_id],
+        |row| row.get(0),
+    )?;
+
+    assert_eq!(mention_count, 2);
     Ok(())
 }
 
