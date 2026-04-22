@@ -227,6 +227,37 @@ impl Database {
         Ok(())
     }
 
+    pub fn ensure_mention(
+        &self,
+        episode_id: &str,
+        entity_id: &str,
+        role: &str,
+        confidence: f32,
+    ) -> Result<bool> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let inserted = conn.execute(
+            "INSERT INTO mentions
+             (id, episode_id, entity_id, role, confidence, created_at)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6
+             WHERE NOT EXISTS (
+                 SELECT 1
+                 FROM mentions
+                 WHERE episode_id = ?2
+                   AND entity_id = ?3
+                   AND role = ?4
+             )",
+            params![
+                Uuid::new_v4().to_string(),
+                episode_id,
+                entity_id,
+                role,
+                confidence,
+                now_ts()
+            ],
+        )?;
+        Ok(inserted > 0)
+    }
+
     pub fn insert_fact(
         &self,
         input: &FactInput,

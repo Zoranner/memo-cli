@@ -920,6 +920,59 @@ fn recall_ignores_archived_episode_from_stale_text_index_until_restore_runs() ->
 }
 
 #[test]
+fn dream_backfills_missing_mentions_from_fact_entities() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    conn.execute(
+        "DELETE FROM mentions WHERE episode_id = ?1",
+        rusqlite::params![episode_id],
+    )?;
+
+    let _ = engine.dream(DreamTrigger::Manual)?;
+
+    let mention_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mentions WHERE episode_id = ?1",
+        rusqlite::params![episode_id],
+        |row| row.get(0),
+    )?;
+    assert_eq!(mention_count, 2);
+    Ok(())
+}
+
+#[test]
 fn dream_promotes_related_entities_and_facts_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

@@ -59,6 +59,7 @@ impl MemoryEngine {
         }
 
         report.promoted_to_l2 += self.promote_supported_fact_clusters_to_l2()?;
+        let _ = self.backfill_mentions_from_active_facts()?;
         report.invalidated_records += self.invalidate_conflicting_facts()?;
         let (archived_duplicates, promoted_supported) = self.merge_supported_fact_clusters()?;
         report.archived_records += archived_duplicates;
@@ -99,6 +100,36 @@ impl MemoryEngine {
 
         self.refresh_l3_cache()?;
         Ok(report)
+    }
+
+    fn backfill_mentions_from_active_facts(&self) -> Result<usize> {
+        let facts =
+            self.db
+                .active_facts_in_layers(&[MemoryLayer::L1, MemoryLayer::L2, MemoryLayer::L3])?;
+        let mut inserted = 0;
+
+        for fact in facts {
+            let Some(episode_id) = fact.source_episode_id.as_deref() else {
+                continue;
+            };
+
+            for entity_id in [
+                fact.subject_entity_id.as_deref(),
+                fact.object_entity_id.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if self
+                    .db
+                    .ensure_mention(episode_id, entity_id, "mentioned", fact.confidence)?
+                {
+                    inserted += 1;
+                }
+            }
+        }
+
+        Ok(inserted)
     }
 
     fn promote_episode_cluster_to_l2(&self, episode_id: &str) -> Result<usize> {
