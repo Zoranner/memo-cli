@@ -1,4 +1,10 @@
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 use anyhow::Result;
 use memo_engine::{
@@ -30,6 +36,22 @@ impl EmbeddingProvider for TestEmbeddingProvider {
                 vec![0.0, 0.0, 0.0, 1.0]
             };
         Ok(vector)
+    }
+}
+
+#[derive(Clone)]
+struct CountingEmbeddingProvider {
+    calls: Arc<AtomicUsize>,
+}
+
+impl EmbeddingProvider for CountingEmbeddingProvider {
+    fn dimension(&self) -> usize {
+        4
+    }
+
+    fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        TestEmbeddingProvider.embed_text(text)
     }
 }
 
@@ -259,6 +281,38 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         .reasons
         .iter()
         .any(|reason| matches!(reason, RecallReason::Vector)));
+    Ok(())
+}
+
+#[test]
+fn recall_skips_query_embedding_when_vector_index_is_empty() -> Result<()> {
+    let temp = TempDir::new()?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let engine = MemoryEngine::open(EngineConfig::new(temp.path()).with_embedding_provider(
+        Arc::new(CountingEmbeddingProvider {
+            calls: Arc::clone(&calls),
+        }),
+    ))?;
+
+    engine.remember(EpisodeInput {
+        content: "我今天很高兴".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    let calls_after_remember = calls.load(Ordering::SeqCst);
+
+    let _ = engine.recall(RecallRequest {
+        query: "开心".to_string(),
+        limit: 3,
+        deep: false,
+    })?;
+
+    assert_eq!(calls.load(Ordering::SeqCst), calls_after_remember);
     Ok(())
 }
 

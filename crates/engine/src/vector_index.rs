@@ -183,6 +183,10 @@ impl VectorIndex {
         Ok(hits)
     }
 
+    pub fn has_documents(&self) -> bool {
+        !self.records.is_empty()
+    }
+
     fn ensure_dimension(&self, vector: &[f32]) -> Result<()> {
         if vector.len() != self.dimension {
             anyhow::bail!(

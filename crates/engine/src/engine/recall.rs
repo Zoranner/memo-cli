@@ -95,18 +95,25 @@ impl MemoryEngine {
         }
 
         if let Some(provider) = &self.config.embedding_provider {
-            let query_vector = provider.embed_text(&request.query)?;
-            let vector_index = self.vector_index.lock().expect("vector mutex poisoned");
-            for hit in vector_index.search(&query_vector, text_limit)? {
-                if let Some(memory) = self.db.get_active_memory_by_kind(&hit.kind, &hit.id)? {
-                    add_candidate(
-                        &mut candidates,
-                        Candidate {
-                            memory,
-                            score: hit.score.max(0.0) * 1.2,
-                            reasons: vec![RecallReason::Vector],
-                        },
-                    );
+            let has_vector_documents = self
+                .vector_index
+                .lock()
+                .expect("vector mutex poisoned")
+                .has_documents();
+            if has_vector_documents {
+                let query_vector = provider.embed_text(&request.query)?;
+                let vector_index = self.vector_index.lock().expect("vector mutex poisoned");
+                for hit in vector_index.search(&query_vector, text_limit)? {
+                    if let Some(memory) = self.db.get_active_memory_by_kind(&hit.kind, &hit.id)? {
+                        add_candidate(
+                            &mut candidates,
+                            Candidate {
+                                memory,
+                                score: hit.score.max(0.0) * 1.2,
+                                reasons: vec![RecallReason::Vector],
+                            },
+                        );
+                    }
                 }
             }
         }
