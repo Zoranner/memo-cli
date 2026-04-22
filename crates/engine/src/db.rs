@@ -486,19 +486,22 @@ impl Database {
         hops: usize,
         limit: usize,
     ) -> Result<Vec<(MemoryRecord, usize)>> {
-        if entity_ids.is_empty() {
+        if entity_ids.is_empty() || hops == 0 || limit == 0 {
             return Ok(Vec::new());
         }
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut all_records = Vec::new();
         let mut frontier: HashSet<String> = entity_ids.iter().cloned().collect();
         let mut visited: HashSet<String> = entity_ids.iter().cloned().collect();
+        let mut seen_records = HashSet::new();
 
         for hop in 1..=hops {
-            if frontier.is_empty() || all_records.len() >= limit {
+            if frontier.is_empty() {
                 break;
             }
             let current: Vec<String> = frontier.drain().collect();
+            let mut next_frontier = HashSet::new();
+            let mut added_this_hop = 0usize;
             let placeholders = (1..=current.len())
                 .map(|index| format!("?{}", index))
                 .collect::<Vec<_>>()
@@ -510,29 +513,30 @@ impl Database {
                  WHERE archived_at IS NULL
                    AND invalidated_at IS NULL
                    AND (subject_entity_id IN ({0}) OR object_entity_id IN ({0}))
-                 LIMIT {1}",
-                placeholders, limit
+                 ORDER BY rowid ASC",
+                placeholders
             );
             let mut edge_stmt = conn.prepare(&sql)?;
             let edges = edge_stmt
                 .query_map(rusqlite::params_from_iter(current.iter()), map_edge)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             for edge in edges {
+                if added_this_hop >= limit {
+                    break;
+                }
+                if !seen_records.insert(memory_key("edge", &edge.id)) {
+                    continue;
+                }
                 let subject = edge.subject_entity_id.clone();
                 let object = edge.object_entity_id.clone();
                 if visited.insert(subject.clone()) {
-                    frontier.insert(subject);
+                    next_frontier.insert(subject);
                 }
                 if visited.insert(object.clone()) {
-                    frontier.insert(object);
+                    next_frontier.insert(object);
                 }
                 all_records.push((MemoryRecord::Edge(edge), hop));
-                if all_records.len() >= limit {
-                    break;
-                }
-            }
-            if all_records.len() >= limit {
-                break;
+                added_this_hop += 1;
             }
 
             let sql = format!(
@@ -543,19 +547,25 @@ impl Database {
                    AND invalidated_at IS NULL
                    AND ((subject_entity_id IS NOT NULL AND subject_entity_id IN ({0}))
                      OR (object_entity_id IS NOT NULL AND object_entity_id IN ({0})))
-                 LIMIT {1}",
-                placeholders, limit.saturating_sub(all_records.len())
+                 ORDER BY rowid ASC",
+                placeholders
             );
             let mut fact_stmt = conn.prepare(&sql)?;
             let facts = fact_stmt
                 .query_map(rusqlite::params_from_iter(current.iter()), map_fact)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             for fact in facts {
-                all_records.push((MemoryRecord::Fact(fact), hop));
-                if all_records.len() >= limit {
+                if added_this_hop >= limit {
                     break;
                 }
+                if !seen_records.insert(memory_key("fact", &fact.id)) {
+                    continue;
+                }
+                all_records.push((MemoryRecord::Fact(fact), hop));
+                added_this_hop += 1;
             }
+
+            frontier = next_frontier;
         }
 
         Ok(all_records)
@@ -1512,6 +1522,10 @@ fn queue_vector_index_job(
     queue_index_job(conn, "vector", memory_kind, memory_id, operation)
 }
 
+fn memory_key(kind: &str, id: &str) -> String {
+    format!("{}:{}", kind, id)
+}
+
 fn sort_l3_records(records: &mut [MemoryRecord]) {
     records.sort_by(|left, right| {
         right
@@ -2026,13 +2040,17 @@ fn json_to_vec(raw: &str) -> Result<Vec<f32>> {
 
 #[cfg(test)]
 mod tests {
-    use super::Database;
+    use super::{Database, ObservationContext};
     use anyhow::Result;
     use chrono::{TimeZone, Utc};
     use rusqlite::{Connection, OptionalExtension};
     use tempfile::TempDir;
 
-    use crate::types::{EpisodeInput, MemoryLayer, MemoryRecord};
+    use crate::types::{EntityInput, EpisodeInput, ExtractionSource, MemoryLayer, MemoryRecord};
+
+    fn dt_to_ts(dt: chrono::DateTime<Utc>) -> i64 {
+        dt.timestamp_millis()
+    }
 
     #[test]
     fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
@@ -2372,6 +2390,107 @@ mod tests {
         assert!(matches!(
             first.first(),
             Some(MemoryRecord::Episode(record)) if record.id == beta.id
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn related_graph_records_applies_limit_per_hop_after_dedup() -> Result<()> {
+        let temp = TempDir::new()?;
+        let db = Database::open(&temp.path().join("memory.db"))?;
+        let observed_at = Utc.with_ymd_and_hms(2026, 4, 22, 12, 0, 0).unwrap();
+
+        let episode = db.insert_episode(
+            &EpisodeInput {
+                content: "graph expansion".to_string(),
+                layer: MemoryLayer::L1,
+                entities: Vec::new(),
+                facts: Vec::new(),
+                source_episode_id: None,
+                session_id: None,
+                recorded_at: Some(observed_at),
+                confidence: 0.9,
+            },
+            None,
+        )?;
+
+        let alice = db.upsert_entity(
+            &EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            MemoryLayer::L1,
+            ObservationContext {
+                source_episode_id: Some(&episode.id),
+                observed_at,
+            },
+            None,
+        )?;
+        let paris = db.upsert_entity(
+            &EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            MemoryLayer::L1,
+            ObservationContext {
+                source_episode_id: Some(&episode.id),
+                observed_at,
+            },
+            None,
+        )?;
+        let france = db.upsert_entity(
+            &EntityInput {
+                entity_type: "place".to_string(),
+                name: "France".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            MemoryLayer::L1,
+            ObservationContext {
+                source_episode_id: Some(&episode.id),
+                observed_at,
+            },
+            None,
+        )?;
+
+        let hop1_edge = db.insert_edge(
+            &alice.id,
+            "lives_in",
+            &paris.id,
+            0.95,
+            MemoryLayer::L1,
+            ObservationContext {
+                source_episode_id: Some(&episode.id),
+                observed_at,
+            },
+        )?;
+        let hop2_edge = db.insert_edge(
+            &paris.id,
+            "located_in",
+            &france.id,
+            0.95,
+            MemoryLayer::L1,
+            ObservationContext {
+                source_episode_id: Some(&episode.id),
+                observed_at,
+            },
+        )?;
+
+        let records = db.related_graph_records(&[alice.id.clone()], 2, 1)?;
+
+        assert_eq!(records.len(), 2, "expected one unique record from each hop");
+        assert!(records.iter().any(
+            |(record, hop)| matches!(record, MemoryRecord::Edge(edge) if *hop == 1 && edge.id == hop1_edge.id)
+        ));
+        assert!(records.iter().any(
+            |(record, hop)| matches!(record, MemoryRecord::Edge(edge) if *hop == 2 && edge.id == hop2_edge.id)
         ));
         Ok(())
     }
