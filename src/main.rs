@@ -190,12 +190,14 @@ fn resolve_data_dir_for_cwd(cwd: &Path) -> Result<PathBuf> {
         return Ok(resolve_relative_to_cwd(cwd, Path::new(&value)));
     }
 
-    let active_path = cwd.join(ACTIVE_DATA_DIR_FILE);
-    if active_path.exists() {
-        let raw = fs::read_to_string(&active_path)?;
-        let configured = PathBuf::from(raw.trim());
-        if !configured.as_os_str().is_empty() {
-            return Ok(resolve_relative_to_cwd(cwd, &configured));
+    for dir in cwd.ancestors() {
+        let active_path = dir.join(ACTIVE_DATA_DIR_FILE);
+        if active_path.exists() {
+            let raw = fs::read_to_string(&active_path)?;
+            let configured = PathBuf::from(raw.trim());
+            if !configured.as_os_str().is_empty() {
+                return Ok(resolve_relative_to_cwd(dir, &configured));
+            }
         }
     }
 
@@ -593,10 +595,7 @@ fn parse_recorded_at(raw: Option<&str>) -> Result<Option<DateTime<Utc>>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        path::Path,
-    };
+    use std::{fs, path::Path};
 
     use chrono::{TimeZone, Utc};
     use tempfile::TempDir;
@@ -692,6 +691,34 @@ mod tests {
         let resolved = resolve_data_dir_for_cwd(temp.path())?;
 
         assert_eq!(resolved, temp.path().join("custom-store"));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_data_dir_walks_up_to_parent_workspace_active_file() -> anyhow::Result<()> {
+        let temp = TempDir::new()?;
+        let child = temp.path().join("notes").join("daily");
+        fs::create_dir_all(&child)?;
+        remember_active_data_dir_for_cwd(temp.path(), Path::new("workspace-store"))?;
+
+        let resolved = resolve_data_dir_for_cwd(&child)?;
+
+        assert_eq!(resolved, temp.path().join("workspace-store"));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_data_dir_prefers_nearest_parent_active_file() -> anyhow::Result<()> {
+        let temp = TempDir::new()?;
+        let team = temp.path().join("team");
+        let child = team.join("notes").join("daily");
+        fs::create_dir_all(&child)?;
+        remember_active_data_dir_for_cwd(temp.path(), Path::new("workspace-store"))?;
+        remember_active_data_dir_for_cwd(&team, Path::new("team-store"))?;
+
+        let resolved = resolve_data_dir_for_cwd(&child)?;
+
+        assert_eq!(resolved, team.join("team-store"));
         Ok(())
     }
 

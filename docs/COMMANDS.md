@@ -38,8 +38,8 @@ Prints a human-readable summary with:
 
 ### Notes
 
-- `memo awaken [path]` also marks that directory as the active workspace memory store for later commands run from the same working directory
-- set `MEMO_DATA_DIR` to override the active workspace target explicitly
+- `memo awaken [path]` also marks that directory as the active workspace memory store for later commands run from that directory or any descendant directory
+- set `MEMO_DATA_DIR` to override the active workspace target explicitly for the current process
 
 ---
 
@@ -68,7 +68,7 @@ memo remember <content> [OPTIONS]
 - `--dry-run` prints the final remember payload before writing
 - default `memo remember` writes only manual entities and facts immediately
 - `--dry-run` may include provider-backed extraction when the user has explicitly configured an extraction provider
-- by default commands use the active workspace memory store chosen by the latest `memo awaken`; `MEMO_DATA_DIR` overrides it
+- by default commands use the nearest active workspace memory store chosen by the latest `memo awaken` in the current directory or one of its ancestors; `MEMO_DATA_DIR` overrides it
 
 ---
 
