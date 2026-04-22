@@ -775,6 +775,11 @@ impl Database {
             }
         }
 
+        sort_l3_records(&mut records);
+        if records.len() > limit {
+            records.truncate(limit);
+        }
+
         Ok(records)
     }
 
@@ -805,6 +810,8 @@ impl Database {
                 records.push(record);
             }
         }
+
+        sort_l3_records(&mut records);
 
         Ok(records)
     }
@@ -1494,6 +1501,16 @@ fn queue_vector_index_job(
     queue_index_job(conn, "vector", memory_kind, memory_id, operation)
 }
 
+fn sort_l3_records(records: &mut [MemoryRecord]) {
+    records.sort_by(|left, right| {
+        right
+            .hit_count()
+            .cmp(&left.hit_count())
+            .then_with(|| right.activity_at().cmp(&left.activity_at()))
+            .then_with(|| left.id().cmp(right.id()))
+    });
+}
+
 fn queue_index_job(
     conn: &Connection,
     index_name: &str,
@@ -1974,6 +1991,7 @@ fn json_to_vec(raw: &str) -> Result<Vec<f32>> {
 mod tests {
     use super::Database;
     use anyhow::Result;
+    use chrono::{TimeZone, Utc};
     use rusqlite::{Connection, OptionalExtension};
     use tempfile::TempDir;
 
@@ -2198,6 +2216,84 @@ mod tests {
         assert_eq!(second_after.hit_count, 1);
         assert!(first_after.last_seen_at >= first_before);
         assert!(second_after.last_seen_at >= second_before);
+        Ok(())
+    }
+
+    #[test]
+    fn load_l3_records_prioritizes_hit_count_then_activity() -> Result<()> {
+        let temp = TempDir::new()?;
+        let db = Database::open(&temp.path().join("memory.db"))?;
+
+        let alpha = db.insert_episode(
+            &EpisodeInput {
+                content: "alpha".to_string(),
+                layer: MemoryLayer::L3,
+                entities: Vec::new(),
+                facts: Vec::new(),
+                source_episode_id: None,
+                session_id: None,
+                recorded_at: None,
+                confidence: 0.9,
+            },
+            None,
+        )?;
+        let beta = db.insert_episode(
+            &EpisodeInput {
+                content: "beta".to_string(),
+                layer: MemoryLayer::L3,
+                entities: Vec::new(),
+                facts: Vec::new(),
+                source_episode_id: None,
+                session_id: None,
+                recorded_at: None,
+                confidence: 0.9,
+            },
+            None,
+        )?;
+
+        {
+            let conn = db.conn.lock().expect("sqlite mutex poisoned");
+            conn.execute(
+                "UPDATE episodes SET hit_count = ?2, last_seen_at = ?3 WHERE id = ?1",
+                rusqlite::params![
+                    alpha.id,
+                    5_i64,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap())
+                ],
+            )?;
+            conn.execute(
+                "UPDATE episodes SET hit_count = ?2, last_seen_at = ?3 WHERE id = ?1",
+                rusqlite::params![
+                    beta.id,
+                    3_i64,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 11, 0, 0).unwrap())
+                ],
+            )?;
+        }
+
+        let first = db.load_l3_records(1)?;
+        assert!(matches!(
+            first.first(),
+            Some(MemoryRecord::Episode(record)) if record.id == alpha.id
+        ));
+
+        {
+            let conn = db.conn.lock().expect("sqlite mutex poisoned");
+            conn.execute(
+                "UPDATE episodes SET hit_count = ?2, last_seen_at = ?3 WHERE id = ?1",
+                rusqlite::params![
+                    beta.id,
+                    5_i64,
+                    dt_to_ts(Utc.with_ymd_and_hms(2026, 4, 22, 12, 0, 0).unwrap())
+                ],
+            )?;
+        }
+
+        let first = db.load_l3_records(1)?;
+        assert!(matches!(
+            first.first(),
+            Some(MemoryRecord::Episode(record)) if record.id == beta.id
+        ));
         Ok(())
     }
 }
