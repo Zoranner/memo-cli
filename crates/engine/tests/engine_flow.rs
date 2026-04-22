@@ -216,6 +216,68 @@ fn alias_query_hits_entity_record() -> Result<()> {
 }
 
 #[test]
+fn remember_entity_alias_reuses_existing_entity_record() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "I met Alice this morning.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    engine.remember(EpisodeInput {
+        content: "Ally sent a follow-up.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Ally".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.8,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let total_entities: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))?;
+    let alice_id: String = conn.query_row(
+        "SELECT id FROM entities WHERE canonical_name = 'Alice' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let mention_entity_id: String = conn.query_row(
+        "SELECT entity_id
+         FROM mentions
+         WHERE episode_id = (
+             SELECT id FROM episodes WHERE content = 'Ally sent a follow-up.' LIMIT 1
+         )
+         LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+
+    assert_eq!(total_entities, 1);
+    assert_eq!(mention_entity_id, alice_id);
+    Ok(())
+}
+
+#[test]
 fn bm25_query_hits_episode() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

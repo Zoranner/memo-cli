@@ -140,13 +140,7 @@ impl Database {
         let observed_at_ts = observation.observed_at.timestamp_millis();
         let normalized_name = normalize_text(&input.name);
         let has_vector = vector.is_some();
-        let existing_id: Option<String> = conn
-            .query_row(
-                "SELECT id FROM entities WHERE normalized_name = ?1 AND archived_at IS NULL LIMIT 1",
-                params![normalized_name],
-                |row| row.get(0),
-            )
-            .optional()?;
+        let existing_id = find_active_entity_id_by_reference(&conn, &normalized_name)?;
 
         let entity_id = if let Some(existing_id) = existing_id.clone() {
             conn.execute(
@@ -487,19 +481,7 @@ impl Database {
         let normalized = normalize_text(name_or_alias);
         let entity_id = {
             let conn = self.conn.lock().expect("sqlite mutex poisoned");
-            conn.query_row(
-                "SELECT e.id
-                 FROM entities e
-                 LEFT JOIN entity_aliases a ON a.entity_id = e.id
-                 WHERE e.archived_at IS NULL
-                   AND e.invalidated_at IS NULL
-                   AND (e.normalized_name = ?1 OR a.normalized_alias = ?1)
-                 ORDER BY CASE WHEN e.normalized_name = ?1 THEN 0 ELSE 1 END, e.created_at ASC
-                 LIMIT 1",
-                params![normalized],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
+            find_active_entity_id_by_reference(&conn, &normalized)?
         };
 
         match entity_id {
@@ -1484,6 +1466,26 @@ fn load_search_document_record(
             .map_err(Into::into),
         other => anyhow::bail!("unsupported search document kind: {}", other),
     }
+}
+
+fn find_active_entity_id_by_reference(
+    conn: &Connection,
+    normalized_name: &str,
+) -> Result<Option<String>> {
+    conn.query_row(
+        "SELECT e.id
+         FROM entities e
+         LEFT JOIN entity_aliases a ON a.entity_id = e.id
+         WHERE e.archived_at IS NULL
+           AND e.invalidated_at IS NULL
+           AND (e.normalized_name = ?1 OR a.normalized_alias = ?1)
+         ORDER BY CASE WHEN e.normalized_name = ?1 THEN 0 ELSE 1 END, e.created_at ASC
+         LIMIT 1",
+        params![normalized_name],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(Into::into)
 }
 
 fn load_vector_document_record(
