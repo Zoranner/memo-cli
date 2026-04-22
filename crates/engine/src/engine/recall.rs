@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use super::{Candidate, MemoryEngine};
+use super::{Candidate, MemoryEngine, SessionCache};
 
 enum RecallSearchStrategy {
     Fast,
@@ -81,7 +81,7 @@ impl MemoryEngine {
         {
             let text_index = self.text_index.lock().expect("tantivy mutex poisoned");
             for hit in text_index.search(&request.query, text_limit)? {
-                if let Some(memory) = self.db.get_memory(&hit.id)? {
+                if let Some(memory) = self.db.get_active_memory_by_kind(&hit.kind, &hit.id)? {
                     add_candidate(
                         &mut candidates,
                         Candidate {
@@ -98,7 +98,7 @@ impl MemoryEngine {
             let query_vector = provider.embed_text(&request.query)?;
             let vector_index = self.vector_index.lock().expect("vector mutex poisoned");
             for hit in vector_index.search(&query_vector, text_limit)? {
-                if let Some(memory) = self.db.get_memory(&hit.id)? {
+                if let Some(memory) = self.db.get_active_memory_by_kind(&hit.kind, &hit.id)? {
                     add_candidate(
                         &mut candidates,
                         Candidate {
@@ -207,9 +207,11 @@ impl MemoryEngine {
     }
 
     fn commit_query_results(&self, normalized_query: &str, results: &[RecallResult]) -> Result<()> {
-        for result in results {
-            let _ = self.db.increment_hit_count(&result.memory);
-        }
+        let memories = results
+            .iter()
+            .map(|result| result.memory.clone())
+            .collect::<Vec<_>>();
+        let _ = self.db.increment_hit_counts(&memories);
         self.record_query_session(normalized_query, results)
     }
 
@@ -221,7 +223,7 @@ impl MemoryEngine {
         drop(session);
         let memory = self
             .db
-            .get_memory(&entity_id)?
+            .get_active_memory(&entity_id)?
             .with_context(|| format!("dangling L0 entity reference: {}", entity_id))?;
         Ok(Some(Candidate {
             memory,
@@ -234,6 +236,9 @@ impl MemoryEngine {
         let cache = self.l3_cache.lock().expect("l3 mutex poisoned");
         let mut result = Vec::new();
         for record in cache.values() {
+            if !record.is_active() {
+                continue;
+            }
             let haystack = normalize_text(&record.text_for_ranking());
             if haystack.contains(normalized_query) {
                 result.push(Candidate {
@@ -265,12 +270,7 @@ impl MemoryEngine {
                     .insert(normalize_text(alias), entity.id.clone());
             }
         }
-        if session.recent_memory_ids.len() > 128 {
-            session.recent_memory_ids.drain(..64);
-        }
-        if session.recent_topics.len() > 64 {
-            session.recent_topics.drain(..32);
-        }
+        trim_session_cache(&mut session);
         Ok(())
     }
 
@@ -292,10 +292,17 @@ impl MemoryEngine {
                 }
             }
         }
-        if session.recent_memory_ids.len() > 128 {
-            session.recent_memory_ids.drain(..64);
-        }
+        trim_session_cache(&mut session);
         Ok(())
+    }
+}
+
+fn trim_session_cache(session: &mut SessionCache) {
+    if session.recent_memory_ids.len() > 128 {
+        session.recent_memory_ids.drain(..64);
+    }
+    if session.recent_topics.len() > 64 {
+        session.recent_topics.drain(..32);
     }
 }
 
@@ -442,7 +449,8 @@ mod tests {
 
     use crate::types::{EpisodeRecord, MemoryLayer, MemoryRecord, RecallResult, RecallResultSet};
 
-    use super::should_auto_escalate_to_deep_search;
+    use super::{should_auto_escalate_to_deep_search, trim_session_cache};
+    use crate::engine::SessionCache;
 
     fn episode_result(score: f32, reasons: Vec<crate::types::RecallReason>) -> RecallResult {
         RecallResult {
@@ -485,5 +493,25 @@ mod tests {
         };
 
         assert!(!should_auto_escalate_to_deep_search(&result));
+    }
+
+    #[test]
+    fn trim_session_cache_caps_recent_topics_and_memory_ids() {
+        let mut session = SessionCache::default();
+        session.recent_memory_ids = (0..130).map(|index| format!("memory-{index}")).collect();
+        session.recent_topics = (0..70).map(|index| format!("topic-{index}")).collect();
+
+        trim_session_cache(&mut session);
+
+        assert_eq!(session.recent_memory_ids.len(), 66);
+        assert_eq!(session.recent_topics.len(), 38);
+        assert_eq!(
+            session.recent_memory_ids.first().map(String::as_str),
+            Some("memory-64")
+        );
+        assert_eq!(
+            session.recent_topics.first().map(String::as_str),
+            Some("topic-32")
+        );
     }
 }

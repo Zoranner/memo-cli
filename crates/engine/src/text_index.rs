@@ -13,6 +13,7 @@ use tantivy::{
 #[derive(Debug, Clone)]
 pub struct TextHit {
     pub id: String,
+    pub kind: String,
     pub score: f32,
 }
 
@@ -133,7 +134,12 @@ impl TextIndex {
                 .and_then(|value| value.as_str())
                 .unwrap_or_default()
                 .to_string();
-            hits.push(TextHit { id, score });
+            let kind = doc
+                .get_first(self.kind_field)
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string();
+            hits.push(TextHit { id, kind, score });
         }
 
         Ok(hits)
@@ -147,4 +153,32 @@ fn schema() -> Schema {
     builder.add_text_field("layer", STRING | STORED);
     builder.add_text_field("body", TEXT | STORED);
     builder.build()
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::TextIndex;
+
+    #[test]
+    fn search_returns_hit_kind() {
+        let temp = TempDir::new().expect("temp dir");
+        let mut index = TextIndex::open(temp.path()).expect("open text index");
+
+        index
+            .rebuild(&[(
+                "fact-1".to_string(),
+                "fact".to_string(),
+                "L2".to_string(),
+                "Alice lives in Paris".to_string(),
+            )])
+            .expect("rebuild text index");
+
+        let hits = index.search("Paris", 1).expect("search text index");
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "fact-1");
+        assert_eq!(hits[0].kind, "fact");
+    }
 }

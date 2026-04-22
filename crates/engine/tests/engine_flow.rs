@@ -644,6 +644,71 @@ fn dream_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
 }
 
 #[test]
+fn recall_ignores_archived_episode_from_stale_text_index_until_restore_runs() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let first = engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    let second = engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.restore(RestoreScope::Text)?;
+
+    let report = engine.dream_full(DreamTrigger::Manual)?;
+    assert_eq!(report.archived_records, 1);
+
+    let first_record = engine.reflect(&first)?;
+    let second_record = engine.reflect(&second)?;
+    let archived_id = match (&first_record, &second_record) {
+        (MemoryRecord::Episode(first_record), MemoryRecord::Episode(_))
+            if first_record.archived_at.is_some() =>
+        {
+            first_record.id.clone()
+        }
+        (MemoryRecord::Episode(_), MemoryRecord::Episode(second_record))
+            if second_record.archived_at.is_some() =>
+        {
+            second_record.id.clone()
+        }
+        other => panic!("unexpected duplicate dream state: {other:?}"),
+    };
+
+    let result = engine.recall(RecallRequest {
+        query: "Alice likes jasmine tea.".to_string(),
+        limit: 10,
+        deep: false,
+    })?;
+
+    assert!(!result.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == archived_id)
+    ));
+    assert_eq!(
+        result
+            .results
+            .iter()
+            .filter(|item| matches!(&item.memory, MemoryRecord::Episode(record) if record.content == "Alice likes jasmine tea."))
+            .count(),
+        1
+    );
+    Ok(())
+}
+
+#[test]
 fn dream_promotes_related_entities_and_facts_to_l2() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

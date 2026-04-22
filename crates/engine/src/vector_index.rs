@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct VectorHit {
     pub id: String,
+    pub kind: String,
     pub score: f32,
 }
 
@@ -44,12 +45,18 @@ struct StoredVectorDisk {
 
 type AnnIndex = Hnsw<'static, f32, DistCosine>;
 
+#[derive(Debug, Clone)]
+struct HitRef {
+    id: String,
+    kind: String,
+}
+
 pub struct VectorIndex {
     path: PathBuf,
     dimension: usize,
     records: HashMap<String, StoredVector>,
     ann: AnnIndex,
-    record_ids_by_ann_id: HashMap<usize, String>,
+    record_refs_by_ann_id: HashMap<usize, HitRef>,
     next_ann_id: usize,
     defer_commit: bool,
 }
@@ -63,13 +70,13 @@ impl VectorIndex {
             .max()
             .map_or(0, |ann_id| ann_id.saturating_add(1));
         let ann = build_hnsw(dimension, &records)?;
-        let record_ids_by_ann_id = build_ann_id_map(&records);
+        let record_refs_by_ann_id = build_ann_ref_map(&records);
         Ok(Self {
             path,
             dimension,
             records,
             ann,
-            record_ids_by_ann_id,
+            record_refs_by_ann_id,
             next_ann_id,
             defer_commit: false,
         })
@@ -162,11 +169,12 @@ impl VectorIndex {
             .search(query, limit.min(self.records.len()), ef)
             .into_iter()
             .filter_map(|neighbor| {
-                self.record_ids_by_ann_id
+                self.record_refs_by_ann_id
                     .get(&neighbor.d_id)
                     .cloned()
-                    .map(|id| VectorHit {
-                        id,
+                    .map(|record| VectorHit {
+                        id: record.id,
+                        kind: record.kind,
                         score: (1.0 - neighbor.distance).clamp(-1.0, 1.0),
                     })
             })
@@ -211,7 +219,7 @@ impl VectorIndex {
 
     fn reindex(&mut self) -> Result<()> {
         self.ann = build_hnsw(self.dimension, &self.records)?;
-        self.record_ids_by_ann_id = build_ann_id_map(&self.records);
+        self.record_refs_by_ann_id = build_ann_ref_map(&self.records);
         Ok(())
     }
 
@@ -298,10 +306,18 @@ fn new_hnsw(record_count: usize) -> AnnIndex {
     ann
 }
 
-fn build_ann_id_map(records: &HashMap<String, StoredVector>) -> HashMap<usize, String> {
+fn build_ann_ref_map(records: &HashMap<String, StoredVector>) -> HashMap<usize, HitRef> {
     records
         .values()
-        .map(|record| (record.ann_id, record.id.clone()))
+        .map(|record| {
+            (
+                record.ann_id,
+                HitRef {
+                    id: record.id.clone(),
+                    kind: record.kind.clone(),
+                },
+            )
+        })
         .collect()
 }
 
@@ -401,5 +417,6 @@ mod tests {
 
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "episode-1");
+        assert_eq!(hits[0].kind, "episode");
     }
 }

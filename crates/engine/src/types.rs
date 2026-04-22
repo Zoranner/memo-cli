@@ -302,6 +302,17 @@ impl MemoryRecord {
         }
     }
 
+    pub fn is_active(&self) -> bool {
+        match self {
+            Self::Episode(record) => {
+                record.archived_at.is_none() && record.invalidated_at.is_none()
+            }
+            Self::Entity(record) => record.archived_at.is_none() && record.invalidated_at.is_none(),
+            Self::Fact(record) => record.archived_at.is_none() && record.invalidated_at.is_none(),
+            Self::Edge(record) => record.archived_at.is_none() && record.invalidated_at.is_none(),
+        }
+    }
+
     pub fn updated_at(&self) -> DateTime<Utc> {
         match self {
             Self::Episode(record) => record.updated_at,

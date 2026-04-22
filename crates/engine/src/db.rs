@@ -328,6 +328,26 @@ impl Database {
         Ok(None)
     }
 
+    pub fn get_memory_by_kind(&self, kind: &str, id: &str) -> Result<Option<MemoryRecord>> {
+        match kind {
+            "episode" => Ok(self.get_episode(id)?.map(MemoryRecord::Episode)),
+            "entity" => Ok(self.get_entity(id)?.map(MemoryRecord::Entity)),
+            "fact" => Ok(self.get_fact(id)?.map(MemoryRecord::Fact)),
+            "edge" => Ok(self.get_edge(id)?.map(MemoryRecord::Edge)),
+            other => anyhow::bail!("unsupported memory kind: {}", other),
+        }
+    }
+
+    pub fn get_active_memory(&self, id: &str) -> Result<Option<MemoryRecord>> {
+        Ok(self.get_memory(id)?.filter(MemoryRecord::is_active))
+    }
+
+    pub fn get_active_memory_by_kind(&self, kind: &str, id: &str) -> Result<Option<MemoryRecord>> {
+        Ok(self
+            .get_memory_by_kind(kind, id)?
+            .filter(MemoryRecord::is_active))
+    }
+
     pub fn get_episode(&self, id: &str) -> Result<Option<EpisodeRecord>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.query_row(
@@ -424,6 +444,7 @@ impl Database {
                  FROM entities e
                  LEFT JOIN entity_aliases a ON a.entity_id = e.id
                  WHERE e.archived_at IS NULL
+                   AND e.invalidated_at IS NULL
                    AND (e.normalized_name = ?1 OR a.normalized_alias = ?1)",
             )?;
             let entity_ids: Vec<String> = entity_stmt
@@ -433,7 +454,9 @@ impl Database {
 
             let mut episode_stmt = conn.prepare(
                 "SELECT id FROM episodes
-                 WHERE archived_at IS NULL AND normalized_content = ?1",
+                 WHERE archived_at IS NULL
+                   AND invalidated_at IS NULL
+                   AND normalized_content = ?1",
             )?;
             let episode_ids: Vec<String> = episode_stmt
                 .query_map(params![normalize_text(query)], |row| row.get(0))?
@@ -443,13 +466,13 @@ impl Database {
 
         let mut result = Vec::new();
         for entity_id in entity_ids {
-            if let Some(record) = self.get_entity(&entity_id)? {
-                result.push(MemoryRecord::Entity(record));
+            if let Some(record) = self.get_active_memory(&entity_id)? {
+                result.push(record);
             }
         }
         for episode_id in episode_ids {
-            if let Some(record) = self.get_episode(&episode_id)? {
-                result.push(MemoryRecord::Episode(record));
+            if let Some(record) = self.get_active_memory(&episode_id)? {
+                result.push(record);
             }
         }
 
@@ -484,6 +507,7 @@ impl Database {
                         layer, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
                  FROM edges
                  WHERE archived_at IS NULL
+                   AND invalidated_at IS NULL
                    AND (subject_entity_id IN ({0}) OR object_entity_id IN ({0}))
                  LIMIT {1}",
                 placeholders, limit
@@ -515,6 +539,7 @@ impl Database {
                         layer, confidence, source_episode_id, valid_from, valid_to, created_at, updated_at, archived_at, invalidated_at, hit_count
                  FROM facts
                  WHERE archived_at IS NULL
+                   AND invalidated_at IS NULL
                    AND ((subject_entity_id IS NOT NULL AND subject_entity_id IN ({0}))
                      OR (object_entity_id IS NOT NULL AND object_entity_id IN ({0})))
                  LIMIT {1}",
@@ -784,23 +809,61 @@ impl Database {
         Ok(records)
     }
 
-    pub fn increment_hit_count(&self, memory: &MemoryRecord) -> Result<()> {
-        let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let sql = match memory {
-            MemoryRecord::Episode(_) => {
-                "UPDATE episodes SET hit_count = hit_count + 1, last_seen_at = ?2 WHERE id = ?1"
+    pub fn increment_hit_counts(&self, memories: &[MemoryRecord]) -> Result<()> {
+        if memories.is_empty() {
+            return Ok(());
+        }
+
+        let mut episode_ids = Vec::new();
+        let mut entity_ids = Vec::new();
+        let mut fact_ids = Vec::new();
+        let mut edge_ids = Vec::new();
+        let mut seen = HashSet::new();
+
+        for memory in memories {
+            let key = format!("{}:{}", memory.kind(), memory.id());
+            if !seen.insert(key) {
+                continue;
             }
-            MemoryRecord::Entity(_) => {
-                "UPDATE entities SET hit_count = hit_count + 1, last_seen_at = ?2 WHERE id = ?1"
+
+            match memory {
+                MemoryRecord::Episode(_) => episode_ids.push(memory.id().to_string()),
+                MemoryRecord::Entity(_) => entity_ids.push(memory.id().to_string()),
+                MemoryRecord::Fact(_) => fact_ids.push(memory.id().to_string()),
+                MemoryRecord::Edge(_) => edge_ids.push(memory.id().to_string()),
             }
-            MemoryRecord::Fact(_) => {
-                "UPDATE facts SET hit_count = hit_count + 1, updated_at = ?2 WHERE id = ?1"
-            }
-            MemoryRecord::Edge(_) => {
-                "UPDATE edges SET hit_count = hit_count + 1, updated_at = ?2 WHERE id = ?1"
-            }
-        };
-        conn.execute(sql, params![memory.id(), now_ts()])?;
+        }
+
+        let now = now_ts();
+        let mut conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let transaction = conn.transaction()?;
+
+        for id in &episode_ids {
+            transaction.execute(
+                "UPDATE episodes SET hit_count = hit_count + 1, last_seen_at = ?2 WHERE id = ?1",
+                params![id, now],
+            )?;
+        }
+        for id in &entity_ids {
+            transaction.execute(
+                "UPDATE entities SET hit_count = hit_count + 1, last_seen_at = ?2 WHERE id = ?1",
+                params![id, now],
+            )?;
+        }
+        for id in &fact_ids {
+            transaction.execute(
+                "UPDATE facts SET hit_count = hit_count + 1, updated_at = ?2 WHERE id = ?1",
+                params![id, now],
+            )?;
+        }
+        for id in &edge_ids {
+            transaction.execute(
+                "UPDATE edges SET hit_count = hit_count + 1, updated_at = ?2 WHERE id = ?1",
+                params![id, now],
+            )?;
+        }
+
+        transaction.commit()?;
         Ok(())
     }
 
@@ -1914,6 +1977,8 @@ mod tests {
     use rusqlite::{Connection, OptionalExtension};
     use tempfile::TempDir;
 
+    use crate::types::{EpisodeInput, MemoryLayer, MemoryRecord};
+
     #[test]
     fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
         let temp = TempDir::new()?;
@@ -2080,6 +2145,59 @@ mod tests {
             "expected obsolete dream_jobs table to be dropped"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn increment_hit_counts_updates_multiple_records_in_one_call() -> Result<()> {
+        let temp = TempDir::new()?;
+        let db = Database::open(&temp.path().join("memory.db"))?;
+
+        let first = db.insert_episode(
+            &EpisodeInput {
+                content: "alpha".to_string(),
+                layer: MemoryLayer::L1,
+                entities: Vec::new(),
+                facts: Vec::new(),
+                source_episode_id: None,
+                session_id: None,
+                recorded_at: None,
+                confidence: 0.9,
+            },
+            None,
+        )?;
+        let second = db.insert_episode(
+            &EpisodeInput {
+                content: "beta".to_string(),
+                layer: MemoryLayer::L1,
+                entities: Vec::new(),
+                facts: Vec::new(),
+                source_episode_id: None,
+                session_id: None,
+                recorded_at: None,
+                confidence: 0.9,
+            },
+            None,
+        )?;
+
+        let first_before = first.last_seen_at;
+        let second_before = second.last_seen_at;
+        db.increment_hit_counts(&[
+            MemoryRecord::Episode(first.clone()),
+            MemoryRecord::Episode(second.clone()),
+        ])?;
+
+        let first_after = db
+            .get_episode(&first.id)?
+            .expect("expected first episode after batch hit update");
+        let second_after = db
+            .get_episode(&second.id)?
+            .expect("expected second episode after batch hit update");
+
+        assert_eq!(first_after.hit_count, 1);
+        assert_eq!(second_after.hit_count, 1);
+        assert!(first_after.last_seen_at >= first_before);
+        assert!(second_after.last_seen_at >= second_before);
         Ok(())
     }
 }

@@ -241,44 +241,106 @@ fn render_reflection(record: &MemoryRecord, json: bool) -> Result<String> {
         return render_json_or_text(record, "", true);
     }
 
-    let summary = match record {
-        MemoryRecord::Episode(episode) => format!(
-            "Episode {}\nlayer: {}\nconfidence: {:.2}\ncontent: {}",
-            episode.id,
-            episode.layer.as_str(),
-            episode.confidence,
-            episode.content
-        ),
-        MemoryRecord::Entity(entity) => format!(
-            "Entity {}\nlayer: {}\nname: {}\naliases: {}",
-            entity.id,
-            entity.layer.as_str(),
-            entity.canonical_name,
-            if entity.aliases.is_empty() {
-                "-".to_string()
-            } else {
-                entity.aliases.join(", ")
-            }
-        ),
-        MemoryRecord::Fact(fact) => format!(
-            "Fact {}\nlayer: {}\nstatement: {} {} {}",
-            fact.id,
-            fact.layer.as_str(),
-            fact.subject_text,
-            fact.predicate,
-            fact.object_text
-        ),
-        MemoryRecord::Edge(edge) => format!(
-            "Edge {}\nlayer: {}\nrelation: {} {} {}",
-            edge.id,
-            edge.layer.as_str(),
-            edge.subject_entity_id,
-            edge.predicate,
-            edge.object_entity_id
-        ),
+    let mut lines = match record {
+        MemoryRecord::Episode(episode) => vec![
+            format!("Episode {}", episode.id),
+            format!("layer: {}", episode.layer.as_str()),
+            format!("status: {}", memory_status_label(record)),
+            format!("confidence: {:.2}", episode.confidence),
+            format!("content: {}", episode.content),
+        ],
+        MemoryRecord::Entity(entity) => vec![
+            format!("Entity {}", entity.id),
+            format!("layer: {}", entity.layer.as_str()),
+            format!("status: {}", memory_status_label(record)),
+            format!("name: {}", entity.canonical_name),
+            format!(
+                "aliases: {}",
+                if entity.aliases.is_empty() {
+                    "-".to_string()
+                } else {
+                    entity.aliases.join(", ")
+                }
+            ),
+        ],
+        MemoryRecord::Fact(fact) => vec![
+            format!("Fact {}", fact.id),
+            format!("layer: {}", fact.layer.as_str()),
+            format!("status: {}", memory_status_label(record)),
+            format!(
+                "statement: {} {} {}",
+                fact.subject_text, fact.predicate, fact.object_text
+            ),
+        ],
+        MemoryRecord::Edge(edge) => vec![
+            format!("Edge {}", edge.id),
+            format!("layer: {}", edge.layer.as_str()),
+            format!("status: {}", memory_status_label(record)),
+            format!(
+                "relation: {} {} {}",
+                edge.subject_entity_id, edge.predicate, edge.object_entity_id
+            ),
+        ],
     };
 
-    Ok(summary)
+    if let Some(archived_at) = memory_archived_at(record) {
+        lines.push(format!("archived_at: {}", archived_at.to_rfc3339()));
+    }
+    if let Some(invalidated_at) = memory_invalidated_at(record) {
+        lines.push(format!("invalidated_at: {}", invalidated_at.to_rfc3339()));
+    }
+    if let Some(valid_from) = memory_valid_from(record) {
+        lines.push(format!("valid_from: {}", valid_from.to_rfc3339()));
+    }
+    if let Some(valid_to) = memory_valid_to(record) {
+        lines.push(format!("valid_to: {}", valid_to.to_rfc3339()));
+    }
+
+    Ok(lines.join("\n"))
+}
+
+fn memory_status_label(record: &MemoryRecord) -> &'static str {
+    if memory_invalidated_at(record).is_some() {
+        "invalidated"
+    } else if memory_archived_at(record).is_some() {
+        "archived"
+    } else {
+        "active"
+    }
+}
+
+fn memory_archived_at(record: &MemoryRecord) -> Option<DateTime<Utc>> {
+    match record {
+        MemoryRecord::Episode(episode) => episode.archived_at,
+        MemoryRecord::Entity(entity) => entity.archived_at,
+        MemoryRecord::Fact(fact) => fact.archived_at,
+        MemoryRecord::Edge(edge) => edge.archived_at,
+    }
+}
+
+fn memory_invalidated_at(record: &MemoryRecord) -> Option<DateTime<Utc>> {
+    match record {
+        MemoryRecord::Episode(episode) => episode.invalidated_at,
+        MemoryRecord::Entity(entity) => entity.invalidated_at,
+        MemoryRecord::Fact(fact) => fact.invalidated_at,
+        MemoryRecord::Edge(edge) => edge.invalidated_at,
+    }
+}
+
+fn memory_valid_from(record: &MemoryRecord) -> Option<DateTime<Utc>> {
+    match record {
+        MemoryRecord::Fact(fact) => fact.valid_from,
+        MemoryRecord::Edge(edge) => edge.valid_from,
+        _ => None,
+    }
+}
+
+fn memory_valid_to(record: &MemoryRecord) -> Option<DateTime<Utc>> {
+    match record {
+        MemoryRecord::Fact(fact) => fact.valid_to,
+        MemoryRecord::Edge(edge) => edge.valid_to,
+        _ => None,
+    }
 }
 
 fn render_dream_report(report: &DreamReport, full: bool, json: bool) -> Result<String> {
@@ -480,11 +542,13 @@ fn parse_recorded_at(raw: Option<&str>) -> Result<Option<DateTime<Utc>>> {
 mod tests {
     use chrono::{TimeZone, Utc};
 
-    use super::{render_dream_report, render_recall_result, render_state, Cli, Command};
+    use super::{
+        render_dream_report, render_recall_result, render_reflection, render_state, Cli, Command,
+    };
     use clap::Parser;
     use memo_engine::{
-        DreamReport, EpisodeRecord, IndexStatus, MemoryLayer, MemoryRecord, RecallReason,
-        RecallResult, RecallResultSet, SystemState,
+        DreamReport, EpisodeRecord, FactRecord, IndexStatus, MemoryLayer, MemoryRecord,
+        RecallReason, RecallResult, RecallResultSet, SystemState,
     };
 
     #[test]
@@ -626,6 +690,62 @@ mod tests {
         assert!(output.contains("Recalled 1 item(s)"));
         assert!(output.contains("[episode:ep-1] score=3.400 layer=L2"));
         assert!(output.contains("reasons: alias, layer_boost"));
+    }
+
+    #[test]
+    fn render_reflection_marks_archived_episode_status() {
+        let output = render_reflection(
+            &MemoryRecord::Episode(EpisodeRecord {
+                id: "ep-archived".to_string(),
+                content: "Alice archived note.".to_string(),
+                layer: MemoryLayer::L2,
+                confidence: 0.9,
+                source_episode_id: None,
+                session_id: None,
+                created_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                updated_at: Utc.with_ymd_and_hms(2026, 4, 21, 11, 0, 0).unwrap(),
+                last_seen_at: Utc.with_ymd_and_hms(2026, 4, 21, 11, 0, 0).unwrap(),
+                archived_at: Some(Utc.with_ymd_and_hms(2026, 4, 21, 12, 0, 0).unwrap()),
+                invalidated_at: None,
+                hit_count: 3,
+            }),
+            false,
+        )
+        .expect("expected reflection output");
+
+        assert!(output.contains("status: archived"));
+        assert!(output.contains("archived_at: 2026-04-21T12:00:00+00:00"));
+    }
+
+    #[test]
+    fn render_reflection_marks_invalidated_fact_window() {
+        let output = render_reflection(
+            &MemoryRecord::Fact(FactRecord {
+                id: "fact-1".to_string(),
+                subject_entity_id: Some("alice".to_string()),
+                subject_text: "Alice".to_string(),
+                predicate: "lives_in".to_string(),
+                object_entity_id: Some("paris".to_string()),
+                object_text: "Paris".to_string(),
+                layer: MemoryLayer::L2,
+                confidence: 0.8,
+                source_episode_id: Some("ep-1".to_string()),
+                created_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                updated_at: Utc.with_ymd_and_hms(2026, 4, 21, 13, 0, 0).unwrap(),
+                valid_from: Some(Utc.with_ymd_and_hms(2026, 4, 20, 9, 0, 0).unwrap()),
+                valid_to: Some(Utc.with_ymd_and_hms(2026, 4, 21, 13, 0, 0).unwrap()),
+                archived_at: None,
+                invalidated_at: Some(Utc.with_ymd_and_hms(2026, 4, 21, 13, 0, 0).unwrap()),
+                hit_count: 2,
+            }),
+            false,
+        )
+        .expect("expected reflection output");
+
+        assert!(output.contains("status: invalidated"));
+        assert!(output.contains("invalidated_at: 2026-04-21T13:00:00+00:00"));
+        assert!(output.contains("valid_from: 2026-04-20T09:00:00+00:00"));
+        assert!(output.contains("valid_to: 2026-04-21T13:00:00+00:00"));
     }
 
     #[test]
