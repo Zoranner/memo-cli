@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use lmkit::{Provider, ProviderConfig};
-use memo_engine::EngineConfig;
+use memo_engine::{EngineConfig, MemoryEngine};
 
 use crate::lmkit_adapter::LmkitEmbeddingAdapter;
 use crate::lmkit_extraction_adapter::{ExtractionCleanupOptions, LmkitExtractionAdapter};
@@ -113,6 +113,7 @@ pub(crate) fn initialize_data_dir(data_dir: &Path) -> Result<InitReport> {
 
     let config_created = write_if_missing(&data_dir.join("config.toml"), CONFIG_TEMPLATE)?;
     let providers_created = write_if_missing(&data_dir.join("providers.toml"), PROVIDERS_TEMPLATE)?;
+    MemoryEngine::open(EngineConfig::new(data_dir))?;
 
     Ok(InitReport {
         config_created,
@@ -344,6 +345,17 @@ mod tests {
         assert!(report.providers_created);
         assert!(temp.path().join("config.toml").exists());
         assert!(temp.path().join("providers.toml").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn init_also_bootstraps_sqlite_and_index_dirs() -> Result<()> {
+        let temp = TempDir::new()?;
+
+        initialize_data_dir(temp.path())?;
+
+        assert!(temp.path().join("memory.db").exists());
+        assert!(temp.path().join("text-index").is_dir());
         Ok(())
     }
 
