@@ -57,6 +57,19 @@ impl EmbeddingProvider for CountingEmbeddingProvider {
 }
 
 #[derive(Clone)]
+struct FailingEmbeddingProvider;
+
+impl EmbeddingProvider for FailingEmbeddingProvider {
+    fn dimension(&self) -> usize {
+        4
+    }
+
+    fn embed_text(&self, _text: &str) -> Result<Vec<f32>> {
+        anyhow::bail!("embedding backend unavailable")
+    }
+}
+
+#[derive(Clone)]
 struct TestExtractionProvider;
 
 impl ExtractionProvider for TestExtractionProvider {
@@ -112,6 +125,15 @@ impl RerankProvider for TestRerankProvider {
     }
 }
 
+#[derive(Clone)]
+struct FailingRerankProvider;
+
+impl RerankProvider for FailingRerankProvider {
+    fn rerank(&self, _query: &str, _documents: &[String]) -> Result<Vec<RerankScore>> {
+        anyhow::bail!("rerank backend unavailable")
+    }
+}
+
 fn open_engine(path: &Path) -> Result<MemoryEngine> {
     MemoryEngine::open(EngineConfig::new(path))
 }
@@ -130,6 +152,18 @@ fn open_engine_with_extraction(path: &Path) -> Result<MemoryEngine> {
 
 fn open_engine_with_rerank(path: &Path) -> Result<MemoryEngine> {
     MemoryEngine::open(EngineConfig::new(path).with_rerank_provider(Arc::new(TestRerankProvider)))
+}
+
+fn open_engine_with_failing_embeddings(path: &Path) -> Result<MemoryEngine> {
+    MemoryEngine::open(
+        EngineConfig::new(path).with_embedding_provider(Arc::new(FailingEmbeddingProvider)),
+    )
+}
+
+fn open_engine_with_failing_rerank(path: &Path) -> Result<MemoryEngine> {
+    MemoryEngine::open(
+        EngineConfig::new(path).with_rerank_provider(Arc::new(FailingRerankProvider)),
+    )
 }
 
 #[test]
@@ -380,6 +414,38 @@ fn recall_skips_query_embedding_when_vector_index_is_empty() -> Result<()> {
 }
 
 #[test]
+fn recall_falls_back_to_non_vector_paths_when_query_embedding_fails() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine_with_failing_embeddings(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "Riverbank Robotics builds warehouse drones.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.restore(RestoreScope::Text)?;
+
+    let result = engine.recall(RecallRequest {
+        query: "warehouse drones".to_string(),
+        limit: 3,
+        deep: false,
+    })?;
+
+    assert!(result.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.content == "Riverbank Robotics builds warehouse drones.")
+            && item
+                .reasons
+                .iter()
+                .any(|reason| matches!(reason, RecallReason::Bm25))
+    ));
+    Ok(())
+}
+
+#[test]
 fn remember_fact_only_creates_mentions_for_fallback_entities() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
@@ -470,6 +536,70 @@ fn remember_fact_alias_reuses_existing_entity_record() -> Result<()> {
 
     assert_eq!(subject_entity_id, alice_id);
     assert_eq!(ally_unknown_count, 0);
+    Ok(())
+}
+
+#[test]
+fn explicit_entities_upgrade_unknown_fact_entities_to_typed_records() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    engine.remember(EpisodeInput {
+        content: "Alice is a traveler in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let alice_type: String = conn.query_row(
+        "SELECT entity_type FROM entities WHERE canonical_name = 'Alice' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let paris_type: String = conn.query_row(
+        "SELECT entity_type FROM entities WHERE canonical_name = 'Paris' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+
+    assert_eq!(alice_type, "person");
+    assert_eq!(paris_type, "place");
     Ok(())
 }
 
@@ -622,6 +752,47 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
         other => panic!("expected reranked episode result, got {other:?}"),
     }
     assert!(first
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::Rerank)));
+    Ok(())
+}
+
+#[test]
+fn deep_recall_keeps_results_when_rerank_provider_fails() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine_with_failing_rerank(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "Paris travel checklist for May.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "place".to_string(),
+            name: "Paris".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let result = engine.recall(RecallRequest {
+        query: "Paris travel".to_string(),
+        limit: 3,
+        deep: true,
+    })?;
+
+    let first = result.results.first().expect("expected search results");
+    match &first.memory {
+        MemoryRecord::Episode(record) => {
+            assert_eq!(record.content, "Paris travel checklist for May.")
+        }
+        other => panic!("expected episode result, got {other:?}"),
+    }
+    assert!(!first
         .reasons
         .iter()
         .any(|reason| matches!(reason, RecallReason::Rerank)));
@@ -2750,6 +2921,63 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
 }
 
 #[test]
+fn remember_keeps_truth_source_write_when_embedding_provider_fails() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine_with_failing_embeddings(temp.path())?;
+
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let state = engine.state()?;
+    assert_eq!(state.text_index.status, "pending");
+    assert_eq!(state.vector_index.pending_updates, 0);
+
+    match engine.reflect(&episode_id)? {
+        MemoryRecord::Episode(record) => {
+            assert_eq!(record.content, "Alice lives in Paris.")
+        }
+        other => panic!("expected episode record, got {other:?}"),
+    }
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let fact_count: i64 = conn.query_row("SELECT COUNT(*) FROM facts", [], |row| row.get(0))?;
+    let entity_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))?;
+    assert_eq!(fact_count, 1);
+    assert_eq!(entity_count, 2);
+    Ok(())
+}
+
+#[test]
 fn remember_accumulates_pending_text_updates_until_restore_runs() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
@@ -2880,6 +3108,50 @@ fn dream_marks_text_index_pending_after_memory_lifecycle_changes() -> Result<()>
     assert_eq!(pending.text_index.status, "pending");
     assert!(pending.text_index.pending_updates >= 1);
 
+    Ok(())
+}
+
+#[test]
+fn dream_continues_structuring_when_embeddings_fail() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = MemoryEngine::open(
+        EngineConfig::new(temp.path())
+            .with_embedding_provider(Arc::new(FailingEmbeddingProvider))
+            .with_extraction_provider(Arc::new(TestExtractionProvider)),
+    )?;
+
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert_eq!(report.structured_episodes, 1);
+    assert_eq!(report.structured_entities, 2);
+    assert_eq!(report.structured_facts, 1);
+    assert_eq!(report.extraction_failures, 0);
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let structured: i64 = conn.query_row(
+        "SELECT structured FROM episodes WHERE id = ?1",
+        rusqlite::params![episode_id],
+        |row| row.get(0),
+    )?;
+    let fact_count: i64 = conn.query_row("SELECT COUNT(*) FROM facts", [], |row| row.get(0))?;
+    let entity_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM entities", [], |row| row.get(0))?;
+    assert_eq!(structured, 1);
+    assert_eq!(fact_count, 1);
+    assert_eq!(entity_count, 2);
+
+    let state = engine.state()?;
+    assert_eq!(state.vector_index.pending_updates, 0);
     Ok(())
 }
 

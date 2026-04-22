@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     db::normalize_text,
@@ -101,17 +101,28 @@ impl MemoryEngine {
                 .expect("vector mutex poisoned")
                 .has_documents();
             if has_vector_documents {
-                let query_vector = provider.embed_text(&request.query)?;
-                let vector_index = self.vector_index.lock().expect("vector mutex poisoned");
-                for hit in vector_index.search(&query_vector, text_limit)? {
-                    if let Some(memory) = self.db.get_active_memory_by_kind(&hit.kind, &hit.id)? {
-                        add_candidate(
-                            &mut candidates,
-                            Candidate {
-                                memory,
-                                score: hit.score.max(0.0) * 1.2,
-                                reasons: vec![RecallReason::Vector],
-                            },
+                match provider.embed_text(&request.query) {
+                    Ok(query_vector) => {
+                        let vector_index = self.vector_index.lock().expect("vector mutex poisoned");
+                        for hit in vector_index.search(&query_vector, text_limit)? {
+                            if let Some(memory) =
+                                self.db.get_active_memory_by_kind(&hit.kind, &hit.id)?
+                            {
+                                add_candidate(
+                                    &mut candidates,
+                                    Candidate {
+                                        memory,
+                                        score: hit.score.max(0.0) * 1.2,
+                                        reasons: vec![RecallReason::Vector],
+                                    },
+                                );
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        warn!(
+                            error = %error,
+                            "query embedding failed during recall; falling back to non-vector paths"
                         );
                     }
                 }
@@ -199,7 +210,16 @@ impl MemoryEngine {
             .take(rerank_limit)
             .map(|candidate| candidate.memory.text_for_ranking())
             .collect::<Vec<_>>();
-        let reranked = provider.rerank(query, &documents)?;
+        let reranked = match provider.rerank(query, &documents) {
+            Ok(reranked) => reranked,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    "rerank provider failed during deep recall; keeping fused candidate order"
+                );
+                return Ok(());
+            }
+        };
 
         for item in reranked {
             if item.index >= rerank_limit {

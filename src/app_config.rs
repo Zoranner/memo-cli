@@ -3,6 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -12,6 +13,10 @@ use memo_engine::{EngineConfig, MemoryEngine};
 use crate::lmkit_adapter::LmkitEmbeddingAdapter;
 use crate::lmkit_extraction_adapter::{ExtractionCleanupOptions, LmkitExtractionAdapter};
 use crate::lmkit_rerank_adapter::LmkitRerankAdapter;
+use crate::provider_runtime::{
+    ProviderRetryPolicy, RetryingEmbeddingProvider, RetryingExtractionProvider,
+    RetryingRerankProvider,
+};
 
 const CONFIG_TEMPLATE: &str = include_str!("templates/config.toml");
 const PROVIDERS_TEMPLATE: &str = include_str!("templates/providers.toml");
@@ -20,6 +25,8 @@ const PROVIDERS_TEMPLATE: &str = include_str!("templates/providers.toml");
 struct EmbedConfig {
     embedding_provider: Option<String>,
     duplicate_threshold: Option<f32>,
+    max_retries: Option<usize>,
+    retry_backoff_ms: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -27,11 +34,15 @@ struct ExtractConfig {
     extraction_provider: Option<String>,
     min_confidence: Option<f32>,
     normalize_predicates: Option<bool>,
+    max_retries: Option<usize>,
+    retry_backoff_ms: Option<u64>,
 }
 
 #[derive(Debug, Default)]
 struct RerankConfig {
     rerank_provider: Option<String>,
+    max_retries: Option<usize>,
+    retry_backoff_ms: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -52,6 +63,8 @@ struct ProviderService {
     base_url: Option<String>,
     model: Option<String>,
     dimension: Option<usize>,
+    timeout_ms: Option<u64>,
+    max_concurrent: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,22 +91,43 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
 
     if let Some(provider_ref) = file_config.embed.embedding_provider.as_deref() {
         let provider_config = load_provider_config(&data_dir, provider_ref, "embedding")?;
-        let adapter = LmkitEmbeddingAdapter::new(provider_config)?;
+        let adapter = RetryingEmbeddingProvider::new(
+            LmkitEmbeddingAdapter::new(provider_config)?,
+            provider_ref,
+            ProviderRetryPolicy::new(
+                file_config.embed.max_retries,
+                file_config.embed.retry_backoff_ms,
+            ),
+        );
         engine_config = engine_config.with_embedding_provider(Arc::new(adapter));
     }
 
     if let Some(provider_ref) = file_config.extract.extraction_provider.as_deref() {
         let provider_config = load_provider_config(&data_dir, provider_ref, "extraction")?;
-        let adapter = LmkitExtractionAdapter::new_with_options(
-            provider_config,
-            extraction_cleanup_options(&file_config.extract),
-        )?;
+        let adapter = RetryingExtractionProvider::new(
+            LmkitExtractionAdapter::new_with_options(
+                provider_config,
+                extraction_cleanup_options(&file_config.extract),
+            )?,
+            provider_ref,
+            ProviderRetryPolicy::new(
+                file_config.extract.max_retries,
+                file_config.extract.retry_backoff_ms,
+            ),
+        );
         engine_config = engine_config.with_extraction_provider(Arc::new(adapter));
     }
 
     if let Some(provider_ref) = file_config.rerank.rerank_provider.as_deref() {
         let provider_config = load_provider_config(&data_dir, provider_ref, "rerank")?;
-        let adapter = LmkitRerankAdapter::new(provider_config)?;
+        let adapter = RetryingRerankProvider::new(
+            LmkitRerankAdapter::new(provider_config)?,
+            provider_ref,
+            ProviderRetryPolicy::new(
+                file_config.rerank.max_retries,
+                file_config.rerank.retry_backoff_ms,
+            ),
+        );
         engine_config = engine_config.with_rerank_provider(Arc::new(adapter));
     }
 
@@ -171,6 +205,8 @@ fn resolve_provider_config(providers_toml: &str, provider_ref: &str) -> Result<P
 
     let mut config = ProviderConfig::new(provider, &provider_entry.api_key, base_url, model);
     config.dimension = service_entry.dimension;
+    config.timeout = service_entry.timeout_ms.map(Duration::from_millis);
+    config.max_concurrent = service_entry.max_concurrent;
 
     Ok(config)
 }
@@ -211,6 +247,12 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
                 "duplicate_threshold" => {
                     config.embed.duplicate_threshold = Some(value.parse::<f32>()?);
                 }
+                "max_retries" => {
+                    config.embed.max_retries = Some(value.parse::<usize>()?);
+                }
+                "retry_backoff_ms" => {
+                    config.embed.retry_backoff_ms = Some(value.parse::<u64>()?);
+                }
                 _ => {}
             },
             Some("extract") => match key {
@@ -223,13 +265,26 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
                 "normalize_predicates" => {
                     config.extract.normalize_predicates = Some(parse_bool(value)?);
                 }
+                "max_retries" => {
+                    config.extract.max_retries = Some(value.parse::<usize>()?);
+                }
+                "retry_backoff_ms" => {
+                    config.extract.retry_backoff_ms = Some(value.parse::<u64>()?);
+                }
                 _ => {}
             },
-            Some("rerank") => {
-                if key == "rerank_provider" {
+            Some("rerank") => match key {
+                "rerank_provider" => {
                     config.rerank.rerank_provider = Some(parse_string(value)?.to_string());
                 }
-            }
+                "max_retries" => {
+                    config.rerank.max_retries = Some(value.parse::<usize>()?);
+                }
+                "retry_backoff_ms" => {
+                    config.rerank.retry_backoff_ms = Some(value.parse::<u64>()?);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -284,6 +339,10 @@ fn parse_providers_config(contents: &str) -> Result<HashMap<String, ProviderEntr
                     "base_url" => service_entry.base_url = Some(parse_string(value)?.to_string()),
                     "model" => service_entry.model = Some(parse_string(value)?.to_string()),
                     "dimension" => service_entry.dimension = Some(value.parse::<usize>()?),
+                    "timeout_ms" => service_entry.timeout_ms = Some(value.parse::<u64>()?),
+                    "max_concurrent" => {
+                        service_entry.max_concurrent = Some(value.parse::<usize>()?)
+                    }
                     _ => {}
                 }
             }
@@ -333,7 +392,9 @@ mod tests {
     use anyhow::Result;
     use tempfile::TempDir;
 
-    use super::{build_engine_config, initialize_data_dir};
+    use super::{
+        build_engine_config, initialize_data_dir, parse_app_config, parse_providers_config,
+    };
 
     #[test]
     fn init_writes_current_templates_into_data_dir() -> Result<()> {
@@ -423,6 +484,39 @@ mod tests {
         assert!(error.chain().any(|cause| cause
             .to_string()
             .contains("must look like `<provider>.<service>`")));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_app_config_reads_provider_retry_settings() -> Result<()> {
+        let config = parse_app_config(
+            "[embed]\nembedding_provider = \"openai.embed\"\nmax_retries = 2\nretry_backoff_ms = 150\n\
+             [extract]\nextraction_provider = \"openai.extract\"\nmax_retries = 3\nretry_backoff_ms = 250\n\
+             [rerank]\nrerank_provider = \"aliyun.rerank\"\nmax_retries = 1\nretry_backoff_ms = 50\n",
+        )?;
+
+        assert_eq!(config.embed.max_retries, Some(2));
+        assert_eq!(config.embed.retry_backoff_ms, Some(150));
+        assert_eq!(config.extract.max_retries, Some(3));
+        assert_eq!(config.extract.retry_backoff_ms, Some(250));
+        assert_eq!(config.rerank.max_retries, Some(1));
+        assert_eq!(config.rerank.retry_backoff_ms, Some(50));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_providers_config_reads_timeout_and_concurrency_hints() -> Result<()> {
+        let providers = parse_providers_config(
+            "[openai]\napi_key = \"sk-test\"\n\
+             [openai.embed]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"text-embedding-3-small\"\ndimension = 1536\ntimeout_ms = 1200\nmax_concurrent = 4\n",
+        )?;
+
+        let embed = providers
+            .get("openai")
+            .and_then(|provider| provider.services.get("embed"))
+            .expect("expected openai.embed service");
+        assert_eq!(embed.timeout_ms, Some(1200));
+        assert_eq!(embed.max_concurrent, Some(4));
         Ok(())
     }
 }

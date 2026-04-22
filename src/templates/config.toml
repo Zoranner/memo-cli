@@ -3,12 +3,18 @@
 [embed]
 # Reference format: <provider>.<service>
 embedding_provider = "openai.embed"
+# Retry retryable provider failures before giving up.
+# max_retries = 1
+# retry_backoff_ms = 200
 # Reserved for duplicate handling during remember.
 duplicate_threshold = 0.85
 
 [extract]
 # Reference format: <provider>.<service>
 extraction_provider = "openai.extract"
+# Retry retryable provider failures before falling back to rule-only dream maintenance.
+# max_retries = 1
+# retry_backoff_ms = 300
 # Drop noisy provider results below this threshold.
 min_confidence = 0.5
 # Convert extracted predicates like "Lives In" to snake_case.
@@ -18,5 +24,7 @@ normalize_predicates = true
 # Optional deep-search rerank provider. Only used when recall --deep is enabled.
 # Rerank is currently supported by providers like aliyun.rerank and zhipu.rerank.
 # rerank_provider = "aliyun.rerank"
+# max_retries = 1
+# retry_backoff_ms = 150
 
 

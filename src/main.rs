@@ -14,6 +14,7 @@ mod app_config;
 mod lmkit_adapter;
 mod lmkit_extraction_adapter;
 mod lmkit_rerank_adapter;
+mod provider_runtime;
 
 #[derive(Parser)]
 #[command(name = "memo")]

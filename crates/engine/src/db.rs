@@ -146,10 +146,19 @@ impl Database {
             conn.execute(
                 "UPDATE entities
                  SET confidence = MAX(confidence, ?2),
+                     entity_type = CASE
+                         WHEN entity_type = 'unknown' AND ?4 <> 'unknown' THEN ?4
+                         ELSE entity_type
+                     END,
                      updated_at = MAX(updated_at, ?3),
                      last_seen_at = MAX(last_seen_at, ?3)
                  WHERE id = ?1",
-                params![existing_id, input.confidence, observed_at_ts],
+                params![
+                    existing_id,
+                    input.confidence,
+                    observed_at_ts,
+                    input.entity_type
+                ],
             )?;
             existing_id
         } else {

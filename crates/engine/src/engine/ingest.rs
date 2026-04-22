@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
+use tracing::warn;
 
 use crate::{
     db::normalize_text,
@@ -233,7 +234,16 @@ impl MemoryEngine {
         let Some(provider) = &self.config.embedding_provider else {
             return Ok(None);
         };
-        Ok(Some(provider.embed_text(text)?))
+        match provider.embed_text(text) {
+            Ok(vector) => Ok(Some(vector)),
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    "embedding provider failed during ingest; continuing without vector"
+                );
+                Ok(None)
+            }
+        }
     }
 }
 
