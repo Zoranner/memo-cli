@@ -7,13 +7,25 @@ use tantivy::{
     doc,
     query::QueryParser,
     schema::{Field, Schema, SchemaBuilder, TantivyDocument, Value, STORED, STRING, TEXT},
-    Index, IndexReader, IndexSettings, IndexWriter, ReloadPolicy,
+    Index, IndexReader, IndexSettings, IndexWriter, ReloadPolicy, Term,
 };
 
 #[derive(Debug, Clone)]
 pub struct TextHit {
     pub id: String,
     pub score: f32,
+}
+
+pub enum TextUpdate {
+    Upsert {
+        id: String,
+        kind: String,
+        layer: String,
+        body: String,
+    },
+    Delete {
+        id: String,
+    },
 }
 
 pub struct TextIndex {
@@ -68,6 +80,39 @@ impl TextIndex {
         self.writer.commit()?;
         self.reader.reload()?;
         Ok(documents.len())
+    }
+
+    pub fn apply_updates(&mut self, updates: &[TextUpdate]) -> Result<usize> {
+        for update in updates {
+            match update {
+                TextUpdate::Upsert {
+                    id,
+                    kind,
+                    layer,
+                    body,
+                } => {
+                    self.writer
+                        .delete_term(Term::from_field_text(self.id_field, id));
+                    self.writer.add_document(doc!(
+                        self.id_field => id.clone(),
+                        self.kind_field => kind.clone(),
+                        self.layer_field => layer.clone(),
+                        self.body_field => body.clone(),
+                    ))?;
+                }
+                TextUpdate::Delete { id } => {
+                    self.writer
+                        .delete_term(Term::from_field_text(self.id_field, id));
+                }
+            }
+        }
+        self.writer.commit()?;
+        self.reader.reload()?;
+        Ok(self.document_count())
+    }
+
+    pub fn document_count(&self) -> usize {
+        self.reader.searcher().num_docs() as usize
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<TextHit>> {

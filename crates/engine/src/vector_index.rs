@@ -13,6 +13,18 @@ pub struct VectorHit {
     pub score: f32,
 }
 
+pub enum VectorUpdate {
+    Upsert {
+        kind: String,
+        id: String,
+        vector: Vec<f32>,
+    },
+    Delete {
+        kind: String,
+        id: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredVector {
     ann_id: usize,
@@ -86,6 +98,21 @@ impl VectorIndex {
         Ok(self.records.len())
     }
 
+    pub fn apply_updates(&mut self, updates: &[VectorUpdate]) -> Result<usize> {
+        self.with_deferred_commit(|index| {
+            for update in updates {
+                match update {
+                    VectorUpdate::Upsert { kind, id, vector } => index.upsert(kind, id, vector)?,
+                    VectorUpdate::Delete { kind, id } => index.delete(kind, id)?,
+                }
+            }
+            Ok(())
+        })?;
+        self.reindex()?;
+        self.persist()?;
+        Ok(self.document_count())
+    }
+
     fn with_deferred_commit<T>(
         &mut self,
         action: impl FnOnce(&mut Self) -> Result<T>,
@@ -113,6 +140,15 @@ impl VectorIndex {
                 vector: vector.to_vec(),
             },
         );
+    }
+
+    pub fn delete(&mut self, kind: &str, id: &str) -> Result<()> {
+        let removed = self.records.remove(&storage_key(kind, id));
+        if removed.is_none() || self.defer_commit {
+            return Ok(());
+        }
+        self.reindex()?;
+        self.persist()
     }
 
     pub fn search(&self, query: &[f32], limit: usize) -> Result<Vec<VectorHit>> {
@@ -183,6 +219,10 @@ impl VectorIndex {
         let ann_id = self.next_ann_id;
         self.next_ann_id = self.next_ann_id.saturating_add(1);
         ann_id
+    }
+
+    pub fn document_count(&self) -> usize {
+        self.records.len()
     }
 }
 

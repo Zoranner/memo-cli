@@ -205,6 +205,7 @@ fn bm25_query_hits_episode() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.restore(RestoreScope::Text)?;
 
     let result = engine.recall(RecallRequest {
         query: "warehouse drones".to_string(),
@@ -238,6 +239,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.restore(RestoreScope::Vector)?;
 
     let result = engine.recall(RecallRequest {
         query: "开心".to_string(),
@@ -2314,9 +2316,11 @@ fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
 
     let pending_stats = engine.state()?;
     assert_eq!(pending_stats.text_index.status, "pending");
+    assert_eq!(pending_stats.text_index.pending_updates, 1);
+    assert_eq!(pending_stats.text_index.failed_updates, 0);
     assert_eq!(
         pending_stats.text_index.detail.as_deref(),
-        Some("pending restore after remember")
+        Some("pending restore after queued updates")
     );
 
     let before_refresh = engine.recall(RecallRequest {
@@ -2337,6 +2341,8 @@ fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
 
     let ready_stats = engine.state()?;
     assert_eq!(ready_stats.text_index.status, "ready");
+    assert_eq!(ready_stats.text_index.pending_updates, 0);
+    assert_eq!(ready_stats.text_index.failed_updates, 0);
 
     let after_refresh = engine.recall(RecallRequest {
         query: "warehouse drones".to_string(),
@@ -2370,9 +2376,11 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
 
     let pending_stats = engine.state()?;
     assert_eq!(pending_stats.vector_index.status, "pending");
+    assert_eq!(pending_stats.vector_index.pending_updates, 1);
+    assert_eq!(pending_stats.vector_index.failed_updates, 0);
     assert_eq!(
         pending_stats.vector_index.detail.as_deref(),
-        Some("pending restore after remember")
+        Some("pending restore after queued updates")
     );
 
     let before_refresh = engine.recall(RecallRequest {
@@ -2393,6 +2401,8 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
 
     let ready_stats = engine.state()?;
     assert_eq!(ready_stats.vector_index.status, "ready");
+    assert_eq!(ready_stats.vector_index.pending_updates, 0);
+    assert_eq!(ready_stats.vector_index.failed_updates, 0);
 
     let after_refresh = engine.recall(RecallRequest {
         query: "开心".to_string(),
@@ -2406,5 +2416,139 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
                 .iter()
                 .any(|reason| matches!(reason, RecallReason::Vector))
     ));
+    Ok(())
+}
+
+#[test]
+fn remember_accumulates_pending_text_updates_until_restore_runs() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.remember(EpisodeInput {
+        content: "Episode one".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Episode two".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let pending = engine.state()?;
+    assert_eq!(pending.text_index.status, "pending");
+    assert_eq!(pending.text_index.pending_updates, 2);
+    assert_eq!(pending.text_index.failed_updates, 0);
+
+    let report = engine.restore(RestoreScope::Text)?;
+    assert_eq!(report.text_documents, 2);
+
+    let ready = engine.state()?;
+    assert_eq!(ready.text_index.status, "ready");
+    assert_eq!(ready.text_index.pending_updates, 0);
+    assert_eq!(ready.text_index.failed_updates, 0);
+
+    Ok(())
+}
+
+#[test]
+fn reopening_engine_preserves_pending_text_updates_until_restore_runs() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Reopen should not rebuild indexes automatically.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    drop(engine);
+
+    let reopened = open_engine(temp.path())?;
+    let pending = reopened.state()?;
+    assert_eq!(pending.text_index.status, "pending");
+    assert_eq!(pending.text_index.pending_updates, 1);
+
+    let before_restore = reopened.recall(RecallRequest {
+        query: "rebuild indexes automatically".to_string(),
+        limit: 3,
+        deep: false,
+    })?;
+    assert!(!before_restore.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
+            && item
+                .reasons
+                .iter()
+                .any(|reason| matches!(reason, RecallReason::Bm25))
+    ));
+
+    reopened.restore(RestoreScope::Text)?;
+    let after_restore = reopened.recall(RecallRequest {
+        query: "rebuild indexes automatically".to_string(),
+        limit: 3,
+        deep: false,
+    })?;
+    assert!(after_restore.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
+            && item
+                .reasons
+                .iter()
+                .any(|reason| matches!(reason, RecallReason::Bm25))
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn dream_marks_text_index_pending_after_memory_lifecycle_changes() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.restore(RestoreScope::Text)?;
+
+    let ready = engine.state()?;
+    assert_eq!(ready.text_index.status, "ready");
+    assert_eq!(ready.text_index.pending_updates, 0);
+
+    let report = engine.dream_full(DreamTrigger::Manual)?;
+    assert_eq!(report.passes_run, 2);
+
+    let pending = engine.state()?;
+    assert_eq!(pending.text_index.status, "pending");
+    assert!(pending.text_index.pending_updates >= 1);
+
     Ok(())
 }

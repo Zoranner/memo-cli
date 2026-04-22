@@ -445,6 +445,8 @@ pub struct IndexStatus {
     pub doc_count: usize,
     pub status: String,
     pub detail: Option<String>,
+    pub pending_updates: usize,
+    pub failed_updates: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

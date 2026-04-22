@@ -394,16 +394,17 @@ fn recall_reason_label(reason: &RecallReason) -> String {
 }
 
 fn index_summary(index: &IndexStatus) -> String {
-    format!(
-        "{} docs={}{}",
-        index.status,
-        index.doc_count,
-        index
-            .detail
-            .as_deref()
-            .map(|detail| format!(" ({detail})"))
-            .unwrap_or_default()
-    )
+    let mut segments = vec![format!("{} docs={}", index.status, index.doc_count)];
+    if index.pending_updates > 0 {
+        segments.push(format!("pending_updates={}", index.pending_updates));
+    }
+    if index.failed_updates > 0 {
+        segments.push(format!("failed_updates={}", index.failed_updates));
+    }
+    if let Some(detail) = index.detail.as_deref() {
+        segments.push(format!("detail={detail}"));
+    }
+    segments.join(" ")
 }
 
 fn parse_entities(raw: &[String]) -> Result<Vec<EntityInput>> {
@@ -570,12 +571,16 @@ mod tests {
                     doc_count: 8,
                     status: "ready".to_string(),
                     detail: None,
+                    pending_updates: 0,
+                    failed_updates: 0,
                 },
                 vector_index: IndexStatus {
                     name: "vector".to_string(),
                     doc_count: 5,
                     status: "pending".to_string(),
-                    detail: Some("pending restore after remember".to_string()),
+                    detail: Some("pending restore after queued updates".to_string()),
+                    pending_updates: 2,
+                    failed_updates: 0,
                 },
             },
             false,
@@ -585,6 +590,7 @@ mod tests {
         assert!(output.contains("State"));
         assert!(output.contains("layers: l1=2 l2=1 l3=0 archived=3 invalidated=1"));
         assert!(output.contains("vector_index: pending docs=5"));
+        assert!(output.contains("pending_updates=2"));
         assert!(!output.contains("dream_jobs"));
     }
 

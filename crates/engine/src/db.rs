@@ -23,6 +23,56 @@ pub struct ObservationContext<'a> {
     pub observed_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexJobOperation {
+    Upsert,
+    Delete,
+}
+
+impl IndexJobOperation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Upsert => "upsert",
+            Self::Delete => "delete",
+        }
+    }
+}
+
+impl std::str::FromStr for IndexJobOperation {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "upsert" => Ok(Self::Upsert),
+            "delete" => Ok(Self::Delete),
+            _ => anyhow::bail!("invalid index job operation: {}", s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IndexJobStatus {
+    Pending,
+    Failed,
+}
+
+impl IndexJobStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexJobRecord {
+    pub id: String,
+    pub memory_kind: String,
+    pub memory_id: String,
+    pub operation: IndexJobOperation,
+}
+
 impl Database {
     pub fn open(path: &std::path::Path) -> Result<Self> {
         let conn = Connection::open(path)?;
@@ -68,6 +118,10 @@ impl Database {
              VALUES (?1, 'episode', ?2, 'active', ?3, ?3)",
             params![id, input.layer.as_str(), now],
         )?;
+        queue_text_index_job(&conn, "episode", &id, IndexJobOperation::Upsert)?;
+        if vector_json.is_some() {
+            queue_vector_index_job(&conn, "episode", &id, IndexJobOperation::Upsert)?;
+        }
 
         drop(conn);
         self.get_episode(&id)?
@@ -84,6 +138,7 @@ impl Database {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let observed_at_ts = observation.observed_at.timestamp_millis();
         let normalized_name = normalize_text(&input.name);
+        let has_vector = vector.is_some();
         let existing_id: Option<String> = conn
             .query_row(
                 "SELECT id FROM entities WHERE normalized_name = ?1 AND archived_at IS NULL LIMIT 1",
@@ -92,7 +147,7 @@ impl Database {
             )
             .optional()?;
 
-        let entity_id = if let Some(existing_id) = existing_id {
+        let entity_id = if let Some(existing_id) = existing_id.clone() {
             conn.execute(
                 "UPDATE entities
                  SET confidence = MAX(confidence, ?2),
@@ -141,6 +196,11 @@ impl Database {
                     observed_at_ts
                 ],
             )?;
+        }
+
+        queue_text_index_job(&conn, "entity", &entity_id, IndexJobOperation::Upsert)?;
+        if existing_id.is_none() && has_vector {
+            queue_vector_index_job(&conn, "entity", &entity_id, IndexJobOperation::Upsert)?;
         }
 
         drop(conn);
@@ -208,6 +268,10 @@ impl Database {
              VALUES (?1, 'fact', ?2, 'active', ?3, ?3)",
             params![id, layer.as_str(), observed_at_ts],
         )?;
+        queue_text_index_job(&conn, "fact", &id, IndexJobOperation::Upsert)?;
+        if vector_json.is_some() {
+            queue_vector_index_job(&conn, "fact", &id, IndexJobOperation::Upsert)?;
+        }
         drop(conn);
         self.get_fact(&id)?.context("failed to load inserted fact")
     }
@@ -587,6 +651,76 @@ impl Database {
         Ok(docs)
     }
 
+    pub fn load_search_document(
+        &self,
+        kind: &str,
+        id: &str,
+    ) -> Result<Option<(String, String, String, String)>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        load_search_document_record(&conn, kind, id)
+    }
+
+    pub fn load_vector_document(
+        &self,
+        kind: &str,
+        id: &str,
+    ) -> Result<Option<(String, String, Vec<f32>)>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        load_vector_document_record(&conn, kind, id)
+    }
+
+    pub fn load_outstanding_index_jobs(&self, index_name: &str) -> Result<Vec<IndexJobRecord>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, memory_kind, memory_id, operation
+             FROM index_jobs
+             WHERE index_name = ?1
+               AND status IN ('pending', 'failed')
+             ORDER BY updated_at ASC, created_at ASC",
+        )?;
+        let rows = stmt.query_map(params![index_name], |row| {
+            Ok(IndexJobRecord {
+                id: row.get(0)?,
+                memory_kind: row.get(1)?,
+                memory_id: row.get(2)?,
+                operation: row.get::<_, String>(3)?.parse().map_err(to_sql_error)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn clear_index_jobs(&self, index_name: &str, job_ids: &[String]) -> Result<()> {
+        if job_ids.is_empty() {
+            return Ok(());
+        }
+
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        clear_index_jobs_by_ids(&conn, index_name, job_ids)
+    }
+
+    pub fn clear_all_index_jobs(&self, index_name: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        conn.execute(
+            "DELETE FROM index_jobs WHERE index_name = ?1",
+            params![index_name],
+        )?;
+        Ok(())
+    }
+
+    pub fn fail_index_jobs(
+        &self,
+        index_name: &str,
+        job_ids: &[String],
+        detail: &str,
+    ) -> Result<()> {
+        if job_ids.is_empty() {
+            return Ok(());
+        }
+
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        fail_index_jobs_by_ids(&conn, index_name, job_ids, detail)
+    }
+
     pub fn load_l3_records(&self, limit: usize) -> Result<Vec<MemoryRecord>> {
         let rows = {
             let conn = self.conn.lock().expect("sqlite mutex poisoned");
@@ -682,6 +816,9 @@ impl Database {
              WHERE memory_id = ?1 AND memory_kind = ?4",
             params![id, layer.as_str(), now, kind],
         )?;
+        if matches!(kind, "episode" | "entity" | "fact") {
+            queue_text_index_job(&conn, kind, id, IndexJobOperation::Upsert)?;
+        }
         Ok(())
     }
 
@@ -705,6 +842,7 @@ impl Database {
              WHERE memory_id = ?1 AND memory_kind = ?3",
             params![id, now, kind],
         )?;
+        queue_index_delete_jobs(&conn, kind, id)?;
         Ok(())
     }
 
@@ -728,33 +866,24 @@ impl Database {
              WHERE memory_id = ?1 AND memory_kind = ?3",
             params![id, now, kind],
         )?;
+        queue_index_delete_jobs(&conn, kind, id)?;
         Ok(())
     }
 
-    pub fn record_index_state(
+    pub fn record_index_ready(
         &self,
         name: &str,
         doc_count: usize,
-        status: &str,
         detail: Option<&str>,
     ) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        conn.execute(
-            "INSERT INTO index_state (index_name, doc_count, status, detail, last_rebuilt_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(index_name) DO UPDATE SET
-                 doc_count = excluded.doc_count,
-                 status = excluded.status,
-                 detail = excluded.detail,
-                 last_rebuilt_at = excluded.last_rebuilt_at",
-            params![name, doc_count as i64, status, detail, now_ts()],
-        )?;
+        record_index_ready(&conn, name, doc_count, detail)?;
         Ok(())
     }
 
     pub fn index_status(&self, name: &str) -> Result<IndexStatus> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
-        let status = conn
+        let mut status = conn
             .query_row(
                 "SELECT index_name, doc_count, status, detail
                  FROM index_state WHERE index_name = ?1 LIMIT 1",
@@ -765,16 +894,37 @@ impl Database {
                         doc_count: row.get::<_, i64>(1)?.max(0) as usize,
                         status: row.get(2)?,
                         detail: row.get(3)?,
+                        pending_updates: 0,
+                        failed_updates: 0,
                     })
                 },
             )
-            .optional()?;
-        Ok(status.unwrap_or(IndexStatus {
-            name: name.to_string(),
-            doc_count: 0,
-            status: "unknown".to_string(),
-            detail: None,
-        }))
+            .optional()?
+            .unwrap_or(IndexStatus {
+                name: name.to_string(),
+                doc_count: 0,
+                status: "unknown".to_string(),
+                detail: None,
+                pending_updates: 0,
+                failed_updates: 0,
+            });
+
+        let (pending_updates, failed_updates) = index_job_counts(&conn, name)?;
+        status.pending_updates = pending_updates;
+        status.failed_updates = failed_updates;
+        if failed_updates > 0 {
+            status.status = "failed".to_string();
+            if status.detail.is_none() {
+                status.detail = Some("restore failed for queued updates".to_string());
+            }
+        } else if pending_updates > 0 {
+            status.status = "pending".to_string();
+            if status.detail.is_none() {
+                status.detail = Some("pending restore after queued updates".to_string());
+            }
+        }
+
+        Ok(status)
     }
 
     pub fn duplicate_l1_episode_groups(&self) -> Result<Vec<Vec<String>>> {
@@ -1139,6 +1289,338 @@ impl Database {
     }
 }
 
+fn load_search_document_record(
+    conn: &Connection,
+    kind: &str,
+    id: &str,
+) -> Result<Option<(String, String, String, String)>> {
+    match kind {
+        "episode" => conn
+            .query_row(
+                "SELECT id, layer, content
+                 FROM episodes
+                 WHERE id = ?1 AND archived_at IS NULL AND invalidated_at IS NULL
+                 LIMIT 1",
+                params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        "episode".to_string(),
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(Into::into),
+        "entity" => {
+            let row = conn
+                .query_row(
+                    "SELECT id, layer, canonical_name
+                     FROM entities
+                     WHERE id = ?1 AND archived_at IS NULL AND invalidated_at IS NULL
+                     LIMIT 1",
+                    params![id],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .optional()?;
+            let Some((id, layer, mut body)) = row else {
+                return Ok(None);
+            };
+            let aliases = load_aliases(conn, &id)?;
+            if !aliases.is_empty() {
+                body.push(' ');
+                body.push_str(&aliases.join(" "));
+            }
+            Ok(Some((id, "entity".to_string(), layer, body)))
+        }
+        "fact" => conn
+            .query_row(
+                "SELECT id, layer, subject_text, predicate, object_text
+                 FROM facts
+                 WHERE id = ?1 AND archived_at IS NULL AND invalidated_at IS NULL
+                 LIMIT 1",
+                params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        "fact".to_string(),
+                        row.get::<_, String>(1)?,
+                        format!(
+                            "{} {} {}",
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?
+                        ),
+                    ))
+                },
+            )
+            .optional()
+            .map_err(Into::into),
+        other => anyhow::bail!("unsupported search document kind: {}", other),
+    }
+}
+
+fn load_vector_document_record(
+    conn: &Connection,
+    kind: &str,
+    id: &str,
+) -> Result<Option<(String, String, Vec<f32>)>> {
+    let raw = match kind {
+        "episode" => conn
+            .query_row(
+                "SELECT vector_json
+                 FROM episodes
+                 WHERE id = ?1 AND archived_at IS NULL AND invalidated_at IS NULL
+                   AND vector_json IS NOT NULL
+                 LIMIT 1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?,
+        "entity" => conn
+            .query_row(
+                "SELECT vector_json
+                 FROM entities
+                 WHERE id = ?1 AND archived_at IS NULL AND invalidated_at IS NULL
+                   AND vector_json IS NOT NULL
+                 LIMIT 1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?,
+        "fact" => conn
+            .query_row(
+                "SELECT vector_json
+                 FROM facts
+                 WHERE id = ?1 AND archived_at IS NULL AND invalidated_at IS NULL
+                   AND vector_json IS NOT NULL
+                 LIMIT 1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?,
+        other => anyhow::bail!("unsupported vector document kind: {}", other),
+    };
+
+    raw.map(|payload| Ok((id.to_string(), kind.to_string(), json_to_vec(&payload)?)))
+        .transpose()
+}
+
+fn queue_text_index_job(
+    conn: &Connection,
+    memory_kind: &str,
+    memory_id: &str,
+    operation: IndexJobOperation,
+) -> Result<()> {
+    queue_index_job(conn, "text", memory_kind, memory_id, operation)
+}
+
+fn queue_vector_index_job(
+    conn: &Connection,
+    memory_kind: &str,
+    memory_id: &str,
+    operation: IndexJobOperation,
+) -> Result<()> {
+    queue_index_job(conn, "vector", memory_kind, memory_id, operation)
+}
+
+fn queue_index_job(
+    conn: &Connection,
+    index_name: &str,
+    memory_kind: &str,
+    memory_id: &str,
+    operation: IndexJobOperation,
+) -> Result<()> {
+    let now = now_ts();
+    conn.execute(
+        "INSERT INTO index_jobs
+         (id, index_name, memory_kind, memory_id, operation, status, attempts, last_error, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, NULL, ?7, ?7)
+         ON CONFLICT(index_name, memory_kind, memory_id) DO UPDATE SET
+             operation = excluded.operation,
+             status = excluded.status,
+             attempts = 0,
+             last_error = NULL,
+             updated_at = excluded.updated_at",
+        params![
+            Uuid::new_v4().to_string(),
+            index_name,
+            memory_kind,
+            memory_id,
+            operation.as_str(),
+            IndexJobStatus::Pending.as_str(),
+            now,
+        ],
+    )?;
+    mark_index_pending(
+        conn,
+        index_name,
+        Some("pending restore after queued updates"),
+    )?;
+    Ok(())
+}
+
+fn queue_index_delete_jobs(conn: &Connection, kind: &str, id: &str) -> Result<()> {
+    match kind {
+        "episode" | "entity" | "fact" => {
+            queue_text_index_job(conn, kind, id, IndexJobOperation::Delete)?;
+            queue_vector_index_job(conn, kind, id, IndexJobOperation::Delete)?;
+        }
+        "edge" => {}
+        other => anyhow::bail!("unsupported memory kind: {}", other),
+    }
+    Ok(())
+}
+
+fn clear_index_jobs_by_ids(conn: &Connection, index_name: &str, job_ids: &[String]) -> Result<()> {
+    let placeholders = (1..=job_ids.len())
+        .map(|index| format!("?{}", index))
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "DELETE FROM index_jobs WHERE index_name = ?{} AND id IN ({})",
+        job_ids.len() + 1,
+        placeholders
+    );
+    let mut args = job_ids.to_vec();
+    args.push(index_name.to_string());
+    conn.execute(&sql, rusqlite::params_from_iter(args.iter()))?;
+    Ok(())
+}
+
+fn fail_index_jobs_by_ids(
+    conn: &Connection,
+    index_name: &str,
+    job_ids: &[String],
+    detail: &str,
+) -> Result<()> {
+    let placeholders = (1..=job_ids.len())
+        .map(|index| format!("?{}", index))
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "UPDATE index_jobs
+         SET status = ?{}, attempts = attempts + 1, last_error = ?{}, updated_at = ?{}
+         WHERE index_name = ?{} AND id IN ({})",
+        job_ids.len() + 1,
+        job_ids.len() + 2,
+        job_ids.len() + 3,
+        job_ids.len() + 4,
+        placeholders
+    );
+    let mut args = job_ids.to_vec();
+    args.push(IndexJobStatus::Failed.as_str().to_string());
+    args.push(detail.to_string());
+    args.push(now_ts().to_string());
+    args.push(index_name.to_string());
+    conn.execute(&sql, rusqlite::params_from_iter(args.iter()))?;
+    mark_index_failed(conn, index_name, Some(detail))?;
+    Ok(())
+}
+
+fn index_job_counts(conn: &Connection, index_name: &str) -> Result<(usize, usize)> {
+    let mut stmt = conn.prepare(
+        "SELECT status, COUNT(*)
+         FROM index_jobs
+         WHERE index_name = ?1
+         GROUP BY status",
+    )?;
+    let rows = stmt.query_map(params![index_name], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?.max(0) as usize,
+        ))
+    })?;
+    let mut pending = 0;
+    let mut failed = 0;
+    for row in rows {
+        let (status, count) = row?;
+        match status.as_str() {
+            "pending" => pending = count,
+            "failed" => failed = count,
+            _ => {}
+        }
+    }
+    Ok((pending, failed))
+}
+
+fn record_index_ready(
+    conn: &Connection,
+    name: &str,
+    doc_count: usize,
+    detail: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO index_state (index_name, doc_count, status, detail, last_rebuilt_at)
+         VALUES (?1, ?2, 'ready', ?3, ?4)
+         ON CONFLICT(index_name) DO UPDATE SET
+             doc_count = excluded.doc_count,
+             status = excluded.status,
+             detail = excluded.detail,
+             last_rebuilt_at = excluded.last_rebuilt_at",
+        params![name, doc_count as i64, detail, now_ts()],
+    )?;
+    Ok(())
+}
+
+fn mark_index_pending(conn: &Connection, name: &str, detail: Option<&str>) -> Result<()> {
+    let doc_count = current_index_doc_count(conn, name)?;
+    conn.execute(
+        "INSERT INTO index_state (index_name, doc_count, status, detail, last_rebuilt_at)
+         VALUES (?1, ?2, 'pending', ?3, NULL)
+         ON CONFLICT(index_name) DO UPDATE SET
+             doc_count = excluded.doc_count,
+             status = excluded.status,
+             detail = excluded.detail",
+        params![name, doc_count as i64, detail],
+    )?;
+    Ok(())
+}
+
+fn mark_index_failed(conn: &Connection, name: &str, detail: Option<&str>) -> Result<()> {
+    let doc_count = current_index_doc_count(conn, name)?;
+    conn.execute(
+        "INSERT INTO index_state (index_name, doc_count, status, detail, last_rebuilt_at)
+         VALUES (?1, ?2, 'failed', ?3, NULL)
+         ON CONFLICT(index_name) DO UPDATE SET
+             doc_count = excluded.doc_count,
+             status = excluded.status,
+             detail = excluded.detail",
+        params![name, doc_count as i64, detail],
+    )?;
+    Ok(())
+}
+
+fn current_index_doc_count(conn: &Connection, name: &str) -> Result<usize> {
+    let value = conn
+        .query_row(
+            "SELECT doc_count FROM index_state WHERE index_name = ?1 LIMIT 1",
+            params![name],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .unwrap_or(0);
+    Ok(value.max(0) as usize)
+}
+
+fn to_sql_error(error: anyhow::Error) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        0,
+        rusqlite::types::Type::Text,
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            error.to_string(),
+        )),
+    )
+}
+
 fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -1255,6 +1737,20 @@ fn init_schema(conn: &Connection) -> Result<()> {
             status TEXT NOT NULL,
             detail TEXT NULL,
             last_rebuilt_at INTEGER NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS index_jobs (
+            id TEXT PRIMARY KEY,
+            index_name TEXT NOT NULL,
+            memory_kind TEXT NOT NULL,
+            memory_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(index_name, memory_kind, memory_id)
         );
 
         DROP TABLE IF EXISTS dream_jobs;
