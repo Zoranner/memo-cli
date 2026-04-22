@@ -74,7 +74,7 @@ impl MemoryEngine {
     }
 
     fn restore_text_index(&self) -> Result<usize> {
-        let jobs = self.db.load_outstanding_index_jobs("text")?;
+        let jobs = prioritized_restore_jobs(self.db.load_outstanding_index_jobs("text")?);
         if jobs.is_empty() {
             return match self.db.index_status("text")?.status.as_str() {
                 "unknown" => Ok(self.restore_full(RestoreScope::Text)?.text_documents),
@@ -130,7 +130,7 @@ impl MemoryEngine {
     }
 
     fn restore_vector_index(&self) -> Result<usize> {
-        let jobs = self.db.load_outstanding_index_jobs("vector")?;
+        let jobs = prioritized_restore_jobs(self.db.load_outstanding_index_jobs("vector")?);
         if jobs.is_empty() {
             return match self.db.index_status("vector")?.status.as_str() {
                 "unknown" => Ok(self.restore_full(RestoreScope::Vector)?.vector_documents),
@@ -180,5 +180,15 @@ impl MemoryEngine {
                 Err(error)
             }
         }
+    }
+}
+
+fn prioritized_restore_jobs(
+    jobs: Vec<crate::db::IndexJobRecord>,
+) -> Vec<crate::db::IndexJobRecord> {
+    if jobs.iter().any(|job| !job.failed) {
+        jobs.into_iter().filter(|job| !job.failed).collect()
+    } else {
+        jobs
     }
 }

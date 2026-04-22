@@ -2705,3 +2705,66 @@ fn dream_marks_text_index_pending_after_memory_lifecycle_changes() -> Result<()>
 
     Ok(())
 }
+
+#[test]
+fn failed_vector_jobs_do_not_block_new_pending_restore_work() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine_with_vectors(temp.path())?;
+
+    engine.remember(EpisodeInput {
+        content: "stale broken vector".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    conn.execute(
+        "UPDATE episodes SET vector_json = ?2 WHERE content = ?1",
+        rusqlite::params!["stale broken vector", "[1.0, 2.0]"],
+    )?;
+    conn.execute(
+        "UPDATE index_jobs
+         SET status = 'failed', attempts = 2, last_error = 'vector dimension mismatch'
+         WHERE index_name = 'vector'",
+        [],
+    )?;
+
+    let episode_id = engine.remember(EpisodeInput {
+        content: "我今天很高兴".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.restore(RestoreScope::Vector)?;
+    assert_eq!(report.vector_documents, 1);
+
+    let state = engine.state()?;
+    assert_eq!(state.vector_index.status, "failed");
+    assert_eq!(state.vector_index.failed_updates, 1);
+    assert_eq!(state.vector_index.pending_updates, 0);
+    assert_eq!(state.vector_index.failed_attempts_max, 2);
+
+    let result = engine.recall(RecallRequest {
+        query: "开心".to_string(),
+        limit: 3,
+        deep: false,
+    })?;
+    assert!(result.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
+            && item
+                .reasons
+                .iter()
+                .any(|reason| matches!(reason, RecallReason::Vector))
+    ));
+
+    Ok(())
+}

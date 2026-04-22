@@ -71,6 +71,7 @@ pub struct IndexJobRecord {
     pub memory_kind: String,
     pub memory_id: String,
     pub operation: IndexJobOperation,
+    pub failed: bool,
 }
 
 impl Database {
@@ -697,11 +698,11 @@ impl Database {
     pub fn load_outstanding_index_jobs(&self, index_name: &str) -> Result<Vec<IndexJobRecord>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let mut stmt = conn.prepare(
-            "SELECT id, memory_kind, memory_id, operation
+            "SELECT id, memory_kind, memory_id, operation, status
              FROM index_jobs
              WHERE index_name = ?1
                AND status IN ('pending', 'failed')
-             ORDER BY updated_at ASC, created_at ASC",
+             ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, updated_at ASC, created_at ASC",
         )?;
         let rows = stmt.query_map(params![index_name], |row| {
             Ok(IndexJobRecord {
@@ -709,6 +710,7 @@ impl Database {
                 memory_kind: row.get(1)?,
                 memory_id: row.get(2)?,
                 operation: row.get::<_, String>(3)?.parse().map_err(to_sql_error)?,
+                failed: row.get::<_, String>(4)? == IndexJobStatus::Failed.as_str(),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
