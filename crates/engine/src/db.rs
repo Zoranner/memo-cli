@@ -480,6 +480,34 @@ impl Database {
         Ok(result)
     }
 
+    pub fn resolve_active_entity_reference(
+        &self,
+        name_or_alias: &str,
+    ) -> Result<Option<EntityRecord>> {
+        let normalized = normalize_text(name_or_alias);
+        let entity_id = {
+            let conn = self.conn.lock().expect("sqlite mutex poisoned");
+            conn.query_row(
+                "SELECT e.id
+                 FROM entities e
+                 LEFT JOIN entity_aliases a ON a.entity_id = e.id
+                 WHERE e.archived_at IS NULL
+                   AND e.invalidated_at IS NULL
+                   AND (e.normalized_name = ?1 OR a.normalized_alias = ?1)
+                 ORDER BY CASE WHEN e.normalized_name = ?1 THEN 0 ELSE 1 END, e.created_at ASC
+                 LIMIT 1",
+                params![normalized],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+        };
+
+        match entity_id {
+            Some(id) => self.get_entity(&id),
+            None => Ok(None),
+        }
+    }
+
     pub fn related_graph_records(
         &self,
         entity_ids: &[String],

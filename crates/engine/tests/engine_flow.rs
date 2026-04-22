@@ -350,6 +350,68 @@ fn remember_fact_only_creates_mentions_for_fallback_entities() -> Result<()> {
 }
 
 #[test]
+fn remember_fact_alias_reuses_existing_entity_record() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "Alice is also called Ally.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Ally lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: vec![FactInput {
+            subject: "Ally".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let alice_id: String = conn.query_row(
+        "SELECT id FROM entities WHERE canonical_name = 'Alice' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    let subject_entity_id: String = conn.query_row(
+        "SELECT subject_entity_id FROM facts WHERE source_episode_id = ?1 LIMIT 1",
+        rusqlite::params![episode_id],
+        |row| row.get(0),
+    )?;
+    let ally_unknown_count: i64 = conn.query_row(
+        "SELECT COUNT(*)
+         FROM entities
+         WHERE canonical_name = 'Ally' AND entity_type = 'unknown'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    assert_eq!(subject_entity_id, alice_id);
+    assert_eq!(ally_unknown_count, 0);
+    Ok(())
+}
+
+#[test]
 fn graph_expansion_returns_related_fact() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

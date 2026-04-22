@@ -34,35 +34,21 @@ impl MemoryEngine {
                 self.db
                     .add_mention(&episode.id, &record.id, "mentioned", entity.confidence)?;
             }
-            entity_records.insert(normalize_text(&record.canonical_name), record);
+            cache_entity_record(&mut entity_records, record);
         }
 
         for fact in preview.facts {
-            let subject_key = normalize_text(&fact.subject);
-            let object_key = normalize_text(&fact.object);
-            let subject_record = if let Some(record) = entity_records.get(&subject_key) {
-                record.clone()
-            } else {
-                let fallback = EntityInput {
+            let subject_record = self.resolve_fact_entity(
+                &mut entity_records,
+                &episode,
+                EntityInput {
                     entity_type: "unknown".to_string(),
                     name: fact.subject.clone(),
                     aliases: Vec::new(),
                     confidence: fact.confidence,
                     source: fact.source.clone(),
-                };
-                let vector = self.embed_if_available(&fallback.name)?;
-                let record = self.db.upsert_entity(
-                    &fallback,
-                    input.layer,
-                    crate::db::ObservationContext {
-                        source_episode_id: Some(&episode.id),
-                        observed_at: episode.created_at,
-                    },
-                    vector.as_deref(),
-                )?;
-                entity_records.insert(subject_key.clone(), record.clone());
-                record
-            };
+                },
+            )?;
             if mentioned_entity_ids.insert(subject_record.id.clone()) {
                 self.db.add_mention(
                     &episode.id,
@@ -71,29 +57,17 @@ impl MemoryEngine {
                     fact.confidence,
                 )?;
             }
-            let object_record = if let Some(record) = entity_records.get(&object_key) {
-                record.clone()
-            } else {
-                let fallback = EntityInput {
+            let object_record = self.resolve_fact_entity(
+                &mut entity_records,
+                &episode,
+                EntityInput {
                     entity_type: "unknown".to_string(),
                     name: fact.object.clone(),
                     aliases: Vec::new(),
                     confidence: fact.confidence,
                     source: fact.source.clone(),
-                };
-                let vector = self.embed_if_available(&fallback.name)?;
-                let record = self.db.upsert_entity(
-                    &fallback,
-                    input.layer,
-                    crate::db::ObservationContext {
-                        source_episode_id: Some(&episode.id),
-                        observed_at: episode.created_at,
-                    },
-                    vector.as_deref(),
-                )?;
-                entity_records.insert(object_key.clone(), record.clone());
-                record
-            };
+                },
+            )?;
             if mentioned_entity_ids.insert(object_record.id.clone()) {
                 self.db.add_mention(
                     &episode.id,
@@ -135,6 +109,35 @@ impl MemoryEngine {
         self.refresh_session_cache(&episode.id, &input.content, entity_records.values())?;
 
         Ok(episode.id)
+    }
+
+    fn resolve_fact_entity(
+        &self,
+        entity_records: &mut HashMap<String, EntityRecord>,
+        episode: &crate::types::EpisodeRecord,
+        fallback: EntityInput,
+    ) -> Result<EntityRecord> {
+        let key = normalize_text(&fallback.name);
+        if let Some(record) = entity_records.get(&key) {
+            return Ok(record.clone());
+        }
+        if let Some(record) = self.db.resolve_active_entity_reference(&fallback.name)? {
+            cache_entity_record(entity_records, record.clone());
+            return Ok(record);
+        }
+
+        let vector = self.embed_if_available(&fallback.name)?;
+        let record = self.db.upsert_entity(
+            &fallback,
+            episode.layer,
+            crate::db::ObservationContext {
+                source_episode_id: Some(&episode.id),
+                observed_at: episode.created_at,
+            },
+            vector.as_deref(),
+        )?;
+        cache_entity_record(entity_records, record.clone());
+        Ok(record)
     }
 
     pub fn preview_remember(&self, input: &EpisodeInput) -> Result<RememberPreview> {
@@ -220,4 +223,11 @@ fn fact_key(subject: &str, predicate: &str, object: &str) -> String {
         normalize_text(predicate),
         normalize_text(object)
     )
+}
+
+fn cache_entity_record(entity_records: &mut HashMap<String, EntityRecord>, record: EntityRecord) {
+    entity_records.insert(normalize_text(&record.canonical_name), record.clone());
+    for alias in &record.aliases {
+        entity_records.insert(normalize_text(alias), record.clone());
+    }
 }
