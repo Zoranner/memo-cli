@@ -36,6 +36,11 @@ Prints a human-readable summary with:
 - whether `config.toml` was created or kept
 - whether `providers.toml` was created or kept
 
+### Notes
+
+- `memo awaken [path]` also marks that directory as the active workspace memory store for later commands run from the same working directory
+- set `MEMO_DATA_DIR` to override the active workspace target explicitly
+
 ---
 
 ## `memo remember`
@@ -63,6 +68,7 @@ memo remember <content> [OPTIONS]
 - `--dry-run` prints the final remember payload before writing
 - default `memo remember` writes only manual entities and facts immediately
 - `--dry-run` may include provider-backed extraction when the user has explicitly configured an extraction provider
+- by default commands use the active workspace memory store chosen by the latest `memo awaken`; `MEMO_DATA_DIR` overrides it
 
 ---
 

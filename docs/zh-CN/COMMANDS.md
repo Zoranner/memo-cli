@@ -36,6 +36,11 @@ memo awaken [path]
 - `config.toml` 是新建还是保留
 - `providers.toml` 是新建还是保留
 
+### 说明
+
+- `memo awaken [path]` 还会把该目录记录为当前工作目录后续命令默认使用的记忆空间
+- 如需显式覆盖当前工作目录的活跃目标，可设置环境变量 `MEMO_DATA_DIR`
+
 ---
 
 ## `memo remember`
@@ -63,6 +68,7 @@ memo remember <content> [OPTIONS]
 - `--dry-run` 会输出最终 remember payload，再决定是否落库
 - 默认 `memo remember` 只会立即写入手工 entities 和 facts
 - 如果用户已经显式配置 extraction provider，`--dry-run` 可以把 provider 抽取结果一起预览出来
+- 默认情况下，其它命令会使用最近一次 `memo awaken` 在当前工作目录记录下来的记忆空间；`MEMO_DATA_DIR` 会覆盖它
 
 ---
 

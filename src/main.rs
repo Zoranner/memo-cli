@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -15,6 +18,9 @@ mod lmkit_adapter;
 mod lmkit_extraction_adapter;
 mod lmkit_rerank_adapter;
 mod provider_runtime;
+
+const ACTIVE_DATA_DIR_FILE: &str = ".memo-home";
+const MEMO_DATA_DIR_ENV: &str = "MEMO_DATA_DIR";
 
 #[derive(Parser)]
 #[command(name = "memo")]
@@ -87,8 +93,10 @@ fn main() -> Result<()> {
 
     match command {
         Command::Awaken { path } => {
+            let cwd = std::env::current_dir()?;
             let data_dir = path.unwrap_or_else(default_data_dir);
             let report = app_config::initialize_data_dir(&data_dir)?;
+            remember_active_data_dir_for_cwd(&cwd, &data_dir)?;
             println!("{}", render_awaken_result(&data_dir, &report));
         }
         Command::Remember {
@@ -167,13 +175,47 @@ fn main() -> Result<()> {
 }
 
 fn open_engine() -> Result<MemoryEngine> {
-    let data_dir = default_data_dir();
+    let cwd = std::env::current_dir()?;
+    let data_dir = resolve_data_dir_for_cwd(&cwd)?;
     let config = app_config::build_engine_config(data_dir)?;
     MemoryEngine::open(config)
 }
 
 fn default_data_dir() -> PathBuf {
     PathBuf::from(".memo")
+}
+
+fn resolve_data_dir_for_cwd(cwd: &Path) -> Result<PathBuf> {
+    if let Some(value) = std::env::var_os(MEMO_DATA_DIR_ENV) {
+        return Ok(resolve_relative_to_cwd(cwd, Path::new(&value)));
+    }
+
+    let active_path = cwd.join(ACTIVE_DATA_DIR_FILE);
+    if active_path.exists() {
+        let raw = fs::read_to_string(&active_path)?;
+        let configured = PathBuf::from(raw.trim());
+        if !configured.as_os_str().is_empty() {
+            return Ok(resolve_relative_to_cwd(cwd, &configured));
+        }
+    }
+
+    Ok(cwd.join(default_data_dir()))
+}
+
+fn remember_active_data_dir_for_cwd(cwd: &Path, data_dir: &Path) -> Result<()> {
+    fs::write(
+        cwd.join(ACTIVE_DATA_DIR_FILE),
+        data_dir.to_string_lossy().as_ref(),
+    )?;
+    Ok(())
+}
+
+fn resolve_relative_to_cwd(cwd: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        cwd.join(path)
+    }
 }
 
 fn render_awaken_result(data_dir: &Path, report: &app_config::InitReport) -> String {
@@ -551,10 +593,17 @@ fn parse_recorded_at(raw: Option<&str>) -> Result<Option<DateTime<Utc>>> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs,
+        path::Path,
+    };
+
     use chrono::{TimeZone, Utc};
+    use tempfile::TempDir;
 
     use super::{
-        render_dream_report, render_recall_result, render_reflection, render_state, Cli, Command,
+        remember_active_data_dir_for_cwd, render_dream_report, render_recall_result,
+        render_reflection, render_state, resolve_data_dir_for_cwd, Cli, Command,
     };
     use clap::Parser;
     use memo_engine::{
@@ -623,6 +672,57 @@ mod tests {
             Command::Restore { full, .. } => assert!(full),
             _ => panic!("expected restore command"),
         }
+    }
+
+    #[test]
+    fn resolve_data_dir_defaults_to_workspace_memo_dir() -> anyhow::Result<()> {
+        let temp = TempDir::new()?;
+
+        let resolved = resolve_data_dir_for_cwd(temp.path())?;
+
+        assert_eq!(resolved, temp.path().join(".memo"));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_data_dir_uses_workspace_active_file() -> anyhow::Result<()> {
+        let temp = TempDir::new()?;
+        remember_active_data_dir_for_cwd(temp.path(), Path::new("custom-store"))?;
+
+        let resolved = resolve_data_dir_for_cwd(temp.path())?;
+
+        assert_eq!(resolved, temp.path().join("custom-store"));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_data_dir_prefers_environment_override() -> anyhow::Result<()> {
+        let temp = TempDir::new()?;
+        let override_path = temp.path().join("env-store");
+        remember_active_data_dir_for_cwd(temp.path(), Path::new("custom-store"))?;
+        unsafe {
+            std::env::set_var("MEMO_DATA_DIR", override_path.as_os_str());
+        }
+
+        let resolved = resolve_data_dir_for_cwd(temp.path())?;
+
+        unsafe {
+            std::env::remove_var("MEMO_DATA_DIR");
+        }
+        assert_eq!(resolved, override_path);
+        Ok(())
+    }
+
+    #[test]
+    fn remember_active_data_dir_overwrites_previous_workspace_target() -> anyhow::Result<()> {
+        let temp = TempDir::new()?;
+        remember_active_data_dir_for_cwd(temp.path(), Path::new(".memo"))?;
+        remember_active_data_dir_for_cwd(temp.path(), Path::new("custom-store"))?;
+
+        let active = fs::read_to_string(temp.path().join(".memo-home"))?;
+
+        assert_eq!(active.trim(), "custom-store");
+        Ok(())
     }
 
     #[test]
