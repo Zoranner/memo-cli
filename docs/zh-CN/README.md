@@ -48,12 +48,12 @@ Memo 应当通过这套公开动作语言被学习和理解：
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.sh | bash
 ```
 
 引导脚本从 `master` 分支加载，随后会按当前平台自动下载最新已发布的 GitHub Release，并默认把 `memo` 安装到 `~/.memo/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`。
@@ -148,8 +148,8 @@ provider 引用使用 `<provider>.<service>` 形式，例如 `openai.embed` 或 
 - [记忆引擎架构](../architecture/memory-engine-architecture.md) - 系统分层、命令流程、模型职责与生命周期设计
 - [命令参考](COMMANDS.md) - 公开命令参考
 - [AI Agent Skill](../../skills/memo-brain/zh-CN/SKILL.md) - AI 编码助手集成指南
-- `config.example.toml` - 主配置示例
-- `providers.example.toml` - provider 配置示例
+- `templates/config.toml` - 主配置模板
+- `templates/providers.toml` - provider 配置模板
 - `memo <command> --help` - 命令特定帮助
 
 ---

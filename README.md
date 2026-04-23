@@ -48,12 +48,12 @@ Memo should be described and learned through this public action language:
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.sh | bash
 ```
 
 The bootstrap script is loaded from the `master` branch, then downloads the latest published GitHub Release for your platform and installs `memo` into `~/.memo/bin` by default. Override the destination with `MEMO_INSTALL_DIR`.
@@ -148,8 +148,8 @@ Provider references use `<provider>.<service>` names such as `openai.embed` or `
 - [Memory Engine Architecture](docs/architecture/memory-engine-architecture.md) - System layers, command flows, model boundaries, and lifecycle design
 - [Command Reference](docs/COMMANDS.md) - Public command reference
 - [AI Agent Skill](skills/memo-brain/en-US/SKILL.md) - AI coding assistant integration guide
-- `config.example.toml` - Main configuration example
-- `providers.example.toml` - Provider configuration example
+- `templates/config.toml` - Main configuration template
+- `templates/providers.toml` - Provider configuration template
 - `memo <command> --help` - Command-specific help
 
 ---
