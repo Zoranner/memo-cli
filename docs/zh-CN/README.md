@@ -56,7 +56,7 @@ irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.ps1 | iex
 curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.sh | bash
 ```
 
-引导脚本从 `master` 分支加载，随后会按当前平台自动下载最新已发布的 GitHub Release tag，并默认把 `memo` 安装到 `~/.local/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`；如需固定版本，可将 `MEMO_VERSION` 设为显式 tag，例如 `v0.2.0`。
+引导脚本从 `master` 分支加载，随后会按当前平台自动下载最新已发布的 GitHub Release，并默认把 `memo` 安装到 `~/.memo/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`。
 
 ### 第二步：唤醒本地记忆空间
 
@@ -67,7 +67,7 @@ memo awaken
 如果当前 shell 还没有拿到最新 PATH，请先重开终端再继续。
 
 这会初始化 `~/.memo`，并把 `config.toml` 与 `providers.toml` 固定写在那里，同时准备实际使用的数据目录。
-默认数据目录也是 `~/.memo`；如果想把数据文件放到别处，可通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
+默认数据目录是 `~/.memo/data`；如果想把数据文件放到别处，可通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
 
 ### 第三步：记住并回忆
 
@@ -98,13 +98,13 @@ memo state
 - **固定配置根目录**：`~/.memo`
 - **本地配置**：`~/.memo/config.toml`
 - **provider 配置**：`~/.memo/providers.toml`
-- **默认数据目录**：`~/.memo`
+- **默认数据目录**：`~/.memo/data`
 
 ### 数据目录解析顺序
 
 - `MEMO_DATA_DIR`
 - `~/.memo/config.toml` 中的 `storage.data_dir`
-- `~/.memo`
+- `~/.memo/data`
 
 ### 快速设置
 
@@ -121,7 +121,7 @@ memo awaken
 
 | 节 | 参数 | 必填 | 说明 | 默认值 |
 |----|------|:----:|------|--------|
-| `[storage]` | `data_dir` | ❌ | 在保持配置文件固定于 `~/.memo` 的前提下覆盖数据目录 | `~/.memo` |
+| `[storage]` | `data_dir` | ❌ | 在保持配置文件固定于 `~/.memo` 的前提下覆盖数据目录 | `~/.memo/data` |
 | `[embed]` | `embedding_provider` | ❌ | Embedding 服务引用，例如 `openai.embed` | - |
 | `[embed]` | `duplicate_threshold` | ❌ | 重复检测阈值（0-1） | `0.85` |
 | `[embed]` | `max_retries` | ❌ | 可重试 embedding 失败时的重试次数 | `0` |

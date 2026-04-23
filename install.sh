@@ -2,8 +2,7 @@
 set -euo pipefail
 
 REPO="Zoranner/memo-cli"
-INSTALL_DIR="${MEMO_INSTALL_DIR:-$HOME/.local/bin}"
-REQUESTED_VERSION="${MEMO_VERSION:-}"
+INSTALL_DIR="${MEMO_INSTALL_DIR:-$HOME/.memo/bin}"
 
 detect_target() {
   local os arch
@@ -39,11 +38,7 @@ detect_target() {
 
 download_url() {
   local asset="$1"
-  if [[ -n "$REQUESTED_VERSION" ]]; then
-    echo "https://github.com/$REPO/releases/download/$REQUESTED_VERSION/$asset"
-  else
-    echo "https://github.com/$REPO/releases/latest/download/$asset"
-  fi
+  echo "https://github.com/$REPO/releases/latest/download/$asset"
 }
 
 ensure_path_hint() {

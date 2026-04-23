@@ -40,7 +40,7 @@ memo awaken
 ### 说明
 
 - `memo awaken` 会始终把 `config.toml` 与 `providers.toml` 固定保存在 `~/.memo`
-- 默认数据目录也是 `~/.memo`
+- 默认数据目录是 `~/.memo/data`
 - 如需覆盖数据目录，可设置环境变量 `MEMO_DATA_DIR`，或在 `~/.memo/config.toml` 中设置 `storage.data_dir`
 
 ---
@@ -70,7 +70,7 @@ memo remember <content> [OPTIONS]
 - `--dry-run` 会输出最终 remember payload，再决定是否落库
 - 默认 `memo remember` 只会立即写入手工 entities 和 facts
 - 如果用户已经显式配置 extraction provider，`--dry-run` 可以把 provider 抽取结果一起预览出来
-- 默认情况下，其它命令使用 `~/.memo`；`MEMO_DATA_DIR` 优先于 `storage.data_dir`，而 `storage.data_dir` 优先于默认值
+- 默认情况下，其它命令使用 `~/.memo/data`；`MEMO_DATA_DIR` 优先于 `storage.data_dir`，而 `storage.data_dir` 优先于默认值
 
 ---
 

@@ -1,8 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Repo = "Zoranner/memo-cli"
-$InstallDir = if ($env:MEMO_INSTALL_DIR) { $env:MEMO_INSTALL_DIR } else { Join-Path $HOME ".local\bin" }
-$RequestedVersion = $env:MEMO_VERSION
+$InstallDir = if ($env:MEMO_INSTALL_DIR) { $env:MEMO_INSTALL_DIR } else { Join-Path $HOME ".memo\bin" }
 
 function Get-TargetTriple {
     $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
@@ -13,9 +12,6 @@ function Get-TargetTriple {
 }
 
 function Get-DownloadUrl([string]$AssetName) {
-    if ($RequestedVersion) {
-        return "https://github.com/$Repo/releases/download/$RequestedVersion/$AssetName"
-    }
     return "https://github.com/$Repo/releases/latest/download/$AssetName"
 }
 

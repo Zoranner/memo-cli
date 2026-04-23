@@ -48,12 +48,18 @@ fn awaken_uses_fixed_home_config_root_and_default_data_dir() -> anyhow::Result<(
     let output = run_memo(home.path(), workdir.path(), &[], &["awaken"])?;
     let stdout = assert_success(&output)?;
     let memo_home = home.path().join(".memo");
+    let default_data_dir = memo_home.join("data");
 
-    assert!(stdout.contains(&format!("Awakened memory space at {}", memo_home.display())));
+    assert!(stdout.contains(&format!(
+        "Awakened memory space at {}",
+        default_data_dir.display()
+    )));
     assert!(stdout.contains(&format!("config_dir: {}", memo_home.display())));
     assert!(memo_home.join("config.toml").exists());
     assert!(memo_home.join("providers.toml").exists());
-    assert!(memo_home.join("memory.db").exists());
+    assert!(default_data_dir.join("memory.db").exists());
+    assert!(default_data_dir.join("text-index").is_dir());
+    assert!(!memo_home.join("memory.db").exists());
     assert!(!workdir.path().join(".memo").exists());
     Ok(())
 }

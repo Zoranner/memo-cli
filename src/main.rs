@@ -193,7 +193,7 @@ fn resolve_data_dir_for_config_dir(config_dir: &Path) -> Result<PathBuf> {
         return Ok(data_dir);
     }
 
-    Ok(config_dir.to_path_buf())
+    Ok(config_dir.join("data"))
 }
 
 fn user_home_dir() -> Result<PathBuf> {
@@ -757,13 +757,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_data_dir_defaults_to_user_config_dir() -> anyhow::Result<()> {
+    fn resolve_data_dir_defaults_to_user_config_data_subdir() -> anyhow::Result<()> {
         let temp = TempDir::new()?;
         let config_dir = temp.path().join(".memo");
 
         let resolved = resolve_data_dir_for_config_dir(&config_dir)?;
 
-        assert_eq!(resolved, config_dir);
+        assert_eq!(resolved, config_dir.join("data"));
         Ok(())
     }
 

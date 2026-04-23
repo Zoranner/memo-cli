@@ -56,7 +56,7 @@ irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.ps1 | iex
 curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.sh | bash
 ```
 
-The bootstrap script is loaded from the `master` branch, then downloads the latest published GitHub Release tag for your platform and installs `memo` into `~/.local/bin` by default. Override the destination with `MEMO_INSTALL_DIR` or pin an explicit release tag such as `v0.2.0` with `MEMO_VERSION`.
+The bootstrap script is loaded from the `master` branch, then downloads the latest published GitHub Release for your platform and installs `memo` into `~/.memo/bin` by default. Override the destination with `MEMO_INSTALL_DIR`.
 
 ### Step 2: Awaken a Local Memory Space
 
@@ -67,7 +67,7 @@ memo awaken
 If your current shell has not picked up the updated `PATH` yet, restart it first.
 
 This initializes `~/.memo`, keeps `config.toml` and `providers.toml` there, and prepares the active data directory.
-By default the data directory is also `~/.memo`. Set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` when you need to move the data files elsewhere.
+By default the data directory is `~/.memo/data`. Set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` when you need to move the data files elsewhere.
 
 ### Step 3: Remember and Recall
 
@@ -98,13 +98,13 @@ memo state
 - **Fixed config root**: `~/.memo`
 - **Local config**: `~/.memo/config.toml`
 - **Providers config**: `~/.memo/providers.toml`
-- **Default data dir**: `~/.memo`
+- **Default data dir**: `~/.memo/data`
 
 ### Data Dir Resolution
 
 - `MEMO_DATA_DIR`
 - `storage.data_dir` from `~/.memo/config.toml`
-- `~/.memo`
+- `~/.memo/data`
 
 ### Quick Setup
 
@@ -121,7 +121,7 @@ memo awaken
 
 | Section | Parameter | Required | Description | Default |
 |---------|-----------|:--------:|-------------|---------|
-| `[storage]` | `data_dir` | ❌ | Override the data directory while keeping config files under `~/.memo` | `~/.memo` |
+| `[storage]` | `data_dir` | ❌ | Override the data directory while keeping config files under `~/.memo` | `~/.memo/data` |
 | `[embed]` | `embedding_provider` | ❌ | Embedding service reference (for example `openai.embed`) | - |
 | `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
 | `[embed]` | `max_retries` | ❌ | Retry count for retryable embedding failures | `0` |

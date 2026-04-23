@@ -40,7 +40,7 @@ Prints a human-readable summary with:
 ### Notes
 
 - `memo awaken` always keeps `config.toml` and `providers.toml` under `~/.memo`
-- by default the data directory is `~/.memo`
+- by default the data directory is `~/.memo/data`
 - set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` to override the data directory
 
 ---
@@ -70,7 +70,7 @@ memo remember <content> [OPTIONS]
 - `--dry-run` prints the final remember payload before writing
 - default `memo remember` writes only manual entities and facts immediately
 - `--dry-run` may include provider-backed extraction when the user has explicitly configured an extraction provider
-- by default commands use `~/.memo`; `MEMO_DATA_DIR` overrides `storage.data_dir`, and `storage.data_dir` overrides the default
+- by default commands use `~/.memo/data`; `MEMO_DATA_DIR` overrides `storage.data_dir`, and `storage.data_dir` overrides the default
 
 ---
 

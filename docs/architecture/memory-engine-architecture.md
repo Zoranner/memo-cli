@@ -443,7 +443,7 @@ flowchart LR
 流程：
 
 1. 固定创建或确认用户目录下的 `~/.memo` 配置根；
-2. 解析实际数据目录，默认使用 `~/.memo`，仅允许通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖；
+2. 解析实际数据目录，默认使用 `~/.memo/data`，仅允许通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖；
 3. 创建数据目录；
 4. 仅在缺失时向 `~/.memo` 写入配置模板；
 5. 初始化 SQLite 与索引目录；

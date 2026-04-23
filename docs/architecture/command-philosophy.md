@@ -223,7 +223,7 @@ memo restore [--full] [--json]
 
 `restore --full` 代表基于真相源进行全量恢复。
 
-`awaken` 不再通过位置参数切换数据目录。固定配置根应保持在用户目录下的 `~/.memo`，而数据目录只允许通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
+`awaken` 不再通过位置参数切换数据目录。固定配置根应保持在用户目录下的 `~/.memo`，默认数据目录为 `~/.memo/data`，而实际数据目录只允许通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
 
 ## 参数哲学
 
