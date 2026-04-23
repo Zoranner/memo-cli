@@ -717,6 +717,29 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_reflect_json_flag() {
+        let cli = Cli::parse_from(["memo", "reflect", "ep-1", "--json"]);
+
+        match cli.command {
+            Command::Reflect { id, json } => {
+                assert_eq!(id, "ep-1");
+                assert!(json);
+            }
+            _ => panic!("expected reflect command"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_state_json_flag() {
+        let cli = Cli::parse_from(["memo", "state", "--json"]);
+
+        match cli.command {
+            Command::State { json } => assert!(json),
+            _ => panic!("expected state command"),
+        }
+    }
+
+    #[test]
     fn cli_parses_restore_full_flag() {
         let cli = Cli::parse_from(["memo", "restore", "--full"]);
 

@@ -63,6 +63,7 @@ memo awaken
 ```
 
 这会创建本地 `.memo` 数据目录，并写入 `config.toml` 与 `providers.toml` 模板。
+它还会把该数据目录记录为当前目录及其子目录默认使用的活跃记忆空间；如果只想为当前进程显式覆盖目标，可设置 `MEMO_DATA_DIR`。
 
 ### 第三步：记住并回忆
 
@@ -84,6 +85,8 @@ memo state
 
 `memo dream` 会执行一次记忆整理；配置了 provider 时，它也会在慢路径补齐仍未结构化的 episode。`memo restore` 用于在需要时恢复派生层。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
 
+`memo state` 会输出记录数量、layer / index 健康度，以及走过降级路径时最近一次 provider 运行态摘要。
+
 ## ⚙️ 配置说明
 
 ### 配置文件位置
@@ -92,9 +95,11 @@ memo state
 - **本地配置**：`./.memo/config.toml`
 - **provider 配置**：`./.memo/providers.toml`
 
-### 配置优先级
+### 数据目录解析顺序
 
-命令行参数 > 本地配置 > 默认值
+- `MEMO_DATA_DIR`
+- 当前目录或其父目录中最近一次 `memo awaken` 选中的活跃记忆空间
+- `./.memo`
 
 ### 快速设置
 
@@ -113,12 +118,21 @@ memo awaken
 |----|------|:----:|------|--------|
 | `[embed]` | `embedding_provider` | ❌ | Embedding 服务引用，例如 `openai.embed` | - |
 | `[embed]` | `duplicate_threshold` | ❌ | 重复检测阈值（0-1） | `0.85` |
+| `[embed]` | `max_retries` | ❌ | 可重试 embedding 失败时的重试次数 | `0` |
+| `[embed]` | `retry_backoff_ms` | ❌ | embedding 重试的线性退避基数 | `0` |
 | `[extract]` | `extraction_provider` | ❌ | Extraction 服务引用，例如 `openai.extract` | - |
 | `[extract]` | `min_confidence` | ❌ | 清洗后保留的最小抽取置信度 | `0.5` |
 | `[extract]` | `normalize_predicates` | ❌ | 是否把抽取 predicate 归一化为稳定关系名 | `true` |
+| `[extract]` | `max_retries` | ❌ | 可重试 extraction 失败时的重试次数 | `0` |
+| `[extract]` | `retry_backoff_ms` | ❌ | extraction 重试的线性退避基数 | `0` |
 | `[rerank]` | `rerank_provider` | ❌ | Rerank 服务引用，例如 `aliyun.rerank` | - |
+| `[rerank]` | `max_retries` | ❌ | 可重试 rerank 失败时的重试次数 | `0` |
+| `[rerank]` | `retry_backoff_ms` | ❌ | rerank 重试的线性退避基数 | `0` |
+| `[provider.service]` | `timeout_ms` | ❌ | 单个 service 的请求超时提示 | provider 默认值 |
+| `[provider.service]` | `max_concurrent` | ❌ | 透传给 provider 配置的并发提示 | provider 默认值 |
 
 provider 引用使用 `<provider>.<service>` 形式，例如 `openai.embed` 或 `aliyun.rerank`。
+`max_concurrent` 当前只负责解析并透传到 provider 配置，CLI 本身不会额外再包一层执行器级限流。
 
 ---
 

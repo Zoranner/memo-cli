@@ -63,6 +63,7 @@ memo awaken
 ```
 
 This creates a local `.memo` data directory with `config.toml` and `providers.toml` templates.
+It also records that data directory as the active workspace memory store for the current directory and any descendant directory. Set `MEMO_DATA_DIR` when you need to override that target explicitly for the current process.
 
 ### Step 3: Remember and Recall
 
@@ -84,6 +85,8 @@ memo state
 
 `memo dream` runs a dream pass over memory layers, including slow-path provider extraction for still-unstructured episodes when configured. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
 
+`memo state` reports record counts, layer/index health, and the latest provider runtime degradation summary when fallback paths were used.
+
 ## ⚙️ Configuration
 
 ### Config File Locations
@@ -92,9 +95,11 @@ memo state
 - **Local config**: `./.memo/config.toml`
 - **Providers config**: `./.memo/providers.toml`
 
-### Priority Order
+### Data Dir Resolution
 
-Command-line args > Local config > Defaults
+- `MEMO_DATA_DIR`
+- nearest active workspace selected by `memo awaken` in the current directory or one of its ancestors
+- `./.memo`
 
 ### Quick Setup
 
@@ -113,12 +118,21 @@ memo awaken
 |---------|-----------|:--------:|-------------|---------|
 | `[embed]` | `embedding_provider` | ❌ | Embedding service reference (for example `openai.embed`) | - |
 | `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
+| `[embed]` | `max_retries` | ❌ | Retry count for retryable embedding failures | `0` |
+| `[embed]` | `retry_backoff_ms` | ❌ | Linear backoff base for embedding retries | `0` |
 | `[extract]` | `extraction_provider` | ❌ | Extraction service reference (for example `openai.extract`) | - |
 | `[extract]` | `min_confidence` | ❌ | Minimum extraction confidence kept after cleanup | `0.5` |
 | `[extract]` | `normalize_predicates` | ❌ | Normalize extracted predicates into stable relation names | `true` |
+| `[extract]` | `max_retries` | ❌ | Retry count for retryable extraction failures | `0` |
+| `[extract]` | `retry_backoff_ms` | ❌ | Linear backoff base for extraction retries | `0` |
 | `[rerank]` | `rerank_provider` | ❌ | Rerank service reference (for example `aliyun.rerank`) | - |
+| `[rerank]` | `max_retries` | ❌ | Retry count for retryable rerank failures | `0` |
+| `[rerank]` | `retry_backoff_ms` | ❌ | Linear backoff base for rerank retries | `0` |
+| `[provider.service]` | `timeout_ms` | ❌ | Per-service request timeout hint | provider default |
+| `[provider.service]` | `max_concurrent` | ❌ | Per-service concurrency hint forwarded into provider config | provider default |
 
 Provider references use `<provider>.<service>` names such as `openai.embed` or `aliyun.rerank`.
+`max_concurrent` is currently parsed and forwarded into provider config, but the CLI does not add an extra executor-level limiter on top of the provider implementation.
 
 ---
 
