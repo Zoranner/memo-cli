@@ -48,15 +48,15 @@ Memo should be described and learned through this public action language:
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.sh | bash
 ```
 
-The installer downloads the latest GitHub Release for your platform and installs `memo` into `~/.local/bin` by default. Override the destination with `MEMO_INSTALL_DIR` or pin a release with `MEMO_VERSION`.
+The bootstrap script is loaded from the `master` branch, then downloads the latest published GitHub Release tag for your platform and installs `memo` into `~/.local/bin` by default. Override the destination with `MEMO_INSTALL_DIR` or pin an explicit release tag such as `v0.2.0` with `MEMO_VERSION`.
 
 ### Step 2: Awaken a Local Memory Space
 

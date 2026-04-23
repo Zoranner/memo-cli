@@ -48,15 +48,15 @@ Memo 应当通过这套公开动作语言被学习和理解：
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/install.sh | bash
 ```
 
-安装脚本会自动下载当前平台对应的最新 GitHub Release，并默认把 `memo` 安装到 `~/.local/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`；如需固定版本，可设置 `MEMO_VERSION`。
+引导脚本从 `master` 分支加载，随后会按当前平台自动下载最新已发布的 GitHub Release tag，并默认把 `memo` 安装到 `~/.local/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`；如需固定版本，可将 `MEMO_VERSION` 设为显式 tag，例如 `v0.2.0`。
 
 ### 第二步：唤醒本地记忆空间
 
