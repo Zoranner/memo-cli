@@ -48,19 +48,23 @@ Memo should be described and learned through this public action language:
 
 **Windows (PowerShell):**
 ```powershell
-irm https://memo.zoran.ink/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://memo.zoran.ink/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.sh | bash
 ```
+
+The installer downloads the latest GitHub Release for your platform and installs `memo` into `~/.local/bin` by default. Override the destination with `MEMO_INSTALL_DIR` or pin a release with `MEMO_VERSION`.
 
 ### Step 2: Awaken a Local Memory Space
 
 ```bash
 memo awaken
 ```
+
+If your current shell has not picked up the updated `PATH` yet, restart it first.
 
 This initializes `~/.memo`, keeps `config.toml` and `providers.toml` there, and prepares the active data directory.
 By default the data directory is also `~/.memo`. Set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` when you need to move the data files elsewhere.

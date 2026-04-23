@@ -48,19 +48,23 @@ Memo 应当通过这套公开动作语言被学习和理解：
 
 **Windows (PowerShell):**
 ```powershell
-irm https://memo.zoran.ink/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://memo.zoran.ink/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/main/install.sh | bash
 ```
+
+安装脚本会自动下载当前平台对应的最新 GitHub Release，并默认把 `memo` 安装到 `~/.local/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`；如需固定版本，可设置 `MEMO_VERSION`。
 
 ### 第二步：唤醒本地记忆空间
 
 ```bash
 memo awaken
 ```
+
+如果当前 shell 还没有拿到最新 PATH，请先重开终端再继续。
 
 这会初始化 `~/.memo`，并把 `config.toml` 与 `providers.toml` 固定写在那里，同时准备实际使用的数据目录。
 默认数据目录也是 `~/.memo`；如果想把数据文件放到别处，可通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
