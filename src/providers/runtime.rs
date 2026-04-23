@@ -6,7 +6,7 @@ use memo_engine::{
 };
 use tracing::warn;
 
-use crate::provider_status::ProviderRuntimeRecorder;
+use crate::providers::status::ProviderRuntimeRecorder;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct ProviderRetryPolicy {
@@ -205,7 +205,7 @@ mod tests {
         is_retryable_provider_error, ProviderRetryPolicy, RetryingEmbeddingProvider,
         RetryingExtractionProvider, RetryingRerankProvider,
     };
-    use crate::provider_status::{
+    use crate::providers::status::{
         load_provider_runtime_summary, ProviderHealth, ProviderRuntimeRecorder,
     };
 

@@ -30,5 +30,3 @@ normalize_predicates = true
 # rerank_provider = "aliyun.rerank"
 # max_retries = 1
 # retry_backoff_ms = 150
-
-
