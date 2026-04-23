@@ -150,7 +150,7 @@ Memo 的公开命令体系应同时满足以下目标：
 ## 推荐公开命令体系
 
 ```bash
-memo awaken [path]
+memo awaken
 memo remember <content> [--time <rfc3339>] [--entity <type:name> ...] [--fact <subject:predicate:object> ...] [--dry-run] [--json]
 memo recall <query> [-n <limit>] [--deep] [--json]
 memo reflect <id> [--json]
@@ -222,6 +222,8 @@ memo restore [--full] [--json]
 它存在的意义，是保留一个明确的恢复入口，让用户在派生状态不一致时可以主动修复。它不应抢占主心智，只应在必要场景出现。
 
 `restore --full` 代表基于真相源进行全量恢复。
+
+`awaken` 不再通过位置参数切换数据目录。固定配置根应保持在用户目录下的 `~/.memo`，而数据目录只允许通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
 
 ## 参数哲学
 

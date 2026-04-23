@@ -1,5 +1,9 @@
 # Memo local engine config example
-# Copy this file to ./.memo/config.toml and adjust the provider references you want to use.
+# Copy this file to ~/.memo/config.toml and adjust the provider references you want to use.
+
+[storage]
+# Optional data dir override. Relative paths resolve under ~/.memo.
+# data_dir = "data"
 
 [embed]
 # Reference format: <provider>.<service>

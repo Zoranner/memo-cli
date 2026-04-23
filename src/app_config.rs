@@ -47,7 +47,13 @@ struct RerankConfig {
 }
 
 #[derive(Debug, Default)]
+struct StorageConfig {
+    data_dir: Option<String>,
+}
+
+#[derive(Debug, Default)]
 struct FileConfig {
+    storage: StorageConfig,
     embed: EmbedConfig,
     extract: ExtractConfig,
     rerank: RerankConfig,
@@ -74,25 +80,21 @@ pub(crate) struct InitReport {
     pub providers_created: bool,
 }
 
-pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<EngineConfig> {
+pub(crate) fn build_engine_config(
+    data_dir: impl Into<PathBuf>,
+    config_dir: &Path,
+) -> Result<EngineConfig> {
     let data_dir = data_dir.into();
     let mut engine_config = EngineConfig::new(&data_dir);
     let provider_runtime = ProviderRuntimeRecorder::new(&data_dir);
-    let config_path = data_dir.join("config.toml");
-
-    if !config_path.exists() {
+    let Some(file_config) = load_file_config(config_dir)? else {
         return Ok(engine_config);
-    }
-
-    let config_text = fs::read_to_string(&config_path)
-        .with_context(|| format!("failed to read config file: {}", config_path.display()))?;
-    let file_config = parse_app_config(&config_text)
-        .with_context(|| format!("failed to parse config file: {}", config_path.display()))?;
+    };
 
     let _duplicate_threshold = file_config.embed.duplicate_threshold;
 
     if let Some(provider_ref) = file_config.embed.embedding_provider.as_deref() {
-        let provider_config = load_provider_config(&data_dir, provider_ref, "embedding")?;
+        let provider_config = load_provider_config(config_dir, provider_ref, "embedding")?;
         let adapter = RetryingEmbeddingProvider::new(
             LmkitEmbeddingAdapter::new(provider_config)?,
             provider_ref,
@@ -106,7 +108,7 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
     }
 
     if let Some(provider_ref) = file_config.extract.extraction_provider.as_deref() {
-        let provider_config = load_provider_config(&data_dir, provider_ref, "extraction")?;
+        let provider_config = load_provider_config(config_dir, provider_ref, "extraction")?;
         let adapter = RetryingExtractionProvider::new(
             LmkitExtractionAdapter::new_with_options(
                 provider_config,
@@ -123,7 +125,7 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
     }
 
     if let Some(provider_ref) = file_config.rerank.rerank_provider.as_deref() {
-        let provider_config = load_provider_config(&data_dir, provider_ref, "rerank")?;
+        let provider_config = load_provider_config(config_dir, provider_ref, "rerank")?;
         let adapter = RetryingRerankProvider::new(
             LmkitRerankAdapter::new(provider_config)?,
             provider_ref,
@@ -139,6 +141,17 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
     Ok(engine_config)
 }
 
+pub(crate) fn resolve_configured_data_dir(config_dir: &Path) -> Result<Option<PathBuf>> {
+    let Some(file_config) = load_file_config(config_dir)? else {
+        return Ok(None);
+    };
+    Ok(file_config
+        .storage
+        .data_dir
+        .as_deref()
+        .map(|value| resolve_relative_to_dir(config_dir, Path::new(value))))
+}
+
 fn extraction_cleanup_options(config: &ExtractConfig) -> ExtractionCleanupOptions {
     ExtractionCleanupOptions {
         min_confidence: config.min_confidence.unwrap_or(0.5),
@@ -146,12 +159,15 @@ fn extraction_cleanup_options(config: &ExtractConfig) -> ExtractionCleanupOption
     }
 }
 
-pub(crate) fn initialize_data_dir(data_dir: &Path) -> Result<InitReport> {
+pub(crate) fn initialize_app_home(config_dir: &Path, data_dir: &Path) -> Result<InitReport> {
+    fs::create_dir_all(config_dir)
+        .with_context(|| format!("failed to create config dir: {}", config_dir.display()))?;
     fs::create_dir_all(data_dir)
         .with_context(|| format!("failed to create data dir: {}", data_dir.display()))?;
 
-    let config_created = write_if_missing(&data_dir.join("config.toml"), CONFIG_TEMPLATE)?;
-    let providers_created = write_if_missing(&data_dir.join("providers.toml"), PROVIDERS_TEMPLATE)?;
+    let config_created = write_if_missing(&config_dir.join("config.toml"), CONFIG_TEMPLATE)?;
+    let providers_created =
+        write_if_missing(&config_dir.join("providers.toml"), PROVIDERS_TEMPLATE)?;
     MemoryEngine::open(EngineConfig::new(data_dir))?;
 
     Ok(InitReport {
@@ -169,12 +185,25 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<bool> {
     Ok(true)
 }
 
+fn load_file_config(config_dir: &Path) -> Result<Option<FileConfig>> {
+    let config_path = config_dir.join("config.toml");
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let config_text = fs::read_to_string(&config_path)
+        .with_context(|| format!("failed to read config file: {}", config_path.display()))?;
+    let file_config = parse_app_config(&config_text)
+        .with_context(|| format!("failed to parse config file: {}", config_path.display()))?;
+    Ok(Some(file_config))
+}
+
 fn load_provider_config(
-    data_dir: &Path,
+    config_dir: &Path,
     provider_ref: &str,
     capability: &str,
 ) -> Result<ProviderConfig> {
-    let providers_path = data_dir.join("providers.toml");
+    let providers_path = config_dir.join("providers.toml");
     let providers_text = fs::read_to_string(&providers_path).with_context(|| {
         format!(
             "failed to read providers file: {}",
@@ -227,6 +256,15 @@ fn split_provider_ref(provider_ref: &str) -> Result<(&str, &str)> {
 
     Ok((provider_name, service_name))
 }
+
+fn resolve_relative_to_dir(base_dir: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base_dir.join(path)
+    }
+}
+
 fn parse_app_config(contents: &str) -> Result<FileConfig> {
     let mut config = FileConfig::default();
     let mut section: Option<String> = None;
@@ -245,6 +283,11 @@ fn parse_app_config(contents: &str) -> Result<FileConfig> {
         let (key, value) = parse_key_value(line)
             .with_context(|| format!("invalid config line {}", line_no + 1))?;
         match section.as_deref() {
+            Some("storage") => {
+                if key == "data_dir" {
+                    config.storage.data_dir = Some(parse_string(value)?.to_string());
+                }
+            }
             Some("embed") => match key {
                 "embedding_provider" => {
                     config.embed.embedding_provider = Some(parse_string(value)?.to_string());
@@ -398,46 +441,54 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        build_engine_config, initialize_data_dir, parse_app_config, parse_providers_config,
+        build_engine_config, initialize_app_home, parse_app_config, parse_providers_config,
+        resolve_configured_data_dir,
     };
 
     #[test]
-    fn init_writes_current_templates_into_data_dir() -> Result<()> {
+    fn init_writes_current_templates_into_fixed_config_dir() -> Result<()> {
         let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        let data_dir = temp.path().join("data");
 
-        let report = initialize_data_dir(temp.path())?;
+        let report = initialize_app_home(&config_dir, &data_dir)?;
 
         assert!(report.config_created);
         assert!(report.providers_created);
-        assert!(temp.path().join("config.toml").exists());
-        assert!(temp.path().join("providers.toml").exists());
+        assert!(config_dir.join("config.toml").exists());
+        assert!(config_dir.join("providers.toml").exists());
         Ok(())
     }
 
     #[test]
-    fn init_also_bootstraps_sqlite_and_index_dirs() -> Result<()> {
+    fn init_bootstraps_sqlite_and_index_dirs_in_target_data_dir() -> Result<()> {
         let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        let data_dir = temp.path().join("memory-data");
 
-        initialize_data_dir(temp.path())?;
+        initialize_app_home(&config_dir, &data_dir)?;
 
-        assert!(temp.path().join("memory.db").exists());
-        assert!(temp.path().join("text-index").is_dir());
+        assert!(data_dir.join("memory.db").exists());
+        assert!(data_dir.join("text-index").is_dir());
         Ok(())
     }
 
     #[test]
-    fn build_engine_config_loads_embedding_provider_from_local_files() -> Result<()> {
+    fn build_engine_config_loads_embedding_provider_from_fixed_config_root() -> Result<()> {
         let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        let data_dir = temp.path().join("memory-data");
+        fs::create_dir_all(&config_dir)?;
         fs::write(
-            temp.path().join("config.toml"),
+            config_dir.join("config.toml"),
             "[embed]\nembedding_provider = \"openai.embed\"\n[extract]\nextraction_provider = \"openai.extract\"\n",
         )?;
         fs::write(
-            temp.path().join("providers.toml"),
+            config_dir.join("providers.toml"),
             "[openai]\napi_key = \"sk-test\"\n[openai.embed]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"text-embedding-3-small\"\ndimension = 1536\n[openai.extract]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"gpt-4o-mini\"\n",
         )?;
 
-        let config = build_engine_config(temp.path())?;
+        let config = build_engine_config(&data_dir, &config_dir)?;
 
         assert_eq!(config.vector_dimension, 1536);
         let provider = config
@@ -450,18 +501,21 @@ mod tests {
     }
 
     #[test]
-    fn build_engine_config_loads_rerank_provider_from_local_files() -> Result<()> {
+    fn build_engine_config_loads_rerank_provider_from_fixed_config_root() -> Result<()> {
         let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        let data_dir = temp.path().join("memory-data");
+        fs::create_dir_all(&config_dir)?;
         fs::write(
-            temp.path().join("config.toml"),
+            config_dir.join("config.toml"),
             "[rerank]\nrerank_provider = \"aliyun.rerank\"\n",
         )?;
         fs::write(
-            temp.path().join("providers.toml"),
+            config_dir.join("providers.toml"),
             "[aliyun]\napi_key = \"sk-test\"\n[aliyun.rerank]\nbase_url = \"https://dashscope.aliyuncs.com/api/v1\"\nmodel = \"gte-rerank\"\n",
         )?;
 
-        let config = build_engine_config(temp.path())?;
+        let config = build_engine_config(&data_dir, &config_dir)?;
 
         assert!(config.rerank_provider.is_some());
         Ok(())
@@ -470,16 +524,19 @@ mod tests {
     #[test]
     fn build_engine_config_rejects_invalid_provider_ref() -> Result<()> {
         let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        let data_dir = temp.path().join("memory-data");
+        fs::create_dir_all(&config_dir)?;
         fs::write(
-            temp.path().join("config.toml"),
+            config_dir.join("config.toml"),
             "[embed]\nembedding_provider = \"openai\"\n",
         )?;
         fs::write(
-            temp.path().join("providers.toml"),
+            config_dir.join("providers.toml"),
             "[openai]\napi_key = \"sk-test\"\n",
         )?;
 
-        let error = match build_engine_config(temp.path()) {
+        let error = match build_engine_config(&data_dir, &config_dir) {
             Ok(_) => panic!("expected invalid provider ref"),
             Err(error) => error,
         };
@@ -495,11 +552,13 @@ mod tests {
     #[test]
     fn parse_app_config_reads_provider_retry_settings() -> Result<()> {
         let config = parse_app_config(
-            "[embed]\nembedding_provider = \"openai.embed\"\nmax_retries = 2\nretry_backoff_ms = 150\n\
+            "[storage]\ndata_dir = \"memory-data\"\n\
+             [embed]\nembedding_provider = \"openai.embed\"\nmax_retries = 2\nretry_backoff_ms = 150\n\
              [extract]\nextraction_provider = \"openai.extract\"\nmax_retries = 3\nretry_backoff_ms = 250\n\
              [rerank]\nrerank_provider = \"aliyun.rerank\"\nmax_retries = 1\nretry_backoff_ms = 50\n",
         )?;
 
+        assert_eq!(config.storage.data_dir.as_deref(), Some("memory-data"));
         assert_eq!(config.embed.max_retries, Some(2));
         assert_eq!(config.embed.retry_backoff_ms, Some(150));
         assert_eq!(config.extract.max_retries, Some(3));
@@ -522,6 +581,23 @@ mod tests {
             .expect("expected openai.embed service");
         assert_eq!(embed.timeout_ms, Some(1200));
         assert_eq!(embed.max_concurrent, Some(4));
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_configured_data_dir_resolves_relative_path_against_fixed_config_dir() -> Result<()> {
+        let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        fs::create_dir_all(&config_dir)?;
+        fs::write(
+            config_dir.join("config.toml"),
+            "[storage]\ndata_dir = \"memory-data\"\n",
+        )?;
+
+        let data_dir =
+            resolve_configured_data_dir(&config_dir)?.expect("expected configured data dir");
+
+        assert_eq!(data_dir, config_dir.join("memory-data"));
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
 # Providers configuration example for the local engine.
-# Copy this file to ./.memo/providers.toml and fill in the services you want to use.
+# Copy this file to ~/.memo/providers.toml and fill in the services you want to use.
 
 [openai]
 api_key = "sk-your-openai-api-key"

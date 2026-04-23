@@ -1,5 +1,9 @@
 # Memo local engine config
 
+[storage]
+# Optional data dir override. Relative paths resolve under ~/.memo.
+# data_dir = "data"
+
 [embed]
 # Reference format: <provider>.<service>
 embedding_provider = "openai.embed"

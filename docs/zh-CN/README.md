@@ -62,8 +62,8 @@ curl -fsSL https://memo.zoran.ink/install.sh | bash
 memo awaken
 ```
 
-这会创建本地 `.memo` 数据目录，并写入 `config.toml` 与 `providers.toml` 模板。
-它还会把该数据目录记录为当前目录及其子目录默认使用的活跃记忆空间；如果只想为当前进程显式覆盖目标，可设置 `MEMO_DATA_DIR`。
+这会初始化 `~/.memo`，并把 `config.toml` 与 `providers.toml` 固定写在那里，同时准备实际使用的数据目录。
+默认数据目录也是 `~/.memo`；如果想把数据文件放到别处，可通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
 
 ### 第三步：记住并回忆
 
@@ -91,15 +91,16 @@ memo state
 
 ### 配置文件位置
 
-- **默认本地数据目录**：`./.memo`
-- **本地配置**：`./.memo/config.toml`
-- **provider 配置**：`./.memo/providers.toml`
+- **固定配置根目录**：`~/.memo`
+- **本地配置**：`~/.memo/config.toml`
+- **provider 配置**：`~/.memo/providers.toml`
+- **默认数据目录**：`~/.memo`
 
 ### 数据目录解析顺序
 
 - `MEMO_DATA_DIR`
-- 当前目录或其父目录中最近一次 `memo awaken` 选中的活跃记忆空间
-- `./.memo`
+- `~/.memo/config.toml` 中的 `storage.data_dir`
+- `~/.memo`
 
 ### 快速设置
 
@@ -108,14 +109,15 @@ memo state
 memo awaken
 ```
 
-2. 编辑 `./.memo/providers.toml`，填入 provider 凭据
+2. 编辑 `~/.memo/providers.toml`，填入 provider 凭据
 
-3. 编辑 `./.memo/config.toml`，选择 provider-backed 的 extraction、embedding 或 rerank 服务
+3. 编辑 `~/.memo/config.toml`，选择 provider-backed 的 extraction、embedding 或 rerank 服务
 
 ### 配置参数
 
 | 节 | 参数 | 必填 | 说明 | 默认值 |
 |----|------|:----:|------|--------|
+| `[storage]` | `data_dir` | ❌ | 在保持配置文件固定于 `~/.memo` 的前提下覆盖数据目录 | `~/.memo` |
 | `[embed]` | `embedding_provider` | ❌ | Embedding 服务引用，例如 `openai.embed` | - |
 | `[embed]` | `duplicate_threshold` | ❌ | 重复检测阈值（0-1） | `0.85` |
 | `[embed]` | `max_retries` | ❌ | 可重试 embedding 失败时的重试次数 | `0` |

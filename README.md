@@ -62,8 +62,8 @@ curl -fsSL https://memo.zoran.ink/install.sh | bash
 memo awaken
 ```
 
-This creates a local `.memo` data directory with `config.toml` and `providers.toml` templates.
-It also records that data directory as the active workspace memory store for the current directory and any descendant directory. Set `MEMO_DATA_DIR` when you need to override that target explicitly for the current process.
+This initializes `~/.memo`, keeps `config.toml` and `providers.toml` there, and prepares the active data directory.
+By default the data directory is also `~/.memo`. Set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` when you need to move the data files elsewhere.
 
 ### Step 3: Remember and Recall
 
@@ -91,15 +91,16 @@ memo state
 
 ### Config File Locations
 
-- **Default local data dir**: `./.memo`
-- **Local config**: `./.memo/config.toml`
-- **Providers config**: `./.memo/providers.toml`
+- **Fixed config root**: `~/.memo`
+- **Local config**: `~/.memo/config.toml`
+- **Providers config**: `~/.memo/providers.toml`
+- **Default data dir**: `~/.memo`
 
 ### Data Dir Resolution
 
 - `MEMO_DATA_DIR`
-- nearest active workspace selected by `memo awaken` in the current directory or one of its ancestors
-- `./.memo`
+- `storage.data_dir` from `~/.memo/config.toml`
+- `~/.memo`
 
 ### Quick Setup
 
@@ -108,14 +109,15 @@ memo state
 memo awaken
 ```
 
-2. Edit `./.memo/providers.toml` with your provider credentials
+2. Edit `~/.memo/providers.toml` with your provider credentials
 
-3. Edit `./.memo/config.toml` to choose provider-backed extraction, embedding, or rerank services
+3. Edit `~/.memo/config.toml` to choose provider-backed extraction, embedding, or rerank services
 
 ### Configuration Parameters
 
 | Section | Parameter | Required | Description | Default |
 |---------|-----------|:--------:|-------------|---------|
+| `[storage]` | `data_dir` | ❌ | Override the data directory while keeping config files under `~/.memo` | `~/.memo` |
 | `[embed]` | `embedding_provider` | ❌ | Embedding service reference (for example `openai.embed`) | - |
 | `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
 | `[embed]` | `max_retries` | ❌ | Retry count for retryable embedding failures | `0` |

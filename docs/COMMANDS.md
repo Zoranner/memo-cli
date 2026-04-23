@@ -25,7 +25,7 @@ Initialize the data directory and write template config files.
 ### Syntax
 
 ```bash
-memo awaken [path]
+memo awaken
 ```
 
 ### Output
@@ -33,13 +33,15 @@ memo awaken [path]
 Prints a human-readable summary with:
 
 - awaken target directory
+- fixed config directory
 - whether `config.toml` was created or kept
 - whether `providers.toml` was created or kept
 
 ### Notes
 
-- `memo awaken [path]` also marks that directory as the active workspace memory store for later commands run from that directory or any descendant directory
-- set `MEMO_DATA_DIR` to override the active workspace target explicitly for the current process
+- `memo awaken` always keeps `config.toml` and `providers.toml` under `~/.memo`
+- by default the data directory is `~/.memo`
+- set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` to override the data directory
 
 ---
 
@@ -68,7 +70,7 @@ memo remember <content> [OPTIONS]
 - `--dry-run` prints the final remember payload before writing
 - default `memo remember` writes only manual entities and facts immediately
 - `--dry-run` may include provider-backed extraction when the user has explicitly configured an extraction provider
-- by default commands use the nearest active workspace memory store chosen by the latest `memo awaken` in the current directory or one of its ancestors; `MEMO_DATA_DIR` overrides it
+- by default commands use `~/.memo`; `MEMO_DATA_DIR` overrides `storage.data_dir`, and `storage.data_dir` overrides the default
 
 ---
 

@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -20,10 +17,9 @@ mod lmkit_rerank_adapter;
 mod provider_runtime;
 mod provider_status;
 
-const ACTIVE_DATA_DIR_FILE: &str = ".memo-home";
 const MEMO_DATA_DIR_ENV: &str = "MEMO_DATA_DIR";
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(name = "memo")]
 #[command(about = "Local single-process memory engine")]
 struct Cli {
@@ -33,9 +29,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    Awaken {
-        path: Option<PathBuf>,
-    },
+    Awaken,
     Remember {
         content: String,
         #[arg(long = "time")]
@@ -93,12 +87,11 @@ fn main() -> Result<()> {
     let Cli { command } = Cli::parse();
 
     match command {
-        Command::Awaken { path } => {
-            let cwd = std::env::current_dir()?;
-            let data_dir = path.unwrap_or_else(default_data_dir);
-            let report = app_config::initialize_data_dir(&data_dir)?;
-            remember_active_data_dir_for_cwd(&cwd, &data_dir)?;
-            println!("{}", render_awaken_result(&data_dir, &report));
+        Command::Awaken => {
+            let config_dir = default_config_dir()?;
+            let data_dir = resolve_data_dir_for_config_dir(&config_dir)?;
+            let report = app_config::initialize_app_home(&config_dir, &data_dir)?;
+            println!("{}", render_awaken_result(&data_dir, &config_dir, &report));
         }
         Command::Remember {
             content,
@@ -181,55 +174,66 @@ fn open_engine() -> Result<MemoryEngine> {
 }
 
 fn open_engine_with_data_dir() -> Result<(MemoryEngine, PathBuf)> {
-    let cwd = std::env::current_dir()?;
-    let data_dir = resolve_data_dir_for_cwd(&cwd)?;
-    let config = app_config::build_engine_config(&data_dir)?;
+    let config_dir = default_config_dir()?;
+    let data_dir = resolve_data_dir_for_config_dir(&config_dir)?;
+    let config = app_config::build_engine_config(&data_dir, &config_dir)?;
     Ok((MemoryEngine::open(config)?, data_dir))
 }
 
-fn default_data_dir() -> PathBuf {
-    PathBuf::from(".memo")
+fn default_config_dir() -> Result<PathBuf> {
+    Ok(user_home_dir()?.join(".memo"))
 }
 
-fn resolve_data_dir_for_cwd(cwd: &Path) -> Result<PathBuf> {
+fn resolve_data_dir_for_config_dir(config_dir: &Path) -> Result<PathBuf> {
     if let Some(value) = std::env::var_os(MEMO_DATA_DIR_ENV) {
-        return Ok(resolve_relative_to_cwd(cwd, Path::new(&value)));
+        return Ok(resolve_relative_to_dir(config_dir, Path::new(&value)));
     }
 
-    for dir in cwd.ancestors() {
-        let active_path = dir.join(ACTIVE_DATA_DIR_FILE);
-        if active_path.exists() {
-            let raw = fs::read_to_string(&active_path)?;
-            let configured = PathBuf::from(raw.trim());
-            if !configured.as_os_str().is_empty() {
-                return Ok(resolve_relative_to_cwd(dir, &configured));
-            }
+    if let Some(data_dir) = app_config::resolve_configured_data_dir(config_dir)? {
+        return Ok(data_dir);
+    }
+
+    Ok(config_dir.to_path_buf())
+}
+
+fn user_home_dir() -> Result<PathBuf> {
+    if let Some(value) = std::env::var_os("HOME").filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(value));
+    }
+
+    if let Some(value) = std::env::var_os("USERPROFILE").filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(value));
+    }
+
+    if let (Some(drive), Some(path)) = (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH"))
+    {
+        let mut home = PathBuf::from(drive);
+        home.push(path);
+        if !home.as_os_str().is_empty() {
+            return Ok(home);
         }
     }
 
-    Ok(cwd.join(default_data_dir()))
+    anyhow::bail!("failed to determine user home directory")
 }
 
-fn remember_active_data_dir_for_cwd(cwd: &Path, data_dir: &Path) -> Result<()> {
-    fs::write(
-        cwd.join(ACTIVE_DATA_DIR_FILE),
-        data_dir.to_string_lossy().as_ref(),
-    )?;
-    Ok(())
-}
-
-fn resolve_relative_to_cwd(cwd: &Path, path: &Path) -> PathBuf {
+fn resolve_relative_to_dir(base_dir: &Path, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        cwd.join(path)
+        base_dir.join(path)
     }
 }
 
-fn render_awaken_result(data_dir: &Path, report: &app_config::InitReport) -> String {
+fn render_awaken_result(
+    data_dir: &Path,
+    config_dir: &Path,
+    report: &app_config::InitReport,
+) -> String {
     format!(
-        "Awakened memory space at {}\nconfig.toml: {}\nproviders.toml: {}",
+        "Awakened memory space at {}\nconfig_dir: {}\nconfig.toml: {}\nproviders.toml: {}",
         data_dir.display(),
+        config_dir.display(),
         created_label(report.config_created),
         created_label(report.providers_created),
     )
@@ -645,14 +649,14 @@ fn parse_recorded_at(raw: Option<&str>) -> Result<Option<DateTime<Utc>>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::fs;
 
     use chrono::{TimeZone, Utc};
     use tempfile::TempDir;
 
     use super::{
-        remember_active_data_dir_for_cwd, render_dream_report, render_recall_result,
-        render_reflection, render_state, resolve_data_dir_for_cwd, Cli, Command,
+        render_dream_report, render_recall_result, render_reflection, render_state,
+        resolve_data_dir_for_config_dir, Cli, Command,
     };
     use crate::provider_status::{
         ProviderCapabilityStatus, ProviderHealth, ProviderRuntimeSummary,
@@ -664,18 +668,21 @@ mod tests {
     };
 
     #[test]
-    fn cli_parses_awaken_with_optional_path() {
-        let cli = Cli::parse_from(["memo", "awaken", ".memo-test"]);
+    fn cli_parses_awaken_without_path_argument() {
+        let cli = Cli::parse_from(["memo", "awaken"]);
 
         match cli.command {
-            Command::Awaken { path } => {
-                assert_eq!(
-                    path.expect("expected path"),
-                    std::path::PathBuf::from(".memo-test")
-                );
-            }
+            Command::Awaken => {}
             _ => panic!("expected awaken command"),
         }
+    }
+
+    #[test]
+    fn cli_rejects_custom_awaken_path_argument() {
+        let error = Cli::try_parse_from(["memo", "awaken", ".memo-test"])
+            .expect_err("expected awaken path argument to be rejected");
+
+        assert!(error.to_string().contains("unexpected argument"));
     }
 
     #[test]
@@ -750,81 +757,51 @@ mod tests {
     }
 
     #[test]
-    fn resolve_data_dir_defaults_to_workspace_memo_dir() -> anyhow::Result<()> {
+    fn resolve_data_dir_defaults_to_user_config_dir() -> anyhow::Result<()> {
         let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
 
-        let resolved = resolve_data_dir_for_cwd(temp.path())?;
+        let resolved = resolve_data_dir_for_config_dir(&config_dir)?;
 
-        assert_eq!(resolved, temp.path().join(".memo"));
+        assert_eq!(resolved, config_dir);
         Ok(())
     }
 
     #[test]
-    fn resolve_data_dir_uses_workspace_active_file() -> anyhow::Result<()> {
+    fn resolve_data_dir_uses_configured_data_dir_from_fixed_config_root() -> anyhow::Result<()> {
         let temp = TempDir::new()?;
-        remember_active_data_dir_for_cwd(temp.path(), Path::new("custom-store"))?;
+        let config_dir = temp.path().join(".memo");
+        fs::create_dir_all(&config_dir)?;
+        fs::write(
+            config_dir.join("config.toml"),
+            "[storage]\ndata_dir = \"memory-data\"\n",
+        )?;
 
-        let resolved = resolve_data_dir_for_cwd(temp.path())?;
+        let resolved = resolve_data_dir_for_config_dir(&config_dir)?;
 
-        assert_eq!(resolved, temp.path().join("custom-store"));
+        assert_eq!(resolved, config_dir.join("memory-data"));
         Ok(())
     }
 
     #[test]
-    fn resolve_data_dir_walks_up_to_parent_workspace_active_file() -> anyhow::Result<()> {
+    fn resolve_data_dir_prefers_environment_override_over_config() -> anyhow::Result<()> {
         let temp = TempDir::new()?;
-        let child = temp.path().join("notes").join("daily");
-        fs::create_dir_all(&child)?;
-        remember_active_data_dir_for_cwd(temp.path(), Path::new("workspace-store"))?;
-
-        let resolved = resolve_data_dir_for_cwd(&child)?;
-
-        assert_eq!(resolved, temp.path().join("workspace-store"));
-        Ok(())
-    }
-
-    #[test]
-    fn resolve_data_dir_prefers_nearest_parent_active_file() -> anyhow::Result<()> {
-        let temp = TempDir::new()?;
-        let team = temp.path().join("team");
-        let child = team.join("notes").join("daily");
-        fs::create_dir_all(&child)?;
-        remember_active_data_dir_for_cwd(temp.path(), Path::new("workspace-store"))?;
-        remember_active_data_dir_for_cwd(&team, Path::new("team-store"))?;
-
-        let resolved = resolve_data_dir_for_cwd(&child)?;
-
-        assert_eq!(resolved, team.join("team-store"));
-        Ok(())
-    }
-
-    #[test]
-    fn resolve_data_dir_prefers_environment_override() -> anyhow::Result<()> {
-        let temp = TempDir::new()?;
-        let override_path = temp.path().join("env-store");
-        remember_active_data_dir_for_cwd(temp.path(), Path::new("custom-store"))?;
+        let config_dir = temp.path().join(".memo");
+        fs::create_dir_all(&config_dir)?;
+        fs::write(
+            config_dir.join("config.toml"),
+            "[storage]\ndata_dir = \"memory-data\"\n",
+        )?;
         unsafe {
-            std::env::set_var("MEMO_DATA_DIR", override_path.as_os_str());
+            std::env::set_var("MEMO_DATA_DIR", "env-store");
         }
 
-        let resolved = resolve_data_dir_for_cwd(temp.path())?;
+        let resolved = resolve_data_dir_for_config_dir(&config_dir)?;
 
         unsafe {
             std::env::remove_var("MEMO_DATA_DIR");
         }
-        assert_eq!(resolved, override_path);
-        Ok(())
-    }
-
-    #[test]
-    fn remember_active_data_dir_overwrites_previous_workspace_target() -> anyhow::Result<()> {
-        let temp = TempDir::new()?;
-        remember_active_data_dir_for_cwd(temp.path(), Path::new(".memo"))?;
-        remember_active_data_dir_for_cwd(temp.path(), Path::new("custom-store"))?;
-
-        let active = fs::read_to_string(temp.path().join(".memo-home"))?;
-
-        assert_eq!(active.trim(), "custom-store");
+        assert_eq!(resolved, config_dir.join("env-store"));
         Ok(())
     }
 
