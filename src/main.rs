@@ -18,6 +18,7 @@ mod lmkit_adapter;
 mod lmkit_extraction_adapter;
 mod lmkit_rerank_adapter;
 mod provider_runtime;
+mod provider_status;
 
 const ACTIVE_DATA_DIR_FILE: &str = ".memo-home";
 const MEMO_DATA_DIR_ENV: &str = "MEMO_DATA_DIR";
@@ -156,9 +157,10 @@ fn main() -> Result<()> {
             println!("{}", render_dream_report(&report, full, json)?);
         }
         Command::State { json } => {
-            let engine = open_engine()?;
+            let (engine, data_dir) = open_engine_with_data_dir()?;
             let state = engine.state()?;
-            println!("{}", render_state(&state, json)?);
+            let provider_runtime = provider_status::load_provider_runtime_summary(&data_dir);
+            println!("{}", render_state(&state, &provider_runtime, json)?);
         }
         Command::Restore { full, json } => {
             let engine = open_engine()?;
@@ -175,10 +177,14 @@ fn main() -> Result<()> {
 }
 
 fn open_engine() -> Result<MemoryEngine> {
+    Ok(open_engine_with_data_dir()?.0)
+}
+
+fn open_engine_with_data_dir() -> Result<(MemoryEngine, PathBuf)> {
     let cwd = std::env::current_dir()?;
     let data_dir = resolve_data_dir_for_cwd(&cwd)?;
-    let config = app_config::build_engine_config(data_dir)?;
-    MemoryEngine::open(config)
+    let config = app_config::build_engine_config(&data_dir)?;
+    Ok((MemoryEngine::open(config)?, data_dir))
 }
 
 fn default_data_dir() -> PathBuf {
@@ -413,13 +419,24 @@ fn render_dream_report(report: &DreamReport, full: bool, json: bool) -> Result<S
     ))
 }
 
-fn render_state(state: &SystemState, json: bool) -> Result<String> {
+fn render_state(
+    state: &SystemState,
+    provider_runtime: &provider_status::ProviderRuntimeSummary,
+    json: bool,
+) -> Result<String> {
     if json {
-        return render_json_or_text(state, "", true);
+        return render_json_or_text(
+            &serde_json::json!({
+                "state": state,
+                "provider_runtime": provider_runtime,
+            }),
+            "",
+            true,
+        );
     }
 
     Ok(format!(
-        "State\nrecords: episodes={} entities={} facts={} edges={}\nlayers: l1={} l2={} l3={} archived={} invalidated={}\nl3_cached: {}\ntext_index: {}\nvector_index: {}",
+        "State\nrecords: episodes={} entities={} facts={} edges={}\nlayers: l1={} l2={} l3={} archived={} invalidated={}\nl3_cached: {}\ntext_index: {}\nvector_index: {}\nprovider_runtime: {}",
         state.episode_count,
         state.entity_count,
         state.fact_count,
@@ -432,6 +449,7 @@ fn render_state(state: &SystemState, json: bool) -> Result<String> {
         state.l3_cached,
         index_summary(&state.text_index),
         index_summary(&state.vector_index),
+        provider_runtime_summary(provider_runtime),
     ))
 }
 
@@ -524,6 +542,38 @@ fn index_summary(index: &IndexStatus) -> String {
     segments.join(" ")
 }
 
+fn provider_runtime_summary(summary: &provider_status::ProviderRuntimeSummary) -> String {
+    if let Some(read_error) = summary.read_error.as_deref() {
+        return format!("unavailable detail={read_error}");
+    }
+
+    if summary.statuses.is_empty() {
+        return "idle".to_string();
+    }
+
+    summary
+        .statuses
+        .iter()
+        .map(|status| {
+            let mut segments = vec![
+                format!("{}={}", status.capability, status.status.as_str()),
+                format!("provider={}", status.provider_ref),
+            ];
+            if status.consecutive_failures > 0 {
+                segments.push(format!(
+                    "consecutive_failures={}",
+                    status.consecutive_failures
+                ));
+            }
+            if let Some(last_error) = status.last_error.as_deref() {
+                segments.push(format!("last_error={last_error}"));
+            }
+            segments.join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 fn parse_entities(raw: &[String]) -> Result<Vec<EntityInput>> {
     raw.iter()
         .map(|item| {
@@ -603,6 +653,9 @@ mod tests {
     use super::{
         remember_active_data_dir_for_cwd, render_dream_report, render_recall_result,
         render_reflection, render_state, resolve_data_dir_for_cwd, Cli, Command,
+    };
+    use crate::provider_status::{
+        ProviderCapabilityStatus, ProviderHealth, ProviderRuntimeSummary,
     };
     use clap::Parser;
     use memo_engine::{
@@ -789,6 +842,17 @@ mod tests {
                     last_error: Some("vector dimension mismatch".to_string()),
                 },
             },
+            &ProviderRuntimeSummary {
+                statuses: vec![ProviderCapabilityStatus {
+                    capability: "embedding".to_string(),
+                    provider_ref: "openai.embed".to_string(),
+                    status: ProviderHealth::Degraded,
+                    consecutive_failures: 2,
+                    last_error: Some("rate limit".to_string()),
+                    updated_at: Utc.with_ymd_and_hms(2026, 4, 23, 8, 0, 0).unwrap(),
+                }],
+                read_error: None,
+            },
             false,
         )
         .expect("expected human state output");
@@ -799,6 +863,9 @@ mod tests {
         assert!(output.contains("failed_updates=2"));
         assert!(output.contains("failed_attempts_max=3"));
         assert!(output.contains("last_error=vector dimension mismatch"));
+        assert!(output.contains("provider_runtime: embedding=degraded"));
+        assert!(output.contains("consecutive_failures=2"));
+        assert!(output.contains("last_error=rate limit"));
         assert!(!output.contains("dream_jobs"));
     }
 
@@ -906,6 +973,7 @@ mod tests {
                 },
                 ..Default::default()
             },
+            &ProviderRuntimeSummary::default(),
             true,
         )
         .expect("expected json state output");
@@ -913,8 +981,12 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(&output).expect("expected valid json output");
         assert!(parsed.get("dream_jobs").is_none());
-        assert_eq!(parsed["layers"]["l1"], 0);
-        assert_eq!(parsed["layers"]["archived"], 0);
+        assert_eq!(parsed["state"]["layers"]["l1"], 0);
+        assert_eq!(parsed["state"]["layers"]["archived"], 0);
+        assert!(parsed["provider_runtime"]["statuses"]
+            .as_array()
+            .expect("expected provider_runtime statuses array")
+            .is_empty());
     }
 
     #[test]

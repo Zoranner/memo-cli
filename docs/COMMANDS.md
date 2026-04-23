@@ -141,6 +141,7 @@ memo state [--json]
 - episode / entity / fact / edge counts
 - layer and cache status
 - derived index health
+- provider runtime health, including the latest degraded capability summary when fallback paths were used
 - maintenance status
 
 ---

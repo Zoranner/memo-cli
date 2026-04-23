@@ -141,6 +141,7 @@ memo state [--json]
 - episode / entity / fact / edge 数量
 - layer 与 cache 状态
 - 派生索引健康度
+- provider 运行态健康度，包括走过降级路径时最近一次失败摘要
 - 维护状态
 
 ---

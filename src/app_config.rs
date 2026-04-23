@@ -17,6 +17,7 @@ use crate::provider_runtime::{
     ProviderRetryPolicy, RetryingEmbeddingProvider, RetryingExtractionProvider,
     RetryingRerankProvider,
 };
+use crate::provider_status::ProviderRuntimeRecorder;
 
 const CONFIG_TEMPLATE: &str = include_str!("templates/config.toml");
 const PROVIDERS_TEMPLATE: &str = include_str!("templates/providers.toml");
@@ -76,6 +77,7 @@ pub(crate) struct InitReport {
 pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<EngineConfig> {
     let data_dir = data_dir.into();
     let mut engine_config = EngineConfig::new(&data_dir);
+    let provider_runtime = ProviderRuntimeRecorder::new(&data_dir);
     let config_path = data_dir.join("config.toml");
 
     if !config_path.exists() {
@@ -98,6 +100,7 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
                 file_config.embed.max_retries,
                 file_config.embed.retry_backoff_ms,
             ),
+            provider_runtime.clone(),
         );
         engine_config = engine_config.with_embedding_provider(Arc::new(adapter));
     }
@@ -114,6 +117,7 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
                 file_config.extract.max_retries,
                 file_config.extract.retry_backoff_ms,
             ),
+            provider_runtime.clone(),
         );
         engine_config = engine_config.with_extraction_provider(Arc::new(adapter));
     }
@@ -127,6 +131,7 @@ pub(crate) fn build_engine_config(data_dir: impl Into<PathBuf>) -> Result<Engine
                 file_config.rerank.max_retries,
                 file_config.rerank.retry_backoff_ms,
             ),
+            provider_runtime,
         );
         engine_config = engine_config.with_rerank_provider(Arc::new(adapter));
     }
