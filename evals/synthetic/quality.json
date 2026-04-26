@@ -1,0 +1,210 @@
+{
+  "name": "basic synthetic recall",
+  "memories": [
+    {
+      "id": "alice-profile",
+      "content": "Alice is also known as Ally.",
+      "entities": [
+        {
+          "entity_type": "person",
+          "name": "Alice",
+          "aliases": ["Ally"]
+        }
+      ],
+      "facts": []
+    },
+    {
+      "id": "alice-paris",
+      "content": "Alice lives in Paris.",
+      "entities": [],
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "Paris"
+        }
+      ]
+    },
+    {
+      "id": "alice-paris-old-a",
+      "content": "Alice lived in Paris in 2024.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "Paris",
+          "confidence": 0.7
+        }
+      ],
+      "session_id": "alice-old-a",
+      "recorded_at": "2026-04-20T09:00:00Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "alice-paris-old-b",
+      "content": "Alice still used the Paris address in 2024.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "Paris",
+          "confidence": 0.72
+        }
+      ],
+      "session_id": "alice-old-b",
+      "recorded_at": "2026-04-21T09:00:00Z",
+      "confidence": 0.72
+    },
+    {
+      "id": "alice-london-new-a",
+      "content": "Alice moved to London in 2026.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "London",
+          "confidence": 0.96
+        }
+      ],
+      "session_id": "alice-new-a",
+      "recorded_at": "2026-04-22T09:00:00Z",
+      "confidence": 0.96
+    },
+    {
+      "id": "alice-london-new-b",
+      "content": "Alice confirmed London is her current home.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "London",
+          "confidence": 0.97
+        }
+      ],
+      "session_id": "alice-new-b",
+      "recorded_at": "2026-04-23T09:00:00Z",
+      "confidence": 0.97
+    },
+    {
+      "id": "aurora-release",
+      "content": "Project Aurora ships the offline memory evaluator on Friday.",
+      "entities": [
+        {
+          "entity_type": "project",
+          "name": "Project Aurora",
+          "aliases": ["Aurora"]
+        }
+      ],
+      "facts": []
+    },
+    {
+      "id": "riverbank-drones",
+      "content": "Riverbank Robotics builds warehouse drones.",
+      "entities": [
+        {
+          "entity_type": "organization",
+          "name": "Riverbank Robotics",
+          "aliases": ["Riverbank"]
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Riverbank Robotics",
+          "predicate": "builds",
+          "object": "warehouse drones"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "alias-alice",
+      "aspect": "alias",
+      "query": "Ally",
+      "expected_memory_ids": ["alice-profile"],
+      "limit": 5,
+      "deep": false,
+      "should_abstain": false
+    },
+    {
+      "id": "exact-aurora",
+      "aspect": "exact",
+      "query": "offline memory evaluator Friday",
+      "expected_memory_ids": ["aurora-release"],
+      "limit": 5,
+      "deep": false,
+      "should_abstain": false
+    },
+    {
+      "id": "direct-fact-alice",
+      "aspect": "fact_graph",
+      "query": "Alice Paris",
+      "expected_memory_ids": ["alice-paris"],
+      "limit": 5,
+      "deep": false,
+      "should_abstain": false
+    },
+    {
+      "id": "bm25-riverbank",
+      "aspect": "keyword_bm25",
+      "query": "warehouse drones",
+      "expected_memory_ids": ["riverbank-drones"],
+      "limit": 5,
+      "deep": false,
+      "should_abstain": false
+    },
+    {
+      "id": "temporal-current-london",
+      "aspect": "temporal_update",
+      "query": "Alice current home London",
+      "expected_memory_ids": ["alice-london-new-b", "alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris", "alice-paris-old-a", "alice-paris-old-b"],
+      "limit": 5,
+      "deep": true,
+      "should_abstain": false,
+      "dream_before_recall": true
+    },
+    {
+      "id": "conflict-current-home",
+      "aspect": "conflict_invalidation",
+      "query": "Alice current home",
+      "expected_memory_ids": ["alice-london-new-b", "alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris", "alice-paris-old-a", "alice-paris-old-b"],
+      "limit": 5,
+      "deep": true,
+      "should_abstain": false,
+      "dream_before_recall": true
+    },
+    {
+      "id": "dream-stabilized-london",
+      "aspect": "dream_before_after",
+      "query": "Alice lives in London stable memory",
+      "expected_memory_ids": ["alice-london-new-b", "alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris", "alice-paris-old-a", "alice-paris-old-b"],
+      "limit": 5,
+      "deep": true,
+      "should_abstain": false,
+      "dream_before_recall": true
+    },
+    {
+      "id": "deep-current-location",
+      "aspect": "deep_recall",
+      "query": "Where is Alice currently based?",
+      "expected_memory_ids": ["alice-london-new-b", "alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris", "alice-paris-old-a", "alice-paris-old-b"],
+      "limit": 5,
+      "deep": true,
+      "should_abstain": false,
+      "dream_before_recall": true
+    },
+    {
+      "id": "unknown-bob",
+      "aspect": "abstention",
+      "query": "Bob deployment target",
+      "expected_memory_ids": [],
+      "limit": 5,
+      "deep": false,
+      "should_abstain": true
+    }
+  ]
+}

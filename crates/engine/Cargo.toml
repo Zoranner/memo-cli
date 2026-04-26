@@ -17,4 +17,17 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+criterion = "0.5"
 tempfile = "3"
+
+[[bench]]
+name = "recall_latency"
+harness = false
+
+[[bench]]
+name = "recall_quality"
+harness = false
+
+[[bench]]
+name = "recall_eval"
+harness = false

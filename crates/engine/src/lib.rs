@@ -1,5 +1,6 @@
 mod db;
 mod engine;
+pub mod eval;
 mod model;
 mod text_index;
 mod types;

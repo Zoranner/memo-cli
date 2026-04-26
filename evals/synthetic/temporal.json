@@ -1,0 +1,47 @@
+{
+  "name": "temporal synthetic recall",
+  "memories": [
+    {
+      "id": "alice-paris-old",
+      "content": "Alice lived in Paris in 2024.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "Paris",
+          "confidence": 0.7
+        }
+      ],
+      "session_id": "alice-old",
+      "recorded_at": "2026-04-20T09:00:00Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "alice-london-current",
+      "content": "Alice confirmed London is her current home.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "London",
+          "confidence": 0.97
+        }
+      ],
+      "session_id": "alice-new",
+      "recorded_at": "2026-04-23T09:00:00Z",
+      "confidence": 0.97
+    }
+  ],
+  "cases": [
+    {
+      "id": "alice-current-home",
+      "aspect": "temporal_update",
+      "query": "Where is Alice currently based?",
+      "expected_memory_ids": ["alice-london-current"],
+      "forbidden_memory_ids": ["alice-paris-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    }
+  ]
+}

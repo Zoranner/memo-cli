@@ -1,0 +1,43 @@
+{
+  "name": "smoke synthetic recall",
+  "memories": [
+    {
+      "id": "alice-profile",
+      "content": "Alice is also known as Ally.",
+      "entities": [
+        {
+          "entity_type": "person",
+          "name": "Alice",
+          "aliases": ["Ally"]
+        }
+      ]
+    },
+    {
+      "id": "aurora-release",
+      "content": "Project Aurora ships the offline memory evaluator on Friday."
+    }
+  ],
+  "cases": [
+    {
+      "id": "alias-alice",
+      "aspect": "alias",
+      "query": "Ally",
+      "expected_memory_ids": ["alice-profile"],
+      "limit": 5
+    },
+    {
+      "id": "exact-aurora",
+      "aspect": "exact",
+      "query": "offline memory evaluator Friday",
+      "expected_memory_ids": ["aurora-release"],
+      "limit": 5
+    },
+    {
+      "id": "unknown-bob",
+      "aspect": "abstention",
+      "query": "Bob deployment target",
+      "should_abstain": true,
+      "limit": 5
+    }
+  ]
+}

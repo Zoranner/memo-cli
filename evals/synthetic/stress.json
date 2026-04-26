@@ -1,0 +1,54 @@
+{
+  "name": "stress synthetic recall",
+  "memories": [
+    {
+      "id": "riverbank-drones",
+      "content": "Riverbank Robotics builds warehouse drones.",
+      "entities": [
+        {
+          "entity_type": "organization",
+          "name": "Riverbank Robotics",
+          "aliases": ["Riverbank"]
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Riverbank Robotics",
+          "predicate": "builds",
+          "object": "warehouse drones"
+        }
+      ]
+    },
+    {
+      "id": "riverbank-noise-a",
+      "content": "Riverbank Cafe changed the warehouse seating layout."
+    },
+    {
+      "id": "riverbank-noise-b",
+      "content": "The Riverbank trail uses small survey drones for mapping."
+    },
+    {
+      "id": "aurora-noise",
+      "content": "Aurora Station stores archived maintenance notes."
+    },
+    {
+      "id": "atlas-noise",
+      "content": "Project Atlas benchmarks payroll import latency."
+    },
+    {
+      "id": "harbor-noise",
+      "content": "Harbor Labs evaluates offline sync for field reports."
+    }
+  ],
+  "cases": [
+    {
+      "id": "riverbank-target-with-noise",
+      "aspect": "stress_noise",
+      "query": "Which company builds warehouse drones?",
+      "expected_memory_ids": ["riverbank-drones"],
+      "forbidden_memory_ids": ["riverbank-noise-a", "riverbank-noise-b"],
+      "limit": 5,
+      "deep": true
+    }
+  ]
+}

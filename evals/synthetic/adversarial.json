@@ -1,0 +1,42 @@
+{
+  "name": "adversarial synthetic recall",
+  "memories": [
+    {
+      "id": "alice-london",
+      "content": "Alice Morgan works from London.",
+      "entities": [
+        {
+          "entity_type": "person",
+          "name": "Alice Morgan",
+          "aliases": ["Alice"]
+        }
+      ]
+    },
+    {
+      "id": "alyce-berlin",
+      "content": "Alyce Morgan works from Berlin.",
+      "entities": [
+        {
+          "entity_type": "person",
+          "name": "Alyce Morgan",
+          "aliases": ["Alyce"]
+        }
+      ]
+    },
+    {
+      "id": "alice-negation",
+      "content": "Alice Morgan is not assigned to Berlin."
+    }
+  ],
+  "cases": [
+    {
+      "id": "similar-name-alice",
+      "aspect": "adversarial_alias",
+      "query": "Where does Alice Morgan work?",
+      "expected_memory_ids": ["alice-london"],
+      "forbidden_memory_ids": ["alyce-berlin", "alice-negation"],
+      "limit": 5,
+      "deep": true
+    }
+  ]
+}
