@@ -28,6 +28,14 @@
       "content": "The Riverbank trail uses small survey drones for mapping."
     },
     {
+      "id": "riverbank-noise-c",
+      "content": "A riverbank erosion study documented warehouse flood risks."
+    },
+    {
+      "id": "riverbank-noise-d",
+      "content": "Riverbank Partners manages warehouse leasing contracts."
+    },
+    {
       "id": "aurora-noise",
       "content": "Aurora Station stores archived maintenance notes."
     },
@@ -38,6 +46,14 @@
     {
       "id": "harbor-noise",
       "content": "Harbor Labs evaluates offline sync for field reports."
+    },
+    {
+      "id": "drone-noise-a",
+      "content": "Drone photography services are available for real estate."
+    },
+    {
+      "id": "drone-noise-b",
+      "content": "The drone racing league holds weekly competitions."
     }
   ],
   "cases": [
@@ -46,9 +62,26 @@
       "aspect": "stress_noise",
       "query": "Which company builds warehouse drones?",
       "expected_memory_ids": ["riverbank-drones"],
-      "forbidden_memory_ids": ["riverbank-noise-a", "riverbank-noise-b"],
+      "forbidden_memory_ids": ["riverbank-noise-a", "riverbank-noise-b", "riverbank-noise-c", "riverbank-noise-d"],
       "limit": 5,
       "deep": true
+    },
+    {
+      "id": "aurora-target-with-noise",
+      "aspect": "stress_noise",
+      "query": "Riverbank Robotics drone manufacturing",
+      "expected_memory_ids": ["riverbank-drones"],
+      "forbidden_memory_ids": ["aurora-noise", "atlas-noise", "harbor-noise"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "drone-keyword-disambiguation",
+      "aspect": "stress_noise",
+      "query": "warehouse drones Riverbank",
+      "expected_memory_ids": ["riverbank-drones"],
+      "forbidden_memory_ids": ["drone-noise-a", "drone-noise-b"],
+      "limit": 5
     }
   ]
 }

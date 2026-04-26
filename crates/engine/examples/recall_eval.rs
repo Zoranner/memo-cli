@@ -76,7 +76,6 @@ impl Args {
 
         while let Some(arg) = args.next() {
             match arg.as_str() {
-                "--bench" => {}
                 "--json" => json = true,
                 "--output" => {
                     let Some(path) = args.next() else {
@@ -112,7 +111,7 @@ impl Args {
 
 fn print_usage() {
     eprintln!(
-        "Usage: cargo bench -p memo-engine --bench recall_eval -- [dataset.json] [--json] [--output <report.json>] [--compare <baseline.json>]"
+        "Usage: cargo run -p memo-engine --example recall_eval -- [dataset.json] [--json] [--output <report.json>] [--compare <baseline.json>]"
     );
     eprintln!("Defaults: dataset={DEFAULT_DATASET_PATH} output={DEFAULT_OUTPUT_PATH}");
 }

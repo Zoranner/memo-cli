@@ -28,6 +28,6 @@ harness = false
 name = "recall_quality"
 harness = false
 
-[[bench]]
+[[example]]
 name = "recall_eval"
-harness = false
+path = "examples/recall_eval.rs"

@@ -2,7 +2,7 @@
   "name": "adversarial synthetic recall",
   "memories": [
     {
-      "id": "alice-london",
+      "id": "alice-morgan-london",
       "content": "Alice Morgan works from London.",
       "entities": [
         {
@@ -13,7 +13,7 @@
       ]
     },
     {
-      "id": "alyce-berlin",
+      "id": "alyce-morgan-berlin",
       "content": "Alyce Morgan works from Berlin.",
       "entities": [
         {
@@ -26,6 +26,100 @@
     {
       "id": "alice-negation",
       "content": "Alice Morgan is not assigned to Berlin."
+    },
+    {
+      "id": "bob-engineer-alpha",
+      "content": "Bob Chen is the lead engineer on Project Alpha.",
+      "entities": [
+        {
+          "entity_type": "person",
+          "name": "Bob Chen",
+          "aliases": ["Bob"]
+        },
+        {
+          "entity_type": "project",
+          "name": "Project Alpha",
+          "aliases": ["Alpha"]
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Bob Chen",
+          "predicate": "role",
+          "object": "lead engineer on Project Alpha"
+        }
+      ]
+    },
+    {
+      "id": "bob-analyst-beta",
+      "content": "Bob Williams is the data analyst on Project Beta.",
+      "entities": [
+        {
+          "entity_type": "person",
+          "name": "Bob Williams",
+          "aliases": ["Bobby"]
+        },
+        {
+          "entity_type": "project",
+          "name": "Project Beta",
+          "aliases": ["Beta"]
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Bob Williams",
+          "predicate": "role",
+          "object": "data analyst on Project Beta"
+        }
+      ]
+    },
+    {
+      "id": "delta-server-status",
+      "content": "Delta server is currently operational and handling traffic.",
+      "facts": [
+        {
+          "subject": "Delta server",
+          "predicate": "status",
+          "object": "operational"
+        }
+      ]
+    },
+    {
+      "id": "delta-server-outdated",
+      "content": "Delta server was previously marked as decommissioned.",
+      "facts": [
+        {
+          "subject": "Delta server",
+          "predicate": "status",
+          "object": "decommissioned",
+          "confidence": 0.5
+        }
+      ],
+      "session_id": "delta-old",
+      "recorded_at": "2026-03-01T09:00:00Z",
+      "confidence": 0.5
+    },
+    {
+      "id": "gamma-contamination",
+      "content": "Gamma project stores data in EU region.",
+      "entities": [
+        {
+          "entity_type": "project",
+          "name": "Gamma",
+          "aliases": []
+        }
+      ]
+    },
+    {
+      "id": "gamma-contamination-b",
+      "content": "Gamma project data is stored in US region.",
+      "entities": [
+        {
+          "entity_type": "project",
+          "name": "Gamma",
+          "aliases": []
+        }
+      ]
     }
   ],
   "cases": [
@@ -33,10 +127,46 @@
       "id": "similar-name-alice",
       "aspect": "adversarial_alias",
       "query": "Where does Alice Morgan work?",
-      "expected_memory_ids": ["alice-london"],
-      "forbidden_memory_ids": ["alyce-berlin", "alice-negation"],
+      "expected_memory_ids": ["alice-morgan-london"],
+      "forbidden_memory_ids": ["alyce-morgan-berlin", "alice-negation"],
       "limit": 5,
       "deep": true
+    },
+    {
+      "id": "similar-name-bob",
+      "aspect": "adversarial_alias",
+      "query": "Bob Chen role",
+      "expected_memory_ids": ["bob-engineer-alpha"],
+      "forbidden_memory_ids": ["bob-analyst-beta"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "negation-berlin",
+      "aspect": "adversarial_negation",
+      "query": "Is Alice Morgan assigned to Berlin?",
+      "expected_memory_ids": ["alice-negation"],
+      "forbidden_memory_ids": ["alyce-morgan-berlin"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "contradictory-delta",
+      "aspect": "adversarial_contradiction",
+      "query": "Delta server current status",
+      "expected_memory_ids": ["delta-server-status"],
+      "forbidden_memory_ids": ["delta-server-outdated"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "contamination-gamma",
+      "aspect": "adversarial_contamination",
+      "query": "Gamma project data region EU",
+      "expected_memory_ids": ["gamma-contamination"],
+      "forbidden_memory_ids": ["gamma-contamination-b"],
+      "limit": 5
     }
   ]
 }

@@ -30,6 +30,96 @@
       "session_id": "alice-new",
       "recorded_at": "2026-04-23T09:00:00Z",
       "confidence": 0.97
+    },
+    {
+      "id": "bob-berlin-old",
+      "content": "Bob was based in Berlin last year.",
+      "facts": [
+        {
+          "subject": "Bob",
+          "predicate": "lives_in",
+          "object": "Berlin",
+          "confidence": 0.6
+        }
+      ],
+      "session_id": "bob-old",
+      "recorded_at": "2026-03-15T09:00:00Z",
+      "confidence": 0.6
+    },
+    {
+      "id": "bob-madrid-current",
+      "content": "Bob relocated to Madrid this quarter.",
+      "facts": [
+        {
+          "subject": "Bob",
+          "predicate": "lives_in",
+          "object": "Madrid",
+          "confidence": 0.95
+        }
+      ],
+      "session_id": "bob-new",
+      "recorded_at": "2026-04-22T09:00:00Z",
+      "confidence": 0.95
+    },
+    {
+      "id": "carol-tokyo-old",
+      "content": "Carol worked from Tokyo previously.",
+      "facts": [
+        {
+          "subject": "Carol",
+          "predicate": "works_from",
+          "object": "Tokyo",
+          "confidence": 0.65
+        }
+      ],
+      "session_id": "carol-old",
+      "recorded_at": "2026-02-10T09:00:00Z",
+      "confidence": 0.65
+    },
+    {
+      "id": "carol-sydney-current",
+      "content": "Carol is now based in Sydney.",
+      "facts": [
+        {
+          "subject": "Carol",
+          "predicate": "works_from",
+          "object": "Sydney",
+          "confidence": 0.92
+        }
+      ],
+      "session_id": "carol-new",
+      "recorded_at": "2026-04-18T09:00:00Z",
+      "confidence": 0.92
+    },
+    {
+      "id": "project-alpha-v1",
+      "content": "Project Alpha uses React for the frontend.",
+      "facts": [
+        {
+          "subject": "Project Alpha",
+          "predicate": "uses",
+          "object": "React",
+          "confidence": 0.75
+        }
+      ],
+      "session_id": "alpha-v1",
+      "recorded_at": "2026-01-15T09:00:00Z",
+      "confidence": 0.75
+    },
+    {
+      "id": "project-alpha-v2",
+      "content": "Project Alpha migrated to Svelte for the frontend.",
+      "facts": [
+        {
+          "subject": "Project Alpha",
+          "predicate": "uses",
+          "object": "Svelte",
+          "confidence": 0.95
+        }
+      ],
+      "session_id": "alpha-v2",
+      "recorded_at": "2026-04-10T09:00:00Z",
+      "confidence": 0.95
     }
   ],
   "cases": [
@@ -39,6 +129,36 @@
       "query": "Where is Alice currently based?",
       "expected_memory_ids": ["alice-london-current"],
       "forbidden_memory_ids": ["alice-paris-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "bob-current-location",
+      "aspect": "temporal_update",
+      "query": "Bob current location",
+      "expected_memory_ids": ["bob-madrid-current"],
+      "forbidden_memory_ids": ["bob-berlin-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "carol-current-base",
+      "aspect": "temporal_update",
+      "query": "Carol current work base",
+      "expected_memory_ids": ["carol-sydney-current"],
+      "forbidden_memory_ids": ["carol-tokyo-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "alpha-current-framework",
+      "aspect": "temporal_update",
+      "query": "What frontend does Project Alpha use now?",
+      "expected_memory_ids": ["project-alpha-v2"],
+      "forbidden_memory_ids": ["project-alpha-v1"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true

@@ -15,6 +15,17 @@
     {
       "id": "aurora-release",
       "content": "Project Aurora ships the offline memory evaluator on Friday."
+    },
+    {
+      "id": "riverbank-drones",
+      "content": "Riverbank Robotics builds warehouse drones.",
+      "entities": [
+        {
+          "entity_type": "organization",
+          "name": "Riverbank Robotics",
+          "aliases": ["Riverbank"]
+        }
+      ]
     }
   ],
   "cases": [
@@ -30,6 +41,13 @@
       "aspect": "exact",
       "query": "offline memory evaluator Friday",
       "expected_memory_ids": ["aurora-release"],
+      "limit": 5
+    },
+    {
+      "id": "bm25-riverbank",
+      "aspect": "keyword_bm25",
+      "query": "warehouse drones",
+      "expected_memory_ids": ["riverbank-drones"],
       "limit": 5
     },
     {
