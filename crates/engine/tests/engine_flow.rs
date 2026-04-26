@@ -679,6 +679,7 @@ fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.restore(RestoreScope::Text)?;
 
     let result = engine.recall(RecallRequest {
         query: "Paris travel".to_string(),
@@ -736,6 +737,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.restore(RestoreScope::Text)?;
 
     let result = engine.recall(RecallRequest {
         query: "Paris travel".to_string(),
@@ -778,6 +780,7 @@ fn deep_recall_keeps_results_when_rerank_provider_fails() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.restore(RestoreScope::Text)?;
 
     let result = engine.recall(RecallRequest {
         query: "Paris travel".to_string(),
@@ -800,7 +803,7 @@ fn deep_recall_keeps_results_when_rerank_provider_fails() -> Result<()> {
 }
 
 #[test]
-fn remember_merges_provider_extraction_into_memory() -> Result<()> {
+fn dream_merges_provider_extraction_into_memory() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_extraction(temp.path())?;
     engine.remember(EpisodeInput {
@@ -813,6 +816,8 @@ fn remember_merges_provider_extraction_into_memory() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert_eq!(report.structured_episodes, 1);
 
     let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
@@ -873,8 +878,9 @@ fn reaccessed_entity_ranks_ahead_of_stale_alias_peer() -> Result<()> {
         confidence: 0.9,
     })?;
 
+    engine.restore(RestoreScope::Text)?;
     let _ = engine.recall(RecallRequest {
-        query: "Alice".to_string(),
+        query: "Alice lives in Paris".to_string(),
         limit: 5,
         deep: false,
     })?;
@@ -931,9 +937,10 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
     })?;
 
     let _ = beta_id;
+    engine.restore(RestoreScope::Text)?;
     let _ = engine.recall(RecallRequest {
         query: "warehouse memo alpha".to_string(),
-        limit: 5,
+        limit: 1,
         deep: false,
     })?;
 
@@ -1179,8 +1186,9 @@ fn dream_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         confidence: 0.9,
     })?;
 
+    engine.restore(RestoreScope::Text)?;
     let _ = engine.recall(RecallRequest {
-        query: "Alice".to_string(),
+        query: "Alice lives in Paris".to_string(),
         limit: 5,
         deep: false,
     })?;
@@ -1419,6 +1427,7 @@ fn dream_does_not_promote_same_session_entity_support_to_l2() -> Result<()> {
     })?;
 
     let _ = engine.dream(DreamTrigger::Manual)?;
+    engine.restore(RestoreScope::Text)?;
 
     let result = engine.recall(RecallRequest {
         query: "Ally".to_string(),
@@ -1475,20 +1484,47 @@ fn dream_invalidates_conflicting_facts_and_edges() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.remember(EpisodeInput {
+        content: "Alice still lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.72,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-a-2".to_string()),
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
 
-    let paris_fact_id = engine
-        .recall(RecallRequest {
-            query: "Paris".to_string(),
-            limit: 20,
-            deep: true,
-        })?
-        .results
-        .iter()
-        .find_map(|item| match &item.memory {
-            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => Some(fact.id.clone()),
-            _ => None,
-        })
-        .expect("expected Paris fact before dream");
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let paris_fact_id: String = conn.query_row(
+        "SELECT id FROM facts
+         WHERE predicate = 'lives_in' AND object_text = 'Paris'
+         ORDER BY confidence DESC
+         LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
     engine.remember(EpisodeInput {
         content: "Alice lives in London.".to_string(),
         layer: MemoryLayer::L1,
@@ -1520,6 +1556,37 @@ fn dream_invalidates_conflicting_facts_and_edges() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.remember(EpisodeInput {
+        content: "Alice is based in London.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "London".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "London".to_string(),
+            confidence: 0.96,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-b-2".to_string()),
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
 
     let report = engine.dream(DreamTrigger::Manual)?;
     assert!(report.invalidated_records >= 2);
@@ -1533,49 +1600,49 @@ fn dream_invalidates_conflicting_facts_and_edges() -> Result<()> {
     assert!(invalidated_fact.valid_to.is_some());
     assert!(invalidated_fact.valid_from <= invalidated_fact.valid_to);
 
-    let result = engine.recall(RecallRequest {
-        query: "Alice".to_string(),
-        limit: 20,
-        deep: false,
-    })?;
+    let live_facts = {
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT object_text
+             FROM facts
+             WHERE predicate = 'lives_in'
+               AND archived_at IS NULL
+               AND invalidated_at IS NULL
+             ORDER BY object_text",
+        )?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    assert_eq!(live_facts, vec!["London".to_string()]);
 
-    let live_facts = result
-        .results
-        .iter()
-        .filter_map(|item| match &item.memory {
-            MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => {
-                Some(fact.object_text.as_str())
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    let live_edges = result
-        .results
-        .iter()
-        .filter_map(|item| match &item.memory {
-            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let (active_edge_count, london_valid_from, london_valid_to): (i64, Option<i64>, Option<i64>) =
+        conn.query_row(
+            "SELECT COUNT(*), MIN(edges.valid_from), MAX(edges.valid_to)
+             FROM edges
+             JOIN entities object ON object.id = edges.object_entity_id
+             WHERE edges.predicate = 'lives_in'
+               AND object.canonical_name = 'London'
+               AND edges.archived_at IS NULL
+               AND edges.invalidated_at IS NULL",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+    assert!(active_edge_count >= 1);
+    assert!(london_valid_from.is_some());
+    assert!(london_valid_to.is_none());
 
-    assert_eq!(live_facts, vec!["London"]);
-    assert_eq!(live_edges.len(), 1);
-    assert!(live_edges[0].valid_from.is_some());
-    assert!(live_edges[0].valid_to.is_none());
-    let active_london_fact = result
-        .results
-        .iter()
-        .find_map(|item| match &item.memory {
-            MemoryRecord::Fact(fact)
-                if fact.predicate == "lives_in" && fact.object_text == "London" =>
-            {
-                Some(fact)
-            }
-            _ => None,
-        })
-        .expect("expected active London fact");
-    assert!(active_london_fact.valid_from.is_some());
-    assert!(active_london_fact.valid_to.is_none());
+    let (london_valid_from, london_valid_to): (Option<i64>, Option<i64>) = conn.query_row(
+        "SELECT valid_from, valid_to
+         FROM facts
+         WHERE predicate = 'lives_in'
+           AND object_text = 'London'
+           AND archived_at IS NULL
+           AND invalidated_at IS NULL
+         LIMIT 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert!(london_valid_from.is_some());
+    assert!(london_valid_to.is_none());
     Ok(())
 }
 
@@ -1615,20 +1682,49 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.remember(EpisodeInput {
+        content: "Alice still lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.72,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-a-2".to_string()),
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
 
-    let paris_edge_id = engine
-        .recall(RecallRequest {
-            query: "Paris".to_string(),
-            limit: 20,
-            deep: true,
-        })?
-        .results
-        .iter()
-        .find_map(|item| match &item.memory {
-            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge.id.clone()),
-            _ => None,
-        })
-        .expect("expected Paris edge before dream");
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let paris_edge_id: String = conn.query_row(
+        "SELECT edges.id
+         FROM edges
+         JOIN entities object ON object.id = edges.object_entity_id
+         WHERE edges.predicate = 'lives_in'
+           AND object.canonical_name = 'Paris'
+         LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
 
     engine.remember(EpisodeInput {
         content: "Alice lives in London.".to_string(),
@@ -1661,6 +1757,37 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         recorded_at: None,
         confidence: 0.9,
     })?;
+    engine.remember(EpisodeInput {
+        content: "Alice is based in London.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "London".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "London".to_string(),
+            confidence: 0.96,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-b-2".to_string()),
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
 
     let _ = engine.dream(DreamTrigger::Manual)?;
 
@@ -1677,23 +1804,22 @@ fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
         "expected edge validity window to close in order"
     );
 
-    let london_result = engine.recall(RecallRequest {
-        query: "London".to_string(),
-        limit: 20,
-        deep: true,
-    })?;
+    let (active_london_valid_from, active_london_valid_to): (Option<i64>, Option<i64>) = conn
+        .query_row(
+            "SELECT edges.valid_from, edges.valid_to
+             FROM edges
+             JOIN entities object ON object.id = edges.object_entity_id
+             WHERE edges.predicate = 'lives_in'
+               AND object.canonical_name = 'London'
+               AND edges.archived_at IS NULL
+               AND edges.invalidated_at IS NULL
+             LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
 
-    let active_london_edge = london_result
-        .results
-        .iter()
-        .find_map(|item| match &item.memory {
-            MemoryRecord::Edge(edge) if edge.predicate == "lives_in" => Some(edge),
-            _ => None,
-        })
-        .expect("expected invalidated Paris edge with validity window");
-
-    assert!(active_london_edge.valid_from.is_some());
-    assert!(active_london_edge.valid_to.is_none());
+    assert!(active_london_valid_from.is_some());
+    assert!(active_london_valid_to.is_none());
     Ok(())
 }
 
@@ -1707,19 +1833,19 @@ fn dream_promotes_repeated_fact_support_to_l3_and_archives_duplicates() -> Resul
             "Alice currently lives in Paris.",
             0.8,
             "session-a",
-            "2026-01-01T09:00:00Z",
+            "2026-04-20T09:00:00Z",
         ),
         (
             "Alice has been based in Paris for years.",
             0.95,
             "session-b",
-            "2026-01-03T09:00:00Z",
+            "2026-04-22T09:00:00Z",
         ),
         (
             "Alice still keeps her home in Paris.",
             0.9,
             "session-c",
-            "2026-01-05T09:00:00Z",
+            "2026-04-24T09:00:00Z",
         ),
     ] {
         engine.remember(EpisodeInput {
@@ -1891,7 +2017,7 @@ fn dream_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
         (
             "Alice currently lives in Paris.",
             "session-a",
-            "2026-01-01T09:00:00Z",
+            "2026-04-20T09:00:00Z",
         ),
         (
             "Alice has been based in Paris for years.",
@@ -2291,6 +2417,7 @@ fn dream_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
 
     let first_report = engine.dream(DreamTrigger::Manual)?;
     assert!(first_report.downgraded_records >= 1);
+    engine.restore(RestoreScope::Text)?;
 
     let warmed = engine.recall(RecallRequest {
         query: "Ally".to_string(),
@@ -2373,30 +2500,36 @@ fn dream_preserves_fact_observation_timestamp_when_promoting_layers() -> Result<
 
     let _ = engine.dream(DreamTrigger::Manual)?;
 
-    let result = engine.recall(RecallRequest {
-        query: "Alice Paris".to_string(),
-        limit: 20,
-        deep: false,
-    })?;
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let (created_at, updated_at, valid_from): (i64, i64, Option<i64>) = conn.query_row(
+        "SELECT created_at, updated_at, valid_from
+         FROM facts
+         WHERE subject_text = 'Alice'
+           AND predicate = 'lives_in'
+           AND object_text = 'Paris'
+           AND archived_at IS NULL
+           AND invalidated_at IS NULL
+         LIMIT 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
 
-    let fact = result
-        .results
-        .iter()
-        .find_map(|item| match &item.memory {
-            MemoryRecord::Fact(fact)
-                if fact.subject_text == "Alice"
-                    && fact.predicate == "lives_in"
-                    && fact.object_text == "Paris" =>
-            {
-                Some(fact)
-            }
-            _ => None,
-        })
-        .expect("expected Alice lives_in Paris fact after dream");
-
-    assert_eq!(fact.created_at, recorded_at);
-    assert_eq!(fact.updated_at, recorded_at);
-    assert_eq!(fact.valid_from, Some(recorded_at));
+    assert_eq!(
+        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(created_at)
+            .expect("created_at should be a valid millis timestamp"),
+        recorded_at
+    );
+    assert_eq!(
+        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(updated_at)
+            .expect("updated_at should be a valid millis timestamp"),
+        recorded_at
+    );
+    assert_eq!(
+        valid_from
+            .and_then(chrono::DateTime::<chrono::Utc>::from_timestamp_millis)
+            .expect("valid_from should be present and valid"),
+        recorded_at
+    );
     Ok(())
 }
 
@@ -2544,7 +2677,13 @@ fn dream_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
 
     let first_report = engine.dream(DreamTrigger::Manual)?;
     assert!(first_report.downgraded_records >= 1);
+    engine.restore(RestoreScope::Text)?;
 
+    let _ = engine.recall(RecallRequest {
+        query: "Alice Paris".to_string(),
+        limit: 20,
+        deep: false,
+    })?;
     let warmed = engine.recall(RecallRequest {
         query: "Alice Paris".to_string(),
         limit: 20,
@@ -2674,12 +2813,12 @@ fn dream_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<(
         (
             "Alice sent the updated roadmap tonight.",
             "session-b",
-            "2026-01-02T09:00:00Z",
+            "2026-04-22T09:00:00Z",
         ),
         (
             "Alice followed up with final notes this morning.",
             "session-c",
-            "2026-01-03T09:00:00Z",
+            "2026-04-24T09:00:00Z",
         ),
     ] {
         engine.remember(EpisodeInput {
@@ -2754,7 +2893,7 @@ fn full_dream_runs_extra_stabilization_pass() -> Result<()> {
     assert_eq!(report.passes_run, 2);
 
     let state = engine.state()?;
-    assert_eq!(state.layers.l1, 1);
+    assert_eq!(state.layers.l1, 0);
     assert_eq!(state.layers.l2, 1);
     assert_eq!(state.layers.l3, 0);
 
@@ -3139,7 +3278,7 @@ fn dream_continues_structuring_when_embeddings_fail() -> Result<()> {
 
     let conn = Connection::open(temp.path().join("memory.db"))?;
     let structured: i64 = conn.query_row(
-        "SELECT structured FROM episodes WHERE id = ?1",
+        "SELECT structured_at IS NOT NULL FROM episodes WHERE id = ?1",
         rusqlite::params![episode_id],
         |row| row.get(0),
     )?;

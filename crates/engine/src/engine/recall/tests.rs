@@ -2,7 +2,7 @@ use chrono::{TimeZone, Utc};
 
 use crate::types::{EpisodeRecord, MemoryLayer, MemoryRecord, RecallResult, RecallResultSet};
 
-use super::{should_auto_escalate_to_deep_search, trim_session_cache};
+use super::{session_cache::trim_session_cache, strategy::should_auto_escalate_to_deep_search};
 use crate::engine::SessionCache;
 
 fn episode_result(score: f32, reasons: Vec<crate::types::RecallReason>) -> RecallResult {

@@ -1,7 +1,18 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use rusqlite::Connection;
 
+const CURRENT_SCHEMA_VERSION: i64 = 1;
+
 pub(super) fn init_schema(conn: &Connection) -> Result<()> {
+    let user_version = schema_user_version(conn)?;
+    if user_version > CURRENT_SCHEMA_VERSION {
+        bail!(
+            "database schema version {} is newer than supported version {}",
+            user_version,
+            CURRENT_SCHEMA_VERSION
+        );
+    }
+
     conn.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS episodes (
@@ -137,6 +148,29 @@ pub(super) fn init_schema(conn: &Connection) -> Result<()> {
         DROP TABLE IF EXISTS dream_jobs;
         "#,
     )?;
+    migrate_schema(conn, user_version)?;
+    set_schema_user_version(conn, CURRENT_SCHEMA_VERSION)?;
+    Ok(())
+}
+
+fn schema_user_version(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
+}
+
+fn set_schema_user_version(conn: &Connection, version: i64) -> Result<()> {
+    conn.pragma_update(None, "user_version", version)?;
+    Ok(())
+}
+
+fn migrate_schema(conn: &Connection, from_version: i64) -> Result<()> {
+    if from_version < 1 {
+        migrate_to_v1(conn)?;
+    }
+
+    Ok(())
+}
+
+fn migrate_to_v1(conn: &Connection) -> Result<()> {
     ensure_column(conn, "facts", "valid_from", "INTEGER NULL")?;
     ensure_column(conn, "facts", "valid_to", "INTEGER NULL")?;
     ensure_column(conn, "edges", "valid_from", "INTEGER NULL")?;

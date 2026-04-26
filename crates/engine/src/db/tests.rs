@@ -4,10 +4,229 @@ use chrono::{TimeZone, Utc};
 use rusqlite::{Connection, OptionalExtension};
 use tempfile::TempDir;
 
-use crate::types::{EntityInput, EpisodeInput, ExtractionSource, MemoryLayer, MemoryRecord};
+use crate::types::{
+    EntityInput, EpisodeInput, ExtractionSource, FactInput, MemoryLayer, MemoryRecord,
+};
 
 fn dt_to_ts(dt: chrono::DateTime<Utc>) -> i64 {
     dt.timestamp_millis()
+}
+
+#[test]
+fn open_sets_current_schema_user_version() -> Result<()> {
+    let temp = TempDir::new()?;
+    let db_path = temp.path().join("memory.db");
+
+    let _db = Database::open(&db_path)?;
+    let conn = Connection::open(&db_path)?;
+    let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+
+    assert_eq!(user_version, 1);
+    Ok(())
+}
+
+#[test]
+fn open_rejects_database_newer_than_current_schema_version() -> Result<()> {
+    let temp = TempDir::new()?;
+    let db_path = temp.path().join("memory.db");
+
+    let conn = Connection::open(&db_path)?;
+    conn.execute_batch("PRAGMA user_version = 999;")?;
+    drop(conn);
+
+    let error = match Database::open(&db_path) {
+        Ok(_) => anyhow::bail!("expected newer schema to be rejected"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("database schema version 999 is newer"),
+        "unexpected error: {error:#}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rusqlite_storage_baseline_covers_spike_acceptance_flow() -> Result<()> {
+    let temp = TempDir::new()?;
+    let db = Database::open(&temp.path().join("memory.db"))?;
+    let observed_at = Utc.with_ymd_and_hms(2026, 4, 26, 9, 0, 0).unwrap();
+
+    let episode = db.insert_episode(
+        &EpisodeInput {
+            content: "Alice moved from Paris to London.".to_string(),
+            layer: MemoryLayer::L1,
+            entities: Vec::new(),
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some("storage-spike-session".to_string()),
+            recorded_at: Some(observed_at),
+            confidence: 0.91,
+        },
+        Some(&[0.1, 0.2, 0.3, 0.4]),
+    )?;
+    let loaded_episode = db
+        .get_episode(&episode.id)?
+        .expect("expected inserted episode to load");
+    assert_eq!(loaded_episode.id, episode.id);
+    assert_eq!(loaded_episode.content, episode.content);
+    assert_eq!(loaded_episode.session_id, episode.session_id);
+
+    let alice = db.upsert_entity(
+        &EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        },
+        MemoryLayer::L1,
+        ObservationContext {
+            source_episode_id: Some(&episode.id),
+            observed_at,
+        },
+        None,
+    )?;
+    let paris = db.upsert_entity(
+        &EntityInput {
+            entity_type: "place".to_string(),
+            name: "Paris".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.93,
+            source: ExtractionSource::Manual,
+        },
+        MemoryLayer::L1,
+        ObservationContext {
+            source_episode_id: Some(&episode.id),
+            observed_at,
+        },
+        None,
+    )?;
+    let london = db.upsert_entity(
+        &EntityInput {
+            entity_type: "place".to_string(),
+            name: "London".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.96,
+            source: ExtractionSource::Manual,
+        },
+        MemoryLayer::L1,
+        ObservationContext {
+            source_episode_id: Some(&episode.id),
+            observed_at,
+        },
+        None,
+    )?;
+
+    let alias_hit = db
+        .resolve_active_entity_reference("ally")?
+        .expect("expected alias to resolve to Alice");
+    assert_eq!(alias_hit.id, alice.id);
+    let exact_alias_hits = db.search_exact_alias("Ally")?;
+    assert!(exact_alias_hits
+        .iter()
+        .any(|record| matches!(record, MemoryRecord::Entity(entity) if entity.id == alice.id)));
+
+    db.ensure_mention(&episode.id, &alice.id, "subject", 0.95)?;
+    db.ensure_mention(&episode.id, &paris.id, "old_location", 0.93)?;
+    db.ensure_mention(&episode.id, &london.id, "new_location", 0.96)?;
+
+    let paris_fact = db.insert_fact(
+        &FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.72,
+            source: ExtractionSource::Manual,
+        },
+        MemoryLayer::L1,
+        Some(&alice.id),
+        Some(&paris.id),
+        ObservationContext {
+            source_episode_id: Some(&episode.id),
+            observed_at,
+        },
+        None,
+    )?;
+    let london_fact = db.insert_fact(
+        &FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "London".to_string(),
+            confidence: 0.96,
+            source: ExtractionSource::Manual,
+        },
+        MemoryLayer::L1,
+        Some(&alice.id),
+        Some(&london.id),
+        ObservationContext {
+            source_episode_id: Some(&episode.id),
+            observed_at,
+        },
+        None,
+    )?;
+    let london_edge = db.insert_edge(
+        &alice.id,
+        "lives_in",
+        &london.id,
+        0.96,
+        MemoryLayer::L1,
+        ObservationContext {
+            source_episode_id: Some(&episode.id),
+            observed_at,
+        },
+    )?;
+
+    let conflicting_objects = db
+        .active_facts_in_layers(&[MemoryLayer::L1])?
+        .into_iter()
+        .filter(|fact| fact.subject_text == "Alice" && fact.predicate == "lives_in")
+        .map(|fact| fact.object_text)
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        conflicting_objects,
+        ["London".to_string(), "Paris".to_string()]
+            .into_iter()
+            .collect()
+    );
+
+    db.update_layer("episode", &episode.id, MemoryLayer::L2)?;
+    db.update_layer("entity", &alice.id, MemoryLayer::L2)?;
+    db.update_layer("fact", &london_fact.id, MemoryLayer::L2)?;
+    db.update_layer("edge", &london_edge.id, MemoryLayer::L2)?;
+    assert!(matches!(
+        db.get_memory_by_kind("fact", &london_fact.id)?,
+        Some(MemoryRecord::Fact(fact)) if fact.layer == MemoryLayer::L2
+    ));
+
+    let text_jobs = db.load_outstanding_index_jobs("text")?;
+    assert!(text_jobs.iter().any(|job| job.memory_id == episode.id));
+    assert!(text_jobs.iter().any(|job| job.memory_id == alice.id));
+    assert!(text_jobs.iter().any(|job| job.memory_id == paris_fact.id));
+    assert!(text_jobs.iter().any(|job| job.memory_id == london_fact.id));
+    assert!(text_jobs.iter().all(|job| !job.failed));
+
+    let vector_jobs = db.load_outstanding_index_jobs("vector")?;
+    assert_eq!(vector_jobs.len(), 1);
+    assert_eq!(vector_jobs[0].memory_id, episode.id);
+    assert!(!vector_jobs[0].failed);
+
+    let text_job_ids = text_jobs
+        .iter()
+        .map(|job| job.id.clone())
+        .collect::<Vec<_>>();
+    db.clear_index_jobs("text", &text_job_ids)?;
+    assert!(db.load_outstanding_index_jobs("text")?.is_empty());
+
+    let vector_job_ids = vector_jobs
+        .iter()
+        .map(|job| job.id.clone())
+        .collect::<Vec<_>>();
+    db.clear_index_jobs("vector", &vector_job_ids)?;
+    assert!(db.load_outstanding_index_jobs("vector")?.is_empty());
+
+    Ok(())
 }
 
 #[test]
@@ -119,6 +338,8 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
 
     let _db = Database::open(&db_path)?;
     let conn = Connection::open(&db_path)?;
+    let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    assert_eq!(user_version, 1);
 
     for (table, column) in [
         ("episodes", "session_id"),

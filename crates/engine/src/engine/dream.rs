@@ -250,14 +250,15 @@ impl MemoryEngine {
                 continue;
             }
 
-            let winner_id = facts
+            let winner = facts
                 .iter()
                 .max_by(|left, right| compare_fact_strength(left, right))
-                .map(|fact| fact.id.clone())
+                .cloned()
                 .expect("conflict group must contain at least one fact");
+            let winner_object = crate::db::normalize_text(&winner.object_text);
 
             for fact in facts {
-                if fact.id == winner_id {
+                if crate::db::normalize_text(&fact.object_text) == winner_object {
                     continue;
                 }
                 self.db.invalidate_record("fact", &fact.id)?;
