@@ -50,9 +50,11 @@ fn decisive_exact_hit_stays_on_fast_path() {
 
 #[test]
 fn trim_session_cache_caps_recent_topics_and_memory_ids() {
-    let mut session = SessionCache::default();
-    session.recent_memory_ids = (0..130).map(|index| format!("memory-{index}")).collect();
-    session.recent_topics = (0..70).map(|index| format!("topic-{index}")).collect();
+    let mut session = SessionCache {
+        recent_memory_ids: (0..130).map(|index| format!("memory-{index}")).collect(),
+        recent_topics: (0..70).map(|index| format!("topic-{index}")).collect(),
+        ..Default::default()
+    };
 
     trim_session_cache(&mut session);
 

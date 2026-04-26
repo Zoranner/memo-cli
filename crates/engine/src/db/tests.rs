@@ -662,7 +662,7 @@ fn related_graph_records_applies_limit_per_hop_after_dedup() -> Result<()> {
         },
     )?;
 
-    let records = db.related_graph_records(&[alice.id.clone()], 2, 1)?;
+    let records = db.related_graph_records(std::slice::from_ref(&alice.id), 2, 1)?;
 
     assert_eq!(records.len(), 2, "expected one unique record from each hop");
     assert!(records.iter().any(
