@@ -32,6 +32,34 @@ pub(super) fn add_candidate(target: &mut HashMap<String, Candidate>, candidate: 
         })
         .or_insert(candidate);
 }
+pub(super) fn dedupe_candidates_by_source(candidates: &mut Vec<Candidate>) {
+    let mut seen = HashSet::new();
+    candidates.retain(|candidate| seen.insert(candidate.memory.source_key().to_string()));
+}
+pub(super) fn filter_candidates_by_query_coverage(query: &str, candidates: &mut Vec<Candidate>) {
+    let query_tokens = lexical_tokens(query);
+    if query_tokens.len() < 2 || candidates.len() < 2 {
+        return;
+    }
+    let min_coverage = if query_tokens.len() <= 3 { 0.75 } else { 0.60 };
+
+    let filtered = candidates
+        .iter()
+        .filter(|candidate| {
+            let record_tokens = lexical_tokens(&candidate.memory.text_for_ranking());
+            if record_tokens.is_empty() {
+                return false;
+            }
+            let matched = query_tokens.intersection(&record_tokens).count();
+            matched as f32 / query_tokens.len() as f32 >= min_coverage
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if !filtered.is_empty() {
+        *candidates = filtered;
+    }
+}
 pub(super) fn recency_boost(updated_at: chrono::DateTime<chrono::Utc>) -> f32 {
     let age_days = (chrono::Utc::now() - updated_at).num_days().max(0) as f32;
     (-(age_days / 30.0)).exp() * 0.18
@@ -69,14 +97,8 @@ pub(super) fn mmr_select(mut candidates: Vec<Candidate>, limit: usize) -> Vec<Ca
     selected
 }
 fn text_similarity(a: String, b: String) -> f32 {
-    let a_tokens: HashSet<_> = normalize_text(&a)
-        .split_whitespace()
-        .map(str::to_string)
-        .collect();
-    let b_tokens: HashSet<_> = normalize_text(&b)
-        .split_whitespace()
-        .map(str::to_string)
-        .collect();
+    let a_tokens = lexical_tokens(&a);
+    let b_tokens = lexical_tokens(&b);
     if a_tokens.is_empty() || b_tokens.is_empty() {
         return 0.0;
     }
@@ -87,4 +109,56 @@ fn text_similarity(a: String, b: String) -> f32 {
     } else {
         intersection / union
     }
+}
+fn lexical_tokens(text: &str) -> HashSet<String> {
+    normalize_text(text)
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter_map(normalize_token)
+        .collect()
+}
+fn normalize_token(token: &str) -> Option<String> {
+    let token = token.trim();
+    if token.len() < 3 || is_stopword(token) {
+        return None;
+    }
+
+    let normalized = match token {
+        "currently" => "current",
+        "partnership" | "partners" => "partner",
+        "builds" | "building" => "build",
+        "makes" | "making" => "make",
+        "ships" | "shipping" => "ship",
+        "warehouses" => "warehouse",
+        "drones" => "drone",
+        "works" | "working" => "work",
+        "succeeded" | "successfully" => "success",
+        "failed" | "failure" => "fail",
+        "cancelled" | "canceled" => "cancel",
+        _ => token,
+    };
+
+    Some(normalized.to_string())
+}
+fn is_stopword(token: &str) -> bool {
+    matches!(
+        token,
+        "about"
+            | "after"
+            | "and"
+            | "are"
+            | "based"
+            | "does"
+            | "for"
+            | "from"
+            | "has"
+            | "into"
+            | "is"
+            | "the"
+            | "this"
+            | "what"
+            | "where"
+            | "which"
+            | "who"
+            | "with"
+    )
 }

@@ -227,9 +227,9 @@ impl MemoryEngine {
     }
 
     fn invalidate_conflicting_facts(&self) -> Result<usize> {
-        let facts = self
-            .db
-            .active_facts_in_layers(&[MemoryLayer::L2, MemoryLayer::L3])?;
+        let facts =
+            self.db
+                .active_facts_in_layers(&[MemoryLayer::L1, MemoryLayer::L2, MemoryLayer::L3])?;
         let mut groups = HashMap::<String, Vec<crate::types::FactRecord>>::new();
         for fact in facts {
             let key = format!(
@@ -241,6 +241,7 @@ impl MemoryEngine {
         }
 
         let mut invalidated = 0;
+        let mut conflict_source_episodes = HashSet::new();
         for facts in groups.into_values() {
             let unique_objects = facts
                 .iter()
@@ -252,7 +253,7 @@ impl MemoryEngine {
 
             let winner = facts
                 .iter()
-                .max_by(|left, right| compare_fact_strength(left, right))
+                .max_by(|left, right| compare_fact_conflict_winner(left, right))
                 .cloned()
                 .expect("conflict group must contain at least one fact");
             let winner_object = crate::db::normalize_text(&winner.object_text);
@@ -263,6 +264,9 @@ impl MemoryEngine {
                 }
                 self.db.invalidate_record("fact", &fact.id)?;
                 invalidated += 1;
+                if let Some(source_episode_id) = fact.source_episode_id.as_deref() {
+                    conflict_source_episodes.insert(source_episode_id.to_string());
+                }
 
                 if let (Some(subject_entity_id), Some(object_entity_id)) = (
                     fact.subject_entity_id.as_deref(),
@@ -272,12 +276,24 @@ impl MemoryEngine {
                         subject_entity_id,
                         &fact.predicate,
                         object_entity_id,
-                        &[MemoryLayer::L2, MemoryLayer::L3],
+                        &[MemoryLayer::L1, MemoryLayer::L2, MemoryLayer::L3],
                     )? {
                         self.db.invalidate_record("edge", &edge_id)?;
                         invalidated += 1;
                     }
                 }
+            }
+        }
+        for episode_id in conflict_source_episodes {
+            if self.db.active_fact_count_for_episode(&episode_id)? == 0 {
+                for kind in ["entity", "edge"] {
+                    for id in self.db.active_related_ids_for_episode(kind, &episode_id)? {
+                        self.db.invalidate_record(kind, &id)?;
+                        invalidated += 1;
+                    }
+                }
+                self.db.invalidate_record("episode", &episode_id)?;
+                invalidated += 1;
             }
         }
         Ok(invalidated)
@@ -455,6 +471,18 @@ fn compare_fact_strength(
         .then(left.confidence.total_cmp(&right.confidence))
         .then(left.updated_at.cmp(&right.updated_at))
         .then(left.created_at.cmp(&right.created_at))
+}
+
+fn compare_fact_conflict_winner(
+    left: &crate::types::FactRecord,
+    right: &crate::types::FactRecord,
+) -> std::cmp::Ordering {
+    left.confidence
+        .total_cmp(&right.confidence)
+        .then(left.updated_at.cmp(&right.updated_at))
+        .then(left.created_at.cmp(&right.created_at))
+        .then(left.hit_count.cmp(&right.hit_count))
+        .then(left.layer.boost().total_cmp(&right.layer.boost()))
 }
 
 #[cfg(test)]

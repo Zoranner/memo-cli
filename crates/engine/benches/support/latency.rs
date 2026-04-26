@@ -139,40 +139,22 @@ struct DeterministicEmbeddingProvider;
 
 impl EmbeddingProvider for DeterministicEmbeddingProvider {
     fn dimension(&self) -> usize {
-        8
+        4
     }
 
     fn embed_text(&self, text: &str) -> anyhow::Result<Vec<f32>> {
-        let n = text.to_ascii_lowercase();
-        let mut v = vec![0.0; 8];
-        if n.contains("warehouse") || n.contains("drone") {
-            v[0] = 1.0;
+        let normalized = text.to_ascii_lowercase();
+        let mut vector = vec![0.0; 4];
+        if normalized.contains("warehouse") || normalized.contains("drone") {
+            vector[0] = 1.0;
         }
-        if n.contains("alice") || n.contains("ally") || n.contains("morgan") {
-            v[1] = 1.0;
+        if normalized.contains("alice") || normalized.contains("ally") {
+            vector[1] = 1.0;
         }
-        if n.contains("london") || n.contains("paris") || n.contains("berlin") {
-            v[2] = 1.0;
+        if normalized.contains("london") || normalized.contains("paris") {
+            vector[2] = 1.0;
         }
-        if n.contains("riverbank") || n.contains("robotics") {
-            v[3] = 1.0;
-        }
-        if n.contains("aurora") || n.contains("project") {
-            v[4] = 1.0;
-        }
-        if n.contains("evaluator") || n.contains("offline") {
-            v[5] = 1.0;
-        }
-        if n.contains("bob") || n.contains("bobby") {
-            v[6] = 1.0;
-        }
-        v[7] = (n.len() % 13) as f32 / 13.0;
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for x in &mut v {
-                *x /= norm;
-            }
-        }
-        Ok(v)
+        vector[3] = (normalized.len() % 11) as f32 / 11.0;
+        Ok(vector)
     }
 }

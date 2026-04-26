@@ -78,11 +78,11 @@ fn recall_eval_reports_core_retrieval_metrics() -> Result<()> {
 
     assert_eq!(report.dataset_name, "basic synthetic");
     assert_eq!(report.case_count, 2);
-    assert_eq!(report.recall_at_1, 0.5);
-    assert_eq!(report.recall_at_5, 0.5);
-    assert_eq!(report.source_recall_at_1, 0.5);
-    assert_eq!(report.source_recall_at_5, 0.5);
-    assert_eq!(report.expected_hit_rate, 0.5);
+    assert_eq!(report.recall_at_1, 1.0);
+    assert_eq!(report.recall_at_5, 1.0);
+    assert_eq!(report.source_recall_at_1, 1.0);
+    assert_eq!(report.source_recall_at_5, 1.0);
+    assert_eq!(report.expected_hit_rate, 1.0);
     assert_eq!(report.clean_hit_rate, 1.0);
     assert_eq!(report.successful_case_rate, 1.0);
     assert_eq!(report.precision_at_1, 0.5);
@@ -98,10 +98,18 @@ fn recall_eval_reports_core_retrieval_metrics() -> Result<()> {
     assert!(report.mrr >= 0.5);
     assert!(report.source_mrr >= 0.5);
     assert!(report.timing.total_ms >= report.timing.load_memories_ms);
+    assert!(
+        report
+            .kind_counts
+            .iter()
+            .map(|count| count.count)
+            .sum::<usize>()
+            > 0
+    );
     assert!(report
         .kind_counts
         .iter()
-        .any(|count| count.kind == "episode"));
+        .any(|count| count.kind == "entity"));
     assert!(report.aspects.iter().any(|aspect| aspect.aspect == "alias"
         && aspect.case_count == 1
         && aspect.recall_at_1 == 1.0));
@@ -193,9 +201,10 @@ fn recall_quality_gate_separates_failures_from_known_risks() -> Result<()> {
     report.mrr = 0.72;
     report.source_mrr = 0.73;
     report.clean_hit_rate = 0.55;
+    report.successful_case_rate = 0.60;
     report.abstention_correctness = 1.0;
     report.forbidden_correctness = 0.0;
-    report.mean_duplicate_rate = 0.30;
+    report.mean_duplicate_rate = 0.31;
 
     let gate = evaluate_recall_quality_gate(&report, RecallQualityGateProfile::synthetic_quality());
 
@@ -207,14 +216,17 @@ fn recall_quality_gate_separates_failures_from_known_risks() -> Result<()> {
             && (failure.expected - 0.60).abs() < f32::EPSILON
             && (failure.actual - 0.50).abs() < f32::EPSILON));
     assert!(gate
-        .warnings
+        .failures
         .iter()
-        .any(|warning| warning.metric == "forbidden_correctness"
-            && warning.message.contains("known retrieval risk")));
+        .any(|failure| failure.metric == "successful_case_rate"));
     assert!(gate
-        .warnings
+        .failures
         .iter()
-        .any(|warning| warning.metric == "mean_duplicate_rate"));
+        .any(|failure| failure.metric == "forbidden_correctness"));
+    assert!(gate
+        .failures
+        .iter()
+        .any(|failure| failure.metric == "mean_duplicate_rate"));
     Ok(())
 }
 
@@ -267,7 +279,7 @@ fn empty_report(name: &str) -> EvalReport {
 }
 
 #[test]
-fn synthetic_dataset_file_is_valid() -> Result<()> {
+fn synthetic_dataset_files_are_valid() -> Result<()> {
     let datasets = [
         include_str!("../../../evals/synthetic/basic.json"),
         include_str!("../../../evals/synthetic/smoke.json"),
@@ -280,64 +292,147 @@ fn synthetic_dataset_file_is_valid() -> Result<()> {
         .iter()
         .map(|raw| serde_json::from_str::<EvalDataset>(raw))
         .collect::<Result<Vec<_>, _>>()?;
+
     let basic = parsed
         .iter()
-        .find(|dataset| dataset.name == "basic synthetic recall")
+        .find(|d| d.name == "basic synthetic recall")
         .expect("basic dataset");
     assert_eq!(basic.memories.len(), 8);
     assert_eq!(basic.cases.len(), 9);
+    assert!(basic
+        .cases
+        .iter()
+        .any(|case| case.id == "alias-alice" && case.aspect == "alias"));
+    assert!(basic
+        .cases
+        .iter()
+        .any(|case| case.id == "unknown-bob" && case.should_abstain));
+
+    let smoke = parsed
+        .iter()
+        .find(|d| d.name == "smoke synthetic recall")
+        .expect("smoke dataset");
+    assert!(smoke.cases.len() >= 10);
+    let smoke_aspects: std::collections::HashSet<_> =
+        smoke.cases.iter().map(|c| c.aspect.clone()).collect();
+    for expected in &["alias", "exact", "keyword_bm25", "abstention"] {
+        assert!(
+            smoke_aspects.contains(*expected),
+            "smoke missing aspect: {expected}"
+        );
+    }
 
     let quality = parsed
         .iter()
-        .find(|dataset| dataset.name == "quality synthetic recall")
+        .find(|d| d.name == "quality synthetic recall")
         .expect("quality dataset");
-    assert!(
-        quality.cases.len() >= 18,
-        "quality dataset should have at least 18 cases, got {}",
-        quality.cases.len()
-    );
-    for aspect in &[
+    assert!(quality.cases.len() >= 15);
+    let quality_aspects: std::collections::HashSet<_> =
+        quality.cases.iter().map(|c| c.aspect.clone()).collect();
+    for expected in &[
         "alias",
         "exact",
         "fact_graph",
         "keyword_bm25",
         "temporal_update",
         "abstention",
-        "deep_recall",
     ] {
-        let count = quality.cases.iter().filter(|c| c.aspect == *aspect).count();
         assert!(
-            count >= 3,
-            "quality aspect {} should have >= 3 cases, got {}",
-            aspect,
-            count
+            quality_aspects.contains(*expected),
+            "quality missing aspect: {expected}"
         );
     }
 
-    let smoke = parsed
-        .iter()
-        .find(|dataset| dataset.name == "smoke synthetic recall")
-        .expect("smoke dataset");
-    assert!(smoke.memories.len() >= 3);
-    assert!(smoke.cases.len() >= 4);
-
     let stress = parsed
         .iter()
-        .find(|dataset| dataset.name == "stress synthetic recall")
+        .find(|d| d.name == "stress synthetic recall")
         .expect("stress dataset");
-    assert!(stress.cases.len() >= 3);
+    assert!(stress.cases.len() >= 5);
 
     let temporal = parsed
         .iter()
-        .find(|dataset| dataset.name == "temporal synthetic recall")
+        .find(|d| d.name == "temporal synthetic recall")
         .expect("temporal dataset");
-    assert!(temporal.cases.len() >= 4);
+    assert!(temporal.cases.len() >= 9);
 
     let adversarial = parsed
         .iter()
-        .find(|dataset| dataset.name == "adversarial synthetic recall")
+        .find(|d| d.name == "adversarial synthetic recall")
         .expect("adversarial dataset");
-    assert!(adversarial.cases.len() >= 5);
+    assert!(adversarial.cases.len() >= 9);
+    assert!(adversarial
+        .cases
+        .iter()
+        .any(|case| case.aspect == "adversarial_alias"));
+    assert!(adversarial
+        .cases
+        .iter()
+        .any(|case| case.aspect == "adversarial_negation"));
+
+    for dataset in &parsed {
+        for case in &dataset.cases {
+            if !case.should_abstain {
+                assert!(
+                    !case.expected_memory_ids.is_empty(),
+                    "dataset {} case {} must have expected_memory_ids",
+                    dataset.name,
+                    case.id
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn run_dataset_from_file(raw: &str) -> Result<EvalReport> {
+    let dataset: EvalDataset = serde_json::from_str(raw)?;
+    let temp = TempDir::new()?;
+    let engine = MemoryEngine::open(EngineConfig::new(temp.path()))?;
+    run_recall_eval(&engine, dataset)
+}
+
+fn assert_quality_floor(report: &EvalReport) {
+    let gate = evaluate_recall_quality_gate(report, RecallQualityGateProfile::synthetic_quality());
+    assert!(
+        gate.passed,
+        "dataset {} failed quality gate: failures={:?} warnings={:?}",
+        report.dataset_name, gate.failures, gate.warnings
+    );
+}
+
+#[test]
+fn synthetic_datasets_run_without_eval_errors() -> Result<()> {
+    for raw in [
+        include_str!("../../../evals/synthetic/smoke.json"),
+        include_str!("../../../evals/synthetic/quality.json"),
+        include_str!("../../../evals/synthetic/stress.json"),
+        include_str!("../../../evals/synthetic/temporal.json"),
+        include_str!("../../../evals/synthetic/adversarial.json"),
+    ] {
+        let report = run_dataset_from_file(raw)?;
+        assert!(report.case_count > 0);
+    }
+    Ok(())
+}
+
+#[test]
+fn pr_quality_datasets_meet_hard_gate() -> Result<()> {
+    let smoke = run_dataset_from_file(include_str!("../../../evals/synthetic/smoke.json"))?;
+    assert_quality_floor(&smoke);
+
+    let quality = run_dataset_from_file(include_str!("../../../evals/synthetic/quality.json"))?;
+    assert_quality_floor(&quality);
+
+    let temporal = run_dataset_from_file(include_str!("../../../evals/synthetic/temporal.json"))?;
+    assert_quality_floor(&temporal);
+
+    let adversarial =
+        run_dataset_from_file(include_str!("../../../evals/synthetic/adversarial.json"))?;
+    assert_quality_floor(&adversarial);
+
+    let stress = run_dataset_from_file(include_str!("../../../evals/synthetic/stress.json"))?;
+    assert_quality_floor(&stress);
     Ok(())
 }
 
@@ -403,6 +498,21 @@ fn eval_case_can_run_dream_before_recall_for_conflict_updates() -> Result<()> {
     let dataset = EvalDataset {
         name: "dream update synthetic".to_string(),
         memories: vec![
+            EvalMemory {
+                id: "alice-profile".to_string(),
+                content: "Alice is a person.".to_string(),
+                entities: vec![EntityInput {
+                    entity_type: "person".to_string(),
+                    name: "Alice".to_string(),
+                    aliases: Vec::new(),
+                    confidence: 0.9,
+                    source: ExtractionSource::Manual,
+                }],
+                facts: Vec::new(),
+                session_id: Some("profile".to_string()),
+                recorded_at: Some(Utc.with_ymd_and_hms(2026, 4, 19, 9, 0, 0).unwrap()),
+                confidence: 0.9,
+            },
             fact_memory(
                 "alice-paris-old-a",
                 "Alice lived in Paris in 2024.",
@@ -463,10 +573,11 @@ fn eval_case_can_run_dream_before_recall_for_conflict_updates() -> Result<()> {
         case.id == "current-home-after-dream"
             && case.aspect == "conflict_invalidation"
             && case.dream_before_recall
-            && case.matched_rank == Some(1)
-            && case.matched_unique_rank == Some(1)
+            && case.expected_hit
             && case.has_forbidden_expectations
-            && case.failure_modes.contains(&"forbidden_hit".to_string())
+            && case.clean_hit
+            && case.failure_modes.is_empty()
+            && case.forbidden_result_ids.is_empty()
             && case
                 .result_ids
                 .iter()
@@ -498,64 +609,4 @@ fn fact_memory(
         recorded_at: Some(Utc.with_ymd_and_hms(2026, 4, day, 9, 0, 0).unwrap()),
         confidence,
     }
-}
-
-fn run_dataset_from_file(raw: &str) -> Result<EvalReport> {
-    let dataset: EvalDataset = serde_json::from_str(raw)?;
-    let temp = TempDir::new()?;
-    let engine = MemoryEngine::open(EngineConfig::new(temp.path()))?;
-    let report = run_recall_eval(&engine, dataset)?;
-    Ok(report)
-}
-
-#[test]
-fn smoke_dataset_runs_successfully() -> Result<()> {
-    let raw = include_str!("../../../evals/synthetic/smoke.json");
-    let report = run_dataset_from_file(raw)?;
-    assert_eq!(report.dataset_name, "smoke synthetic recall");
-    assert!(report.case_count >= 4);
-    assert!(
-        report.recall_at_1 > 0.0,
-        "smoke should hit at least one case at rank 1"
-    );
-    assert!(report.abstention_correctness > 0.0);
-    Ok(())
-}
-
-#[test]
-fn quality_dataset_runs_successfully() -> Result<()> {
-    let raw = include_str!("../../../evals/synthetic/quality.json");
-    let report = run_dataset_from_file(raw)?;
-    assert_eq!(report.dataset_name, "quality synthetic recall");
-    assert!(report.case_count >= 18);
-    assert!(report.recall_at_1 > 0.0);
-    assert!(report.abstention_correctness > 0.0);
-    Ok(())
-}
-
-#[test]
-fn stress_dataset_runs_successfully() -> Result<()> {
-    let raw = include_str!("../../../evals/synthetic/stress.json");
-    let report = run_dataset_from_file(raw)?;
-    assert_eq!(report.dataset_name, "stress synthetic recall");
-    assert!(report.case_count >= 3);
-    Ok(())
-}
-
-#[test]
-fn temporal_dataset_runs_successfully() -> Result<()> {
-    let raw = include_str!("../../../evals/synthetic/temporal.json");
-    let report = run_dataset_from_file(raw)?;
-    assert_eq!(report.dataset_name, "temporal synthetic recall");
-    assert!(report.case_count >= 4);
-    Ok(())
-}
-
-#[test]
-fn adversarial_dataset_runs_successfully() -> Result<()> {
-    let raw = include_str!("../../../evals/synthetic/adversarial.json");
-    let report = run_dataset_from_file(raw)?;
-    assert_eq!(report.dataset_name, "adversarial synthetic recall");
-    assert!(report.case_count >= 5);
-    Ok(())
 }

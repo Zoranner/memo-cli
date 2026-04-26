@@ -130,6 +130,19 @@ impl MemoryRecord {
         }
     }
 
+    pub fn source_episode_id(&self) -> Option<&str> {
+        match self {
+            Self::Episode(_) => None,
+            Self::Entity(record) => record.source_episode_id.as_deref(),
+            Self::Fact(record) => record.source_episode_id.as_deref(),
+            Self::Edge(record) => record.source_episode_id.as_deref(),
+        }
+    }
+
+    pub fn source_key(&self) -> &str {
+        self.source_episode_id().unwrap_or_else(|| self.id())
+    }
+
     pub fn updated_at(&self) -> DateTime<Utc> {
         match self {
             Self::Episode(record) => record.updated_at,

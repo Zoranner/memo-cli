@@ -123,7 +123,9 @@ impl TextIndex {
 
         let searcher = self.reader.searcher();
         let parser = QueryParser::for_index(&self.index, vec![self.body_field]);
-        let query = parser.parse_query(query)?;
+        let query = parser
+            .parse_query(query)
+            .or_else(|_| parser.parse_query(&sanitize_query_text(query)))?;
         let docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
         let mut hits = Vec::new();
@@ -144,6 +146,19 @@ impl TextIndex {
 
         Ok(hits)
     }
+}
+
+fn sanitize_query_text(query: &str) -> String {
+    query
+        .chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() || ch.is_whitespace() {
+                ch
+            } else {
+                ' '
+            }
+        })
+        .collect()
 }
 
 fn schema() -> Schema {
@@ -180,5 +195,27 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].id, "fact-1");
         assert_eq!(hits[0].kind, "fact");
+    }
+
+    #[test]
+    fn search_accepts_natural_language_punctuation() {
+        let temp = TempDir::new().expect("temp dir");
+        let mut index = TextIndex::open(temp.path()).expect("open text index");
+
+        index
+            .rebuild(&[(
+                "fact-1".to_string(),
+                "fact".to_string(),
+                "L2".to_string(),
+                "Carol senior developer".to_string(),
+            )])
+            .expect("rebuild text index");
+
+        let hits = index
+            .search("What is Carol's job title now?", 1)
+            .expect("search text index");
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "fact-1");
     }
 }

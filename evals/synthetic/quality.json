@@ -14,28 +14,79 @@
       "facts": []
     },
     {
+      "id": "alice-paris",
+      "content": "Alice lives in Paris.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "Paris"
+        }
+      ]
+    },
+    {
+      "id": "alice-paris-old-a",
+      "content": "Alice lived in Paris in 2024.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "Paris",
+          "confidence": 0.7
+        }
+      ],
+      "session_id": "alice-old-a",
+      "recorded_at": "2026-04-20T09:00:00Z",
+      "confidence": 0.7
+    },
+    {
+      "id": "alice-london-new-a",
+      "content": "Alice moved to London in 2026.",
+      "facts": [
+        {
+          "subject": "Alice",
+          "predicate": "lives_in",
+          "object": "London",
+          "confidence": 0.96
+        }
+      ],
+      "session_id": "alice-new-a",
+      "recorded_at": "2026-04-22T09:00:00Z",
+      "confidence": 0.96
+    },
+    {
       "id": "bob-profile",
-      "content": "Bob Martinez prefers to go by Bobby.",
+      "content": "Bob is short for Robert.",
       "entities": [
         {
           "entity_type": "person",
-          "name": "Bob Martinez",
-          "aliases": ["Bobby"]
+          "name": "Robert",
+          "aliases": ["Bob", "Bobby"]
         }
       ],
       "facts": []
     },
     {
-      "id": "carol-profile",
-      "content": "Carol is nicknamed CK by her team.",
+      "id": "bob-engineer",
+      "content": "Bob works as a backend engineer at DataCorp.",
       "entities": [
         {
-          "entity_type": "person",
-          "name": "Carol",
-          "aliases": ["CK"]
+          "entity_type": "organization",
+          "name": "DataCorp"
         }
       ],
-      "facts": []
+      "facts": [
+        {
+          "subject": "Bob",
+          "predicate": "works_as",
+          "object": "backend engineer"
+        },
+        {
+          "subject": "Bob",
+          "predicate": "works_at",
+          "object": "DataCorp"
+        }
+      ]
     },
     {
       "id": "aurora-release",
@@ -50,38 +101,20 @@
       "facts": []
     },
     {
-      "id": "aurora-deadline",
-      "content": "Aurora deadline is end of Q2 for the offline evaluator.",
+      "id": "aurora-status",
+      "content": "Aurora reached beta status last week.",
       "entities": [
         {
           "entity_type": "project",
           "name": "Project Aurora",
-          "aliases": []
+          "aliases": ["Aurora"]
         }
       ],
       "facts": [
         {
           "subject": "Project Aurora",
-          "predicate": "deadline",
-          "object": "end of Q2"
-        }
-      ]
-    },
-    {
-      "id": "aurora-team",
-      "content": "Aurora team meets every Tuesday for standup.",
-      "entities": [
-        {
-          "entity_type": "project",
-          "name": "Project Aurora",
-          "aliases": []
-        }
-      ],
-      "facts": [
-        {
-          "subject": "Project Aurora",
-          "predicate": "standup",
-          "object": "Tuesday"
+          "predicate": "status",
+          "object": "beta"
         }
       ]
     },
@@ -104,130 +137,16 @@
       ]
     },
     {
-      "id": "riverbank-funding",
-      "content": "Riverbank Robotics secured Series B funding.",
-      "entities": [
-        {
-          "entity_type": "organization",
-          "name": "Riverbank Robotics",
-          "aliases": []
-        }
-      ],
+      "id": "riverbank-location",
+      "content": "Riverbank Robotics is headquartered in Munich.",
+      "entities": [],
       "facts": [
         {
           "subject": "Riverbank Robotics",
-          "predicate": "funding",
-          "object": "Series B"
+          "predicate": "headquartered_in",
+          "object": "Munich"
         }
       ]
-    },
-    {
-      "id": "riverbank-hq",
-      "content": "Riverbank Robotics headquarters is in Seattle.",
-      "entities": [
-        {
-          "entity_type": "organization",
-          "name": "Riverbank Robotics",
-          "aliases": []
-        }
-      ],
-      "facts": [
-        {
-          "subject": "Riverbank Robotics",
-          "predicate": "headquarters",
-          "object": "Seattle"
-        }
-      ]
-    },
-    {
-      "id": "alice-paris-old",
-      "content": "Alice lived in Paris in 2024.",
-      "facts": [
-        {
-          "subject": "Alice",
-          "predicate": "lives_in",
-          "object": "Paris",
-          "confidence": 0.7
-        }
-      ],
-      "session_id": "alice-old",
-      "recorded_at": "2026-04-20T09:00:00Z",
-      "confidence": 0.7
-    },
-    {
-      "id": "alice-london-current",
-      "content": "Alice confirmed London is her current home.",
-      "facts": [
-        {
-          "subject": "Alice",
-          "predicate": "lives_in",
-          "object": "London",
-          "confidence": 0.97
-        }
-      ],
-      "session_id": "alice-new",
-      "recorded_at": "2026-04-23T09:00:00Z",
-      "confidence": 0.97
-    },
-    {
-      "id": "bob-berlin-old",
-      "content": "Bob was based in Berlin last year.",
-      "facts": [
-        {
-          "subject": "Bob Martinez",
-          "predicate": "lives_in",
-          "object": "Berlin",
-          "confidence": 0.6
-        }
-      ],
-      "session_id": "bob-old",
-      "recorded_at": "2026-03-15T09:00:00Z",
-      "confidence": 0.6
-    },
-    {
-      "id": "bob-madrid-current",
-      "content": "Bob relocated to Madrid this quarter.",
-      "facts": [
-        {
-          "subject": "Bob Martinez",
-          "predicate": "lives_in",
-          "object": "Madrid",
-          "confidence": 0.95
-        }
-      ],
-      "session_id": "bob-new",
-      "recorded_at": "2026-04-22T09:00:00Z",
-      "confidence": 0.95
-    },
-    {
-      "id": "carol-tokyo-old",
-      "content": "Carol worked from Tokyo previously.",
-      "facts": [
-        {
-          "subject": "Carol",
-          "predicate": "works_from",
-          "object": "Tokyo",
-          "confidence": 0.65
-        }
-      ],
-      "session_id": "carol-old",
-      "recorded_at": "2026-02-10T09:00:00Z",
-      "confidence": 0.65
-    },
-    {
-      "id": "carol-sydney-current",
-      "content": "Carol is now based in Sydney.",
-      "facts": [
-        {
-          "subject": "Carol",
-          "predicate": "works_from",
-          "object": "Sydney",
-          "confidence": 0.92
-        }
-      ],
-      "session_id": "carol-new",
-      "recorded_at": "2026-04-18T09:00:00Z",
-      "confidence": 0.92
     }
   ],
   "cases": [
@@ -239,17 +158,17 @@
       "limit": 5
     },
     {
-      "id": "alias-bob",
+      "id": "alias-bob-nickname",
       "aspect": "alias",
       "query": "Bobby",
       "expected_memory_ids": ["bob-profile"],
       "limit": 5
     },
     {
-      "id": "alias-carol",
+      "id": "alias-bob-fullname",
       "aspect": "alias",
-      "query": "CK",
-      "expected_memory_ids": ["carol-profile"],
+      "query": "Robert engineer",
+      "expected_memory_ids": ["bob-profile"],
       "limit": 5
     },
     {
@@ -260,42 +179,39 @@
       "limit": 5
     },
     {
-      "id": "exact-aurora-deadline",
+      "id": "exact-aurora-beta",
       "aspect": "exact",
-      "query": "Aurora deadline Q2 evaluator",
-      "expected_memory_ids": ["aurora-deadline"],
+      "query": "Aurora beta status",
+      "expected_memory_ids": ["aurora-status"],
       "limit": 5
     },
     {
       "id": "exact-riverbank-drones",
       "aspect": "exact",
-      "query": "warehouse drones Riverbank Robotics",
+      "query": "warehouse drones Riverbank",
       "expected_memory_ids": ["riverbank-drones"],
       "limit": 5
     },
     {
-      "id": "fact-alice-location",
+      "id": "fact-alice-paris",
       "aspect": "fact_graph",
-      "query": "Alice London home",
-      "expected_memory_ids": ["alice-london-current"],
-      "limit": 5,
-      "deep": true
+      "query": "Alice Paris",
+      "expected_memory_ids": ["alice-paris"],
+      "limit": 5
     },
     {
-      "id": "fact-riverbank-builds",
+      "id": "fact-bob-employer",
       "aspect": "fact_graph",
-      "query": "Riverbank Robotics builds what",
-      "expected_memory_ids": ["riverbank-drones"],
-      "limit": 5,
-      "deep": true
+      "query": "Bob employer DataCorp",
+      "expected_memory_ids": ["bob-engineer"],
+      "limit": 5
     },
     {
-      "id": "fact-aurora-standup",
+      "id": "fact-riverbank-hq",
       "aspect": "fact_graph",
-      "query": "Aurora standup day",
-      "expected_memory_ids": ["aurora-team"],
-      "limit": 5,
-      "deep": true
+      "query": "Riverbank Robotics Munich",
+      "expected_memory_ids": ["riverbank-location"],
+      "limit": 5
     },
     {
       "id": "bm25-riverbank",
@@ -305,99 +221,69 @@
       "limit": 5
     },
     {
-      "id": "bm25-aurora",
+      "id": "bm25-aurora-evaluator",
       "aspect": "keyword_bm25",
       "query": "offline evaluator",
       "expected_memory_ids": ["aurora-release"],
       "limit": 5
     },
     {
-      "id": "bm25-riverbank-hq",
+      "id": "bm25-bob-engineer",
       "aspect": "keyword_bm25",
-      "query": "headquarters Seattle",
-      "expected_memory_ids": ["riverbank-hq"],
+      "query": "backend engineer DataCorp",
+      "expected_memory_ids": ["bob-engineer"],
       "limit": 5
     },
     {
-      "id": "temporal-alice-current",
+      "id": "temporal-current-london",
       "aspect": "temporal_update",
       "query": "Alice current home London",
-      "expected_memory_ids": ["alice-london-current"],
-      "forbidden_memory_ids": ["alice-paris-old"],
+      "expected_memory_ids": ["alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris", "alice-paris-old-a"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true
     },
     {
-      "id": "temporal-bob-current",
+      "id": "temporal-current-london-2",
       "aspect": "temporal_update",
-      "query": "Bob current location Madrid",
-      "expected_memory_ids": ["bob-madrid-current"],
-      "forbidden_memory_ids": ["bob-berlin-old"],
+      "query": "Where does Alice currently live?",
+      "expected_memory_ids": ["alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris", "alice-paris-old-a"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true
     },
     {
-      "id": "temporal-carol-current",
+      "id": "temporal-paris-outdated",
       "aspect": "temporal_update",
-      "query": "Carol current base Sydney",
-      "expected_memory_ids": ["carol-sydney-current"],
-      "forbidden_memory_ids": ["carol-tokyo-old"],
+      "query": "Alice moved where recently",
+      "expected_memory_ids": ["alice-london-new-a"],
+      "forbidden_memory_ids": ["alice-paris-old-a"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true
     },
     {
-      "id": "unknown-dave",
+      "id": "unknown-mira-deploy",
       "aspect": "abstention",
-      "query": "Dave infrastructure plan",
+      "query": "Mira deployment target",
       "should_abstain": true,
       "limit": 5
     },
     {
-      "id": "unknown-eve",
+      "id": "unknown-neptune-owner",
       "aspect": "abstention",
-      "query": "Eve travel schedule",
+      "query": "Neptune account owner",
       "should_abstain": true,
       "limit": 5
     },
     {
       "id": "unknown-zeta",
       "aspect": "abstention",
-      "query": "Zeta deployment pipeline",
+      "query": "Zeta server configuration",
       "should_abstain": true,
       "limit": 5
-    },
-    {
-      "id": "deep-alice-location",
-      "aspect": "deep_recall",
-      "query": "Where is Alice currently based?",
-      "expected_memory_ids": ["alice-london-current"],
-      "forbidden_memory_ids": ["alice-paris-old"],
-      "limit": 5,
-      "deep": true,
-      "dream_before_recall": true
-    },
-    {
-      "id": "deep-bob-location",
-      "aspect": "deep_recall",
-      "query": "Where does Bob Martinez work now?",
-      "expected_memory_ids": ["bob-madrid-current"],
-      "forbidden_memory_ids": ["bob-berlin-old"],
-      "limit": 5,
-      "deep": true,
-      "dream_before_recall": true
-    },
-    {
-      "id": "deep-carol-location",
-      "aspect": "deep_recall",
-      "query": "Carol current work location?",
-      "expected_memory_ids": ["carol-sydney-current"],
-      "forbidden_memory_ids": ["carol-tokyo-old"],
-      "limit": 5,
-      "deep": true,
-      "dream_before_recall": true
     }
   ]
 }

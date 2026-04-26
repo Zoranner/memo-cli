@@ -25,6 +25,13 @@
           "name": "Riverbank Robotics",
           "aliases": ["Riverbank"]
         }
+      ],
+      "facts": [
+        {
+          "subject": "Riverbank Robotics",
+          "predicate": "builds",
+          "object": "warehouse drones"
+        }
       ]
     }
   ],
@@ -37,9 +44,30 @@
       "limit": 5
     },
     {
+      "id": "alias-alice-2",
+      "aspect": "alias",
+      "query": "Who is Ally?",
+      "expected_memory_ids": ["alice-profile"],
+      "limit": 5
+    },
+    {
+      "id": "alias-alice-3",
+      "aspect": "alias",
+      "query": "Alice also known as",
+      "expected_memory_ids": ["alice-profile"],
+      "limit": 5
+    },
+    {
       "id": "exact-aurora",
       "aspect": "exact",
       "query": "offline memory evaluator Friday",
+      "expected_memory_ids": ["aurora-release"],
+      "limit": 5
+    },
+    {
+      "id": "exact-aurora-2",
+      "aspect": "exact",
+      "query": "Project Aurora ships evaluator",
       "expected_memory_ids": ["aurora-release"],
       "limit": 5
     },
@@ -51,9 +79,30 @@
       "limit": 5
     },
     {
+      "id": "bm25-riverbank-2",
+      "aspect": "keyword_bm25",
+      "query": "Riverbank Robotics drones",
+      "expected_memory_ids": ["riverbank-drones"],
+      "limit": 5
+    },
+    {
+      "id": "bm25-riverbank-3",
+      "aspect": "keyword_bm25",
+      "query": "Riverbank builds",
+      "expected_memory_ids": ["riverbank-drones"],
+      "limit": 5
+    },
+    {
       "id": "unknown-bob",
       "aspect": "abstention",
       "query": "Bob deployment target",
+      "should_abstain": true,
+      "limit": 5
+    },
+    {
+      "id": "unknown-carol",
+      "aspect": "abstention",
+      "query": "Carol timeline",
       "should_abstain": true,
       "limit": 5
     }

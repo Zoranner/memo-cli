@@ -30,6 +30,7 @@ pub struct EvalGateWarning {
 pub struct RecallQualityGateProfile {
     pub name: String,
     pub minimums: Vec<EvalMetricMinimum>,
+    pub maximums: Vec<EvalMetricMaximum>,
     pub warning_minimums: Vec<EvalMetricMinimum>,
     pub warning_maximums: Vec<EvalMetricMaximum>,
 }
@@ -44,8 +45,11 @@ impl RecallQualityGateProfile {
                 EvalMetricMinimum::new("mrr", 0.70),
                 EvalMetricMinimum::new("source_mrr", 0.70),
                 EvalMetricMinimum::new("clean_hit_rate", 0.50),
+                EvalMetricMinimum::new("successful_case_rate", 0.75),
                 EvalMetricMinimum::new("abstention_correctness", 1.0),
+                EvalMetricMinimum::new("forbidden_correctness", 0.50),
             ],
+            maximums: vec![EvalMetricMaximum::new("mean_duplicate_rate", 0.30)],
             warning_minimums: vec![EvalMetricMinimum::new("forbidden_correctness", 1.0)],
             warning_maximums: vec![EvalMetricMaximum::new("mean_duplicate_rate", 0.20)],
         }
@@ -97,6 +101,20 @@ pub fn evaluate_recall_quality_gate(
                 message: format!(
                     "{} must be at least {:.3}, got {:.3}",
                     minimum.metric, minimum.minimum, actual
+                ),
+            });
+        }
+    }
+    for maximum in &profile.maximums {
+        let actual = eval_metric_value(report, &maximum.metric);
+        if actual > maximum.maximum {
+            failures.push(EvalGateViolation {
+                metric: maximum.metric.clone(),
+                expected: maximum.maximum,
+                actual,
+                message: format!(
+                    "{} must be at most {:.3}, got {:.3}",
+                    maximum.metric, maximum.maximum, actual
                 ),
             });
         }

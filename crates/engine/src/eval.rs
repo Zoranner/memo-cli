@@ -717,35 +717,36 @@ struct EvalSummary {
 fn summarize_cases(cases: &[EvalCaseReport]) -> EvalSummary {
     let case_count = cases.len();
     let denominator = case_count.max(1) as f32;
-    let recall_at_1 = cases
-        .iter()
-        .filter(|case| case.matched_rank.is_some_and(|rank| rank <= 1))
-        .count() as f32
-        / denominator;
-    let recall_at_5 = cases
-        .iter()
-        .filter(|case| case.matched_rank.is_some_and(|rank| rank <= 5))
-        .count() as f32
-        / denominator;
-    let source_recall_at_1 = cases
-        .iter()
-        .filter(|case| case.matched_unique_rank.is_some_and(|rank| rank <= 1))
-        .count() as f32
-        / denominator;
-    let source_recall_at_5 = cases
-        .iter()
-        .filter(|case| case.matched_unique_rank.is_some_and(|rank| rank <= 5))
-        .count() as f32
-        / denominator;
-    let expected_hit_rate = cases
-        .iter()
-        .filter(|case| case.matched_rank.is_some())
-        .count() as f32
-        / denominator;
     let expected_total = cases
         .iter()
         .filter(|case| case.has_expected_expectations)
         .count();
+    let expected_denominator = expected_total.max(1) as f32;
+    let recall_at_1 = cases
+        .iter()
+        .filter(|case| case.matched_rank.is_some_and(|rank| rank <= 1))
+        .count() as f32
+        / expected_denominator;
+    let recall_at_5 = cases
+        .iter()
+        .filter(|case| case.matched_rank.is_some_and(|rank| rank <= 5))
+        .count() as f32
+        / expected_denominator;
+    let source_recall_at_1 = cases
+        .iter()
+        .filter(|case| case.matched_unique_rank.is_some_and(|rank| rank <= 1))
+        .count() as f32
+        / expected_denominator;
+    let source_recall_at_5 = cases
+        .iter()
+        .filter(|case| case.matched_unique_rank.is_some_and(|rank| rank <= 5))
+        .count() as f32
+        / expected_denominator;
+    let expected_hit_rate = cases
+        .iter()
+        .filter(|case| case.matched_rank.is_some())
+        .count() as f32
+        / expected_denominator;
     let clean_hit_rate = if expected_total == 0 {
         1.0
     } else {
@@ -804,7 +805,7 @@ fn summarize_cases(cases: &[EvalCaseReport]) -> EvalSummary {
         .iter()
         .map(|case| case.matched_rank.map_or(0.0, |rank| 1.0 / rank as f32))
         .sum::<f32>()
-        / denominator;
+        / expected_denominator;
     let source_mrr = cases
         .iter()
         .map(|case| {
@@ -812,7 +813,7 @@ fn summarize_cases(cases: &[EvalCaseReport]) -> EvalSummary {
                 .map_or(0.0, |rank| 1.0 / rank as f32)
         })
         .sum::<f32>()
-        / denominator;
+        / expected_denominator;
 
     EvalSummary {
         case_count,
@@ -910,19 +911,4 @@ fn failure_mode_counts(cases: &[EvalCaseReport]) -> Vec<EvalFailureModeCount> {
 
 fn elapsed_ms(started: Instant) -> f64 {
     started.elapsed().as_secs_f64() * 1000.0
-}
-
-trait EvalMemoryRecordExt {
-    fn source_episode_id(&self) -> Option<&str>;
-}
-
-impl EvalMemoryRecordExt for MemoryRecord {
-    fn source_episode_id(&self) -> Option<&str> {
-        match self {
-            MemoryRecord::Episode(_) => None,
-            MemoryRecord::Entity(record) => record.source_episode_id.as_deref(),
-            MemoryRecord::Fact(record) => record.source_episode_id.as_deref(),
-            MemoryRecord::Edge(record) => record.source_episode_id.as_deref(),
-        }
-    }
 }

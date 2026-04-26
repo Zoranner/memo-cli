@@ -374,6 +374,23 @@ impl Database {
         let rows = stmt.query_map(params![episode_id], |row| row.get(0))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+    pub fn active_related_ids_for_episode(
+        &self,
+        kind: &str,
+        episode_id: &str,
+    ) -> Result<Vec<String>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let table = table_for_kind(kind)?;
+        let sql = format!(
+            "SELECT id FROM {table}
+             WHERE source_episode_id = ?1
+               AND archived_at IS NULL
+               AND invalidated_at IS NULL"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![episode_id], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
     pub fn active_facts_in_layers(&self, layers: &[MemoryLayer]) -> Result<Vec<FactRecord>> {
         if layers.is_empty() {
             return Ok(Vec::new());
@@ -396,6 +413,18 @@ impl Database {
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(rusqlite::params_from_iter(params), map_fact)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+    pub fn active_fact_count_for_episode(&self, episode_id: &str) -> Result<usize> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let count = conn.query_row(
+            "SELECT COUNT(*) FROM facts
+             WHERE source_episode_id = ?1
+               AND archived_at IS NULL
+               AND invalidated_at IS NULL",
+            params![episode_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        Ok(count.max(0) as usize)
     }
     pub fn matching_edge_ids(
         &self,

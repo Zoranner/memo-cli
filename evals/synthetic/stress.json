@@ -29,11 +29,11 @@
     },
     {
       "id": "riverbank-noise-c",
-      "content": "A riverbank erosion study documented warehouse flood risks."
+      "content": "Riverbank Logistics stores inventory in the south warehouse."
     },
     {
       "id": "riverbank-noise-d",
-      "content": "Riverbank Partners manages warehouse leasing contracts."
+      "content": "A riverbank erosion study mapped drone flight paths near the Thames."
     },
     {
       "id": "aurora-noise",
@@ -48,12 +48,28 @@
       "content": "Harbor Labs evaluates offline sync for field reports."
     },
     {
+      "id": "aurora-release",
+      "content": "Project Aurora ships the offline memory evaluator on Friday.",
+      "entities": [
+        {
+          "entity_type": "project",
+          "name": "Project Aurora",
+          "aliases": ["Aurora"]
+        }
+      ],
+      "facts": []
+    },
+    {
       "id": "drone-noise-a",
-      "content": "Drone photography services are available for real estate."
+      "content": "Personal drones require registration in most countries."
     },
     {
       "id": "drone-noise-b",
-      "content": "The drone racing league holds weekly competitions."
+      "content": "Military drones operate under different regulations than commercial ones."
+    },
+    {
+      "id": "warehouse-noise-a",
+      "content": "Warehouse management systems track inventory turnover rates."
     }
   ],
   "cases": [
@@ -67,20 +83,53 @@
       "deep": true
     },
     {
+      "id": "riverbank-target-2",
+      "aspect": "stress_noise",
+      "query": "Riverbank Robotics warehouse drones",
+      "expected_memory_ids": ["riverbank-drones"],
+      "forbidden_memory_ids": ["riverbank-noise-a", "riverbank-noise-b", "riverbank-noise-c", "riverbank-noise-d"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "riverbank-target-3",
+      "aspect": "stress_noise",
+      "query": "Who makes drones for warehouses at Riverbank?",
+      "expected_memory_ids": ["riverbank-drones"],
+      "forbidden_memory_ids": ["riverbank-noise-a", "riverbank-noise-b", "drone-noise-a", "drone-noise-b"],
+      "limit": 5,
+      "deep": true
+    },
+    {
       "id": "aurora-target-with-noise",
       "aspect": "stress_noise",
-      "query": "Riverbank Robotics drone manufacturing",
-      "expected_memory_ids": ["riverbank-drones"],
+      "query": "Aurora offline memory evaluator",
+      "expected_memory_ids": ["aurora-release"],
       "forbidden_memory_ids": ["aurora-noise", "atlas-noise", "harbor-noise"],
       "limit": 5,
       "deep": true
     },
     {
-      "id": "drone-keyword-disambiguation",
+      "id": "aurora-target-2",
       "aspect": "stress_noise",
-      "query": "warehouse drones Riverbank",
-      "expected_memory_ids": ["riverbank-drones"],
-      "forbidden_memory_ids": ["drone-noise-a", "drone-noise-b"],
+      "query": "What does Project Aurora ship on Friday?",
+      "expected_memory_ids": ["aurora-release"],
+      "forbidden_memory_ids": ["aurora-noise", "atlas-noise"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "noise-only-query",
+      "aspect": "stress_abstention",
+      "query": "Warehouse management system features",
+      "expected_memory_ids": ["warehouse-noise-a"],
+      "limit": 5
+    },
+    {
+      "id": "noise-only-query-2",
+      "aspect": "stress_abstention",
+      "query": "Drone registration requirements",
+      "expected_memory_ids": ["drone-noise-a"],
       "limit": 5
     }
   ]

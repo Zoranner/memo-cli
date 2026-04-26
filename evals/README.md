@@ -15,7 +15,7 @@ reports measure the same behavior.
   known retrieval risks, and writes a JSON report.
 - `crates/engine/benches/recall_latency.rs`: Criterion microbench suite for core
   recall paths and remember latency.
-- `crates/engine/benches/recall_eval.rs`: one-shot diagnostic bench runner for
+- `crates/engine/examples/recall_eval.rs`: one-shot diagnostic runner for
   human-readable reports, JSON artifacts, and baseline comparison.
 - `crates/engine/benches/support/quality.rs`: quality bench fixtures, report
   artifact writing, and quality report printing.
@@ -32,7 +32,10 @@ The synthetic quality bench enforces required floors through
 - `mrr >= 0.70`
 - `source_mrr >= 0.70`
 - `clean_hit_rate >= 0.50`
+- `successful_case_rate >= 0.75`
 - `abstention_correctness >= 1.0`
+- `forbidden_correctness >= 0.50`
+- `mean_duplicate_rate <= 0.30`
 
 Known retrieval risks are reported as warnings instead of hidden:
 
@@ -49,7 +52,7 @@ measured instead of masked.
 Recommended command:
 
 ```powershell
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\smoke.json --json --output target\evals\smoke.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\smoke.json --json --output target\evals\smoke.json
 ```
 
 ## Quality
@@ -89,14 +92,14 @@ directory lock contention.
 
 ## Diagnostic Runner
 
-`recall_eval` is a bench target, not a user-facing `memo` command and not a
-library example. It runs a dataset once and writes a detailed report for
-developer diagnosis.
+`recall_eval` is a Cargo example, not a Criterion bench target and not a
+user-facing `memo` command. It runs a dataset once and writes a detailed report
+for developer diagnosis.
 
 Default command:
 
 ```powershell
-cargo bench -p memo-engine --bench recall_eval
+cargo run -p memo-engine --example recall_eval
 ```
 
 By default it reads `evals/synthetic/quality.json` and writes
@@ -104,7 +107,7 @@ By default it reads `evals/synthetic/quality.json` and writes
 focused diagnosis:
 
 ```powershell
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\temporal.json --json --output target\evals\temporal.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\temporal.json --json --output target\evals\temporal.json
 ```
 
 ## Stress
@@ -125,16 +128,16 @@ PR tier:
 
 ```powershell
 cargo test -p memo-engine --test eval_runner
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\smoke.json --json --output target\evals\smoke.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\smoke.json --json --output target\evals\smoke.json
 ```
 
 Nightly tier:
 
 ```powershell
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\quality.json --json --output target\evals\quality.json
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\temporal.json --json --output target\evals\temporal.json
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\adversarial.json --json --output target\evals\adversarial.json
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\stress.json --json --output target\evals\stress.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\quality.json --json --output target\evals\quality.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\temporal.json --json --output target\evals\temporal.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\adversarial.json --json --output target\evals\adversarial.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\stress.json --json --output target\evals\stress.json
 ```
 
 Manual tier:
@@ -142,11 +145,11 @@ Manual tier:
 ```powershell
 cargo bench -p memo-engine --bench recall_quality -- --sample-size 10
 cargo bench -p memo-engine --bench recall_latency -- --sample-size 10
-cargo bench -p memo-engine --bench recall_eval
+cargo run -p memo-engine --example recall_eval
 ```
 
 Baseline comparison:
 
 ```powershell
-cargo bench -p memo-engine --bench recall_eval -- evals\synthetic\quality.json --compare target\evals\baseline-quality.json --output target\evals\quality.json
+cargo run -p memo-engine --example recall_eval -- evals\synthetic\quality.json --compare target\evals\baseline-quality.json --output target\evals\quality.json
 ```

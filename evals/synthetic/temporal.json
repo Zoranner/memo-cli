@@ -32,94 +32,64 @@
       "confidence": 0.97
     },
     {
-      "id": "bob-berlin-old",
-      "content": "Bob was based in Berlin last year.",
+      "id": "bob-tokyo-old",
+      "content": "Bob was based in the Tokyo office during 2024.",
       "facts": [
         {
           "subject": "Bob",
-          "predicate": "lives_in",
-          "object": "Berlin",
-          "confidence": 0.6
-        }
-      ],
-      "session_id": "bob-old",
-      "recorded_at": "2026-03-15T09:00:00Z",
-      "confidence": 0.6
-    },
-    {
-      "id": "bob-madrid-current",
-      "content": "Bob relocated to Madrid this quarter.",
-      "facts": [
-        {
-          "subject": "Bob",
-          "predicate": "lives_in",
-          "object": "Madrid",
-          "confidence": 0.95
-        }
-      ],
-      "session_id": "bob-new",
-      "recorded_at": "2026-04-22T09:00:00Z",
-      "confidence": 0.95
-    },
-    {
-      "id": "carol-tokyo-old",
-      "content": "Carol worked from Tokyo previously.",
-      "facts": [
-        {
-          "subject": "Carol",
-          "predicate": "works_from",
+          "predicate": "based_in",
           "object": "Tokyo",
           "confidence": 0.65
         }
       ],
-      "session_id": "carol-old",
-      "recorded_at": "2026-02-10T09:00:00Z",
+      "session_id": "bob-old",
+      "recorded_at": "2026-04-15T09:00:00Z",
       "confidence": 0.65
     },
     {
-      "id": "carol-sydney-current",
-      "content": "Carol is now based in Sydney.",
+      "id": "bob-berlin-current",
+      "content": "Bob transferred to the Berlin office in 2026.",
       "facts": [
         {
-          "subject": "Carol",
-          "predicate": "works_from",
-          "object": "Sydney",
-          "confidence": 0.92
-        }
-      ],
-      "session_id": "carol-new",
-      "recorded_at": "2026-04-18T09:00:00Z",
-      "confidence": 0.92
-    },
-    {
-      "id": "project-alpha-v1",
-      "content": "Project Alpha uses React for the frontend.",
-      "facts": [
-        {
-          "subject": "Project Alpha",
-          "predicate": "uses",
-          "object": "React",
-          "confidence": 0.75
-        }
-      ],
-      "session_id": "alpha-v1",
-      "recorded_at": "2026-01-15T09:00:00Z",
-      "confidence": 0.75
-    },
-    {
-      "id": "project-alpha-v2",
-      "content": "Project Alpha migrated to Svelte for the frontend.",
-      "facts": [
-        {
-          "subject": "Project Alpha",
-          "predicate": "uses",
-          "object": "Svelte",
+          "subject": "Bob",
+          "predicate": "based_in",
+          "object": "Berlin",
           "confidence": 0.95
         }
       ],
-      "session_id": "alpha-v2",
-      "recorded_at": "2026-04-10T09:00:00Z",
+      "session_id": "bob-new",
+      "recorded_at": "2026-04-24T09:00:00Z",
       "confidence": 0.95
+    },
+    {
+      "id": "carol-role-old",
+      "content": "Carol was a junior developer in 2025.",
+      "facts": [
+        {
+          "subject": "Carol",
+          "predicate": "role",
+          "object": "junior developer",
+          "confidence": 0.75
+        }
+      ],
+      "session_id": "carol-old",
+      "recorded_at": "2026-03-10T09:00:00Z",
+      "confidence": 0.75
+    },
+    {
+      "id": "carol-role-current",
+      "content": "Carol was promoted to senior developer in 2026.",
+      "facts": [
+        {
+          "subject": "Carol",
+          "predicate": "role",
+          "object": "senior developer",
+          "confidence": 0.98
+        }
+      ],
+      "session_id": "carol-new",
+      "recorded_at": "2026-04-25T09:00:00Z",
+      "confidence": 0.98
     }
   ],
   "cases": [
@@ -134,31 +104,81 @@
       "dream_before_recall": true
     },
     {
-      "id": "bob-current-location",
+      "id": "alice-current-home-2",
       "aspect": "temporal_update",
-      "query": "Bob current location",
-      "expected_memory_ids": ["bob-madrid-current"],
-      "forbidden_memory_ids": ["bob-berlin-old"],
+      "query": "Alice current home city",
+      "expected_memory_ids": ["alice-london-current"],
+      "forbidden_memory_ids": ["alice-paris-old"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true
     },
     {
-      "id": "carol-current-base",
+      "id": "alice-current-home-3",
       "aspect": "temporal_update",
-      "query": "Carol current work base",
-      "expected_memory_ids": ["carol-sydney-current"],
-      "forbidden_memory_ids": ["carol-tokyo-old"],
+      "query": "Where does Alice live now?",
+      "expected_memory_ids": ["alice-london-current"],
+      "forbidden_memory_ids": ["alice-paris-old"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true
     },
     {
-      "id": "alpha-current-framework",
+      "id": "bob-current-office",
       "aspect": "temporal_update",
-      "query": "What frontend does Project Alpha use now?",
-      "expected_memory_ids": ["project-alpha-v2"],
-      "forbidden_memory_ids": ["project-alpha-v1"],
+      "query": "Bob current office location",
+      "expected_memory_ids": ["bob-berlin-current"],
+      "forbidden_memory_ids": ["bob-tokyo-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "bob-current-office-2",
+      "aspect": "temporal_update",
+      "query": "Where is Bob based now?",
+      "expected_memory_ids": ["bob-berlin-current"],
+      "forbidden_memory_ids": ["bob-tokyo-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "bob-current-office-3",
+      "aspect": "temporal_update",
+      "query": "Bob transferred to which city?",
+      "expected_memory_ids": ["bob-berlin-current"],
+      "forbidden_memory_ids": ["bob-tokyo-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "carol-current-role",
+      "aspect": "temporal_update",
+      "query": "Carol current role",
+      "expected_memory_ids": ["carol-role-current"],
+      "forbidden_memory_ids": ["carol-role-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "carol-current-role-2",
+      "aspect": "temporal_update",
+      "query": "What is Carol's job title now?",
+      "expected_memory_ids": ["carol-role-current"],
+      "forbidden_memory_ids": ["carol-role-old"],
+      "limit": 5,
+      "deep": true,
+      "dream_before_recall": true
+    },
+    {
+      "id": "carol-current-role-3",
+      "aspect": "temporal_update",
+      "query": "Carol was promoted to what position?",
+      "expected_memory_ids": ["carol-role-current"],
+      "forbidden_memory_ids": ["carol-role-old"],
       "limit": 5,
       "deep": true,
       "dream_before_recall": true

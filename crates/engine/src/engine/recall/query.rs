@@ -126,6 +126,10 @@ impl MemoryEngine {
             .collect();
         self.apply_rerank(deep, &request.query, limit, &mut scored)?;
         scored.sort_by(|a, b| b.score.total_cmp(&a.score));
+        if deep {
+            filter_candidates_by_query_coverage(&request.query, &mut scored);
+        }
+        dedupe_candidates_by_source(&mut scored);
 
         let selected = mmr_select(scored, limit);
         let results = selected

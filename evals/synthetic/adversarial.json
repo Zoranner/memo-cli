@@ -2,7 +2,7 @@
   "name": "adversarial synthetic recall",
   "memories": [
     {
-      "id": "alice-morgan-london",
+      "id": "alice-london",
       "content": "Alice Morgan works from London.",
       "entities": [
         {
@@ -10,16 +10,30 @@
           "name": "Alice Morgan",
           "aliases": ["Alice"]
         }
+      ],
+      "facts": [
+        {
+          "subject": "Alice Morgan",
+          "predicate": "works_from",
+          "object": "London"
+        }
       ]
     },
     {
-      "id": "alyce-morgan-berlin",
+      "id": "alyce-berlin",
       "content": "Alyce Morgan works from Berlin.",
       "entities": [
         {
           "entity_type": "person",
           "name": "Alyce Morgan",
           "aliases": ["Alyce"]
+        }
+      ],
+      "facts": [
+        {
+          "subject": "Alyce Morgan",
+          "predicate": "works_from",
+          "object": "Berlin"
         }
       ]
     },
@@ -28,96 +42,63 @@
       "content": "Alice Morgan is not assigned to Berlin."
     },
     {
-      "id": "bob-engineer-alpha",
-      "content": "Bob Chen is the lead engineer on Project Alpha.",
+      "id": "project-sigma-active",
+      "content": "Project Sigma is currently active and on schedule."
+    },
+    {
+      "id": "project-sigma-cancelled",
+      "content": "Project Sigma was cancelled last quarter."
+    },
+    {
+      "id": "delta-deploy-success",
+      "content": "Delta deployment succeeded with zero downtime."
+    },
+    {
+      "id": "delta-deploy-failed",
+      "content": "Delta deployment failed due to config errors."
+    },
+    {
+      "id": "riverbank-partner",
+      "content": "Riverbank Robotics partners with Aurora Systems.",
       "entities": [
         {
-          "entity_type": "person",
-          "name": "Bob Chen",
-          "aliases": ["Bob"]
+          "entity_type": "organization",
+          "name": "Riverbank Robotics",
+          "aliases": ["Riverbank"]
         },
         {
-          "entity_type": "project",
-          "name": "Project Alpha",
-          "aliases": ["Alpha"]
+          "entity_type": "organization",
+          "name": "Aurora Systems",
+          "aliases": ["Aurora"]
         }
       ],
       "facts": [
         {
-          "subject": "Bob Chen",
-          "predicate": "role",
-          "object": "lead engineer on Project Alpha"
+          "subject": "Riverbank Robotics",
+          "predicate": "partners_with",
+          "object": "Aurora Systems"
         }
       ]
     },
     {
-      "id": "bob-analyst-beta",
-      "content": "Bob Williams is the data analyst on Project Beta.",
-      "entities": [
-        {
-          "entity_type": "person",
-          "name": "Bob Williams",
-          "aliases": ["Bobby"]
-        },
-        {
-          "entity_type": "project",
-          "name": "Project Beta",
-          "aliases": ["Beta"]
-        }
-      ],
-      "facts": [
-        {
-          "subject": "Bob Williams",
-          "predicate": "role",
-          "object": "data analyst on Project Beta"
-        }
-      ]
-    },
-    {
-      "id": "delta-server-status",
-      "content": "Delta server is currently operational and handling traffic.",
-      "facts": [
-        {
-          "subject": "Delta server",
-          "predicate": "status",
-          "object": "operational"
-        }
-      ]
-    },
-    {
-      "id": "delta-server-outdated",
-      "content": "Delta server was previously marked as decommissioned.",
-      "facts": [
-        {
-          "subject": "Delta server",
-          "predicate": "status",
-          "object": "decommissioned",
-          "confidence": 0.5
-        }
-      ],
-      "session_id": "delta-old",
-      "recorded_at": "2026-03-01T09:00:00Z",
-      "confidence": 0.5
-    },
-    {
-      "id": "gamma-contamination",
-      "content": "Gamma project stores data in EU region.",
+      "id": "aurora-release",
+      "content": "Project Aurora ships the offline memory evaluator on Friday.",
       "entities": [
         {
           "entity_type": "project",
-          "name": "Gamma",
-          "aliases": []
+          "name": "Project Aurora",
+          "aliases": ["Aurora"]
         }
       ]
     },
     {
-      "id": "gamma-contamination-b",
-      "content": "Gamma project data is stored in US region.",
+      "id": "delta-partner",
+      "content": "Delta Logistics partners with Horizon Shipping.",
       "entities": [
         {
-          "entity_type": "project",
-          "name": "Gamma",
-          "aliases": []
+          "entity_type": "organization",
+          "name": "Delta Logistics",
+          "aliases": ["Delta"]
         }
       ]
     }
@@ -127,46 +108,82 @@
       "id": "similar-name-alice",
       "aspect": "adversarial_alias",
       "query": "Where does Alice Morgan work?",
-      "expected_memory_ids": ["alice-morgan-london"],
-      "forbidden_memory_ids": ["alyce-morgan-berlin", "alice-negation"],
+      "expected_memory_ids": ["alice-london"],
+      "forbidden_memory_ids": ["alyce-berlin", "alice-negation"],
       "limit": 5,
       "deep": true
     },
     {
-      "id": "similar-name-bob",
+      "id": "similar-name-alice-2",
       "aspect": "adversarial_alias",
-      "query": "Bob Chen role",
-      "expected_memory_ids": ["bob-engineer-alpha"],
-      "forbidden_memory_ids": ["bob-analyst-beta"],
+      "query": "Alice Morgan London office location",
+      "expected_memory_ids": ["alice-london"],
+      "forbidden_memory_ids": ["alyce-berlin"],
       "limit": 5,
       "deep": true
     },
     {
-      "id": "negation-berlin",
+      "id": "similar-name-alice-3",
+      "aspect": "adversarial_alias",
+      "query": "Alice Morgan London city",
+      "expected_memory_ids": ["alice-london"],
+      "forbidden_memory_ids": ["alyce-berlin"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "negation-sigma-active",
       "aspect": "adversarial_negation",
-      "query": "Is Alice Morgan assigned to Berlin?",
-      "expected_memory_ids": ["alice-negation"],
-      "forbidden_memory_ids": ["alyce-morgan-berlin"],
+      "query": "Is Project Sigma currently active?",
+      "expected_memory_ids": ["project-sigma-active"],
+      "forbidden_memory_ids": ["project-sigma-cancelled"],
       "limit": 5,
       "deep": true
     },
     {
-      "id": "contradictory-delta",
-      "aspect": "adversarial_contradiction",
-      "query": "Delta server current status",
-      "expected_memory_ids": ["delta-server-status"],
-      "forbidden_memory_ids": ["delta-server-outdated"],
+      "id": "negation-sigma-active-2",
+      "aspect": "adversarial_negation",
+      "query": "Project Sigma status on schedule",
+      "expected_memory_ids": ["project-sigma-active"],
+      "forbidden_memory_ids": ["project-sigma-cancelled"],
       "limit": 5,
-      "deep": true,
-      "dream_before_recall": true
+      "deep": true
     },
     {
-      "id": "contamination-gamma",
-      "aspect": "adversarial_contamination",
-      "query": "Gamma project data region EU",
-      "expected_memory_ids": ["gamma-contamination"],
-      "forbidden_memory_ids": ["gamma-contamination-b"],
-      "limit": 5
+      "id": "negation-delta-success",
+      "aspect": "adversarial_negation",
+      "query": "Delta deployment succeeded result",
+      "expected_memory_ids": ["delta-deploy-success"],
+      "forbidden_memory_ids": ["delta-deploy-failed"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "ambiguous-aurora",
+      "aspect": "adversarial_ambiguity",
+      "query": "Aurora Systems partnership details",
+      "expected_memory_ids": ["riverbank-partner"],
+      "forbidden_memory_ids": ["aurora-release"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "ambiguous-aurora-2",
+      "aspect": "adversarial_ambiguity",
+      "query": "Who does Aurora Systems partner with?",
+      "expected_memory_ids": ["riverbank-partner"],
+      "forbidden_memory_ids": ["aurora-release"],
+      "limit": 5,
+      "deep": true
+    },
+    {
+      "id": "ambiguous-aurora-3",
+      "aspect": "adversarial_ambiguity",
+      "query": "Aurora Riverbank partner collaboration",
+      "expected_memory_ids": ["riverbank-partner"],
+      "forbidden_memory_ids": ["aurora-release", "delta-partner"],
+      "limit": 5,
+      "deep": true
     }
   ]
 }
