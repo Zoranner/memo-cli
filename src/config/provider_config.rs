@@ -57,7 +57,8 @@ fn resolve_provider_config(providers_toml: &str, provider_ref: &str) -> Result<P
         .clone()
         .with_context(|| "missing `model`".to_string())?;
 
-    let mut config = ProviderConfig::new(provider, &provider_entry.api_key, base_url, model);
+    let mut config =
+        ProviderConfig::with_base_url(provider, &provider_entry.api_key, base_url, model);
     config.dimension = service_entry.dimension;
     config.timeout = service_entry.timeout_ms.map(Duration::from_millis);
     config.max_concurrent = service_entry.max_concurrent;
