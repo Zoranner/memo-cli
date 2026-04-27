@@ -81,6 +81,7 @@ impl Database {
         let mut fact_ids = Vec::new();
         let mut edge_ids = Vec::new();
         let mut seen = HashSet::new();
+        let mut seen_episode_ids = HashSet::new();
 
         for memory in memories {
             let key = format!("{}:{}", memory.kind(), memory.id());
@@ -88,8 +89,18 @@ impl Database {
                 continue;
             }
 
+            if let Some(source_episode_id) = memory.source_episode_id() {
+                if seen_episode_ids.insert(source_episode_id.to_string()) {
+                    episode_ids.push(source_episode_id.to_string());
+                }
+            }
+
             match memory {
-                MemoryRecord::Episode(_) => episode_ids.push(memory.id().to_string()),
+                MemoryRecord::Episode(_) => {
+                    if seen_episode_ids.insert(memory.id().to_string()) {
+                        episode_ids.push(memory.id().to_string());
+                    }
+                }
                 MemoryRecord::Entity(_) => entity_ids.push(memory.id().to_string()),
                 MemoryRecord::Fact(_) => fact_ids.push(memory.id().to_string()),
                 MemoryRecord::Edge(_) => edge_ids.push(memory.id().to_string()),
@@ -134,16 +145,37 @@ impl Database {
         let now = now_ts();
         let sql = format!("UPDATE {} SET layer = ?2 WHERE id = ?1", table);
         conn.execute(&sql, params![id, layer.as_str()])?;
-        conn.execute(
-            "UPDATE memory_layers
-             SET layer = ?2, last_promoted_at = ?3, updated_at = ?3
-             WHERE memory_id = ?1 AND memory_kind = ?4",
-            params![id, layer.as_str(), now, kind],
-        )?;
+        if layer == MemoryLayer::L3 {
+            conn.execute(
+                "UPDATE memory_layers
+                 SET layer = ?2, last_promoted_at = ?3, updated_at = ?3
+                 WHERE memory_id = ?1 AND memory_kind = ?4",
+                params![id, layer.as_str(), now, kind],
+            )?;
+        } else {
+            conn.execute(
+                "UPDATE memory_layers
+                 SET layer = ?2, updated_at = ?3
+                 WHERE memory_id = ?1 AND memory_kind = ?4",
+                params![id, layer.as_str(), now, kind],
+            )?;
+        }
         if matches!(kind, "episode" | "entity" | "fact") {
             queue_text_index_job(&conn, kind, id, IndexJobOperation::Upsert)?;
         }
         Ok(())
+    }
+    pub fn last_promoted_at(&self, kind: &str, id: &str) -> Result<Option<DateTime<Utc>>> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        conn.query_row(
+            "SELECT last_promoted_at FROM memory_layers
+             WHERE memory_id = ?1 AND memory_kind = ?2",
+            params![id, kind],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .optional()
+        .map(|value| value.flatten().map(ts_to_dt))
+        .map_err(Into::into)
     }
     pub fn archive_record(&self, kind: &str, id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");

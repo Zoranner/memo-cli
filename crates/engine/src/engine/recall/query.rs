@@ -129,7 +129,7 @@ impl MemoryEngine {
         if deep {
             filter_candidates_by_query_coverage(&request.query, &mut scored);
         }
-        dedupe_candidates_by_source(&mut scored);
+        dedupe_candidates_by_source(&mut scored, !deep || limit > 5, limit > 5);
 
         let selected = mmr_select(scored, limit);
         let results = selected

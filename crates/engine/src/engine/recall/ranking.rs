@@ -32,9 +32,43 @@ pub(super) fn add_candidate(target: &mut HashMap<String, Candidate>, candidate: 
         })
         .or_insert(candidate);
 }
-pub(super) fn dedupe_candidates_by_source(candidates: &mut Vec<Candidate>) {
+pub(super) fn dedupe_candidates_by_source(
+    candidates: &mut Vec<Candidate>,
+    keep_graph_facts: bool,
+    keep_graph_edges: bool,
+) {
     let mut seen = HashSet::new();
-    candidates.retain(|candidate| seen.insert(candidate.memory.source_key().to_string()));
+    candidates.retain(|candidate| {
+        seen.insert(candidate_source_dedupe_key(
+            candidate,
+            keep_graph_facts,
+            keep_graph_edges,
+        ))
+    });
+}
+
+fn candidate_source_dedupe_key(
+    candidate: &Candidate,
+    keep_graph_facts: bool,
+    keep_graph_edges: bool,
+) -> String {
+    if candidate
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::GraphHop { .. }))
+    {
+        match candidate.memory {
+            MemoryRecord::Fact(_) if keep_graph_facts => {
+                return format!("graph-fact:{}", candidate.memory.source_key());
+            }
+            MemoryRecord::Edge(_) if keep_graph_edges => {
+                return format!("graph-edge:{}", candidate.memory.source_key());
+            }
+            _ => {}
+        }
+    }
+
+    candidate.memory.source_key().to_string()
 }
 pub(super) fn filter_candidates_by_query_coverage(query: &str, candidates: &mut Vec<Candidate>) {
     let query_tokens = lexical_tokens(query);

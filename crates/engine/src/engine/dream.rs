@@ -31,6 +31,7 @@ impl MemoryEngine {
     fn run_dream(&self, trigger: DreamTrigger) -> Result<DreamReport> {
         const ENTITY_L3_MIN_SESSION_SPAN: Duration = Duration::days(1);
         const L3_STALE_AFTER: Duration = Duration::days(30);
+        let stale_before = Utc::now() - L3_STALE_AFTER;
 
         let mut report = DreamReport {
             trigger: trigger.as_str().to_string(),
@@ -86,6 +87,9 @@ impl MemoryEngine {
             if latest - earliest < ENTITY_L3_MIN_SESSION_SPAN {
                 continue;
             }
+            if self.should_skip_stale_l3_repromotion("entity", &entity_id, stale_before)? {
+                continue;
+            }
 
             self.db
                 .update_layer("entity", &entity_id, MemoryLayer::L3)?;
@@ -99,7 +103,7 @@ impl MemoryEngine {
             }
         }
 
-        report.downgraded_records += self.cool_stale_l3_records(Utc::now() - L3_STALE_AFTER)?;
+        report.downgraded_records += self.cool_stale_l3_records(stale_before)?;
 
         self.refresh_l3_cache()?;
         Ok(report)
@@ -406,6 +410,24 @@ impl MemoryEngine {
             downgraded += 1;
         }
         Ok(downgraded)
+    }
+
+    fn should_skip_stale_l3_repromotion(
+        &self,
+        kind: &str,
+        id: &str,
+        stale_before: chrono::DateTime<Utc>,
+    ) -> Result<bool> {
+        let Some(previously_promoted_at) = self.db.last_promoted_at(kind, id)? else {
+            return Ok(false);
+        };
+        if previously_promoted_at >= stale_before {
+            let Some(record) = self.db.get_active_memory_by_kind(kind, id)? else {
+                return Ok(false);
+            };
+            return Ok(should_cool_l3_record(&record, stale_before));
+        }
+        Ok(false)
     }
 
     pub(super) fn refresh_l3_cache(&self) -> Result<()> {
