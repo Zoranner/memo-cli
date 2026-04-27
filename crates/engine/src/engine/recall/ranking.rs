@@ -101,6 +101,24 @@ pub(super) fn recency_boost(updated_at: chrono::DateTime<chrono::Utc>) -> f32 {
 pub(super) fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
 }
+pub(super) fn answer_shape_boost(query: &str, memory: &MemoryRecord) -> f32 {
+    if !looks_like_current_location_query(query) {
+        return 0.0;
+    }
+
+    match memory {
+        MemoryRecord::Fact(fact) if fact.predicate == "lives_in" => 0.35,
+        MemoryRecord::Episode(episode) => {
+            let tokens = lexical_tokens(&episode.content);
+            if tokens.contains("live") || tokens.contains("move") || tokens.contains("home") {
+                0.20
+            } else {
+                0.0
+            }
+        }
+        _ => 0.0,
+    }
+}
 pub(super) fn mmr_select(mut candidates: Vec<Candidate>, limit: usize) -> Vec<Candidate> {
     if candidates.len() <= limit {
         return candidates;
@@ -158,6 +176,9 @@ fn normalize_token(token: &str) -> Option<String> {
 
     let normalized = match token {
         "currently" => "current",
+        "recently" => "recent",
+        "lives" | "lived" | "living" => "live",
+        "moved" | "moving" => "move",
         "partnership" | "partners" => "partner",
         "builds" | "building" => "build",
         "makes" | "making" => "make",
@@ -172,6 +193,15 @@ fn normalize_token(token: &str) -> Option<String> {
     };
 
     Some(normalized.to_string())
+}
+fn looks_like_current_location_query(query: &str) -> bool {
+    let tokens = lexical_tokens(query);
+    tokens.contains("where")
+        || tokens.contains("current")
+        || tokens.contains("recent")
+        || tokens.contains("live")
+        || tokens.contains("home")
+        || tokens.contains("move")
 }
 fn is_stopword(token: &str) -> bool {
     matches!(

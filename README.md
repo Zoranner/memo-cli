@@ -48,12 +48,12 @@ Memo should be described and learned through this public action language:
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install.sh | bash
 ```
 
 The bootstrap script is loaded from the `master` branch, then downloads the latest published GitHub Release for your platform and installs `memo` into `~/.memo/bin` by default. Override the destination with `MEMO_INSTALL_DIR`.
@@ -122,8 +122,8 @@ memo awaken
 | Section | Parameter | Required | Description | Default |
 |---------|-----------|:--------:|-------------|---------|
 | `[storage]` | `data_dir` | ❌ | Override the data directory while keeping config files under `~/.memo` | `~/.memo/data` |
+| `[engine]` | `l3_cache_limit` | ❌ | Maximum L3 records loaded into the hot cache on startup or refresh | `256` |
 | `[embed]` | `embedding_provider` | ❌ | Embedding service reference (for example `openai.embed`) | - |
-| `[embed]` | `duplicate_threshold` | ❌ | Duplicate detection threshold (0-1) | `0.85` |
 | `[embed]` | `max_retries` | ❌ | Retry count for retryable embedding failures | `0` |
 | `[embed]` | `retry_backoff_ms` | ❌ | Linear backoff base for embedding retries | `0` |
 | `[extract]` | `extraction_provider` | ❌ | Extraction service reference (for example `openai.extract`) | - |

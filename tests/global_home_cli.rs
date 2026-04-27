@@ -1,6 +1,6 @@
 use std::{
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Output},
 };
 
@@ -103,5 +103,31 @@ fn cli_respects_configured_and_environment_data_dir_precedence() -> anyhow::Resu
         overridden_data_dir.display()
     )));
     assert!(overridden_data_dir.join("memory.db").exists());
+    Ok(())
+}
+
+#[test]
+fn readme_install_commands_point_to_repo_scripts() -> anyhow::Result<()> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let readme = fs::read_to_string(root.join("README.md"))?;
+    let zh_readme = fs::read_to_string(root.join("docs/zh-CN/README.md"))?;
+
+    for expected_path in ["scripts/install.ps1", "scripts/install.sh"] {
+        assert!(
+            root.join(expected_path).exists(),
+            "expected installer script to exist: {expected_path}"
+        );
+        assert!(
+            readme.contains(expected_path),
+            "README.md should reference {expected_path}"
+        );
+        assert!(
+            zh_readme.contains(expected_path),
+            "docs/zh-CN/README.md should reference {expected_path}"
+        );
+    }
+
+    assert!(!readme.contains("scripts/install/install."));
+    assert!(!zh_readme.contains("scripts/install/install."));
     Ok(())
 }

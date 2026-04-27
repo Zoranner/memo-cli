@@ -8,7 +8,6 @@ use anyhow::{Context, Result};
 #[derive(Debug, Default)]
 pub(crate) struct EmbedConfig {
     pub(crate) embedding_provider: Option<String>,
-    pub(crate) duplicate_threshold: Option<f32>,
     pub(crate) max_retries: Option<usize>,
     pub(crate) retry_backoff_ms: Option<u64>,
 }
@@ -35,8 +34,14 @@ pub(crate) struct StorageConfig {
 }
 
 #[derive(Debug, Default)]
+pub(crate) struct EngineConfig {
+    pub(crate) l3_cache_limit: Option<usize>,
+}
+
+#[derive(Debug, Default)]
 pub(crate) struct FileConfig {
     pub(crate) storage: StorageConfig,
+    pub(crate) engine: EngineConfig,
     pub(crate) embed: EmbedConfig,
     pub(crate) extract: ExtractConfig,
     pub(crate) rerank: RerankConfig,
@@ -86,12 +91,14 @@ pub(crate) fn parse_app_config(contents: &str) -> Result<FileConfig> {
                     config.storage.data_dir = Some(parse_string(value)?.to_string());
                 }
             }
+            Some("engine") => {
+                if key == "l3_cache_limit" {
+                    config.engine.l3_cache_limit = Some(value.parse::<usize>()?);
+                }
+            }
             Some("embed") => match key {
                 "embedding_provider" => {
                     config.embed.embedding_provider = Some(parse_string(value)?.to_string());
-                }
-                "duplicate_threshold" => {
-                    config.embed.duplicate_threshold = Some(value.parse::<f32>()?);
                 }
                 "max_retries" => {
                     config.embed.max_retries = Some(value.parse::<usize>()?);

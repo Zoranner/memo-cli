@@ -35,7 +35,9 @@ pub(crate) fn build_engine_config(
         return Ok(engine_config);
     };
 
-    let _duplicate_threshold = file_config.embed.duplicate_threshold;
+    if let Some(limit) = file_config.engine.l3_cache_limit {
+        engine_config.l3_cache_limit = limit;
+    }
 
     if let Some(provider_ref) = file_config.embed.embedding_provider.as_deref() {
         let provider_config = load_provider_config(config_dir, provider_ref, "embedding")?;
@@ -235,6 +237,23 @@ mod tests {
         assert_eq!(config.extract.retry_backoff_ms, Some(250));
         assert_eq!(config.rerank.max_retries, Some(1));
         assert_eq!(config.rerank.retry_backoff_ms, Some(50));
+        Ok(())
+    }
+
+    #[test]
+    fn build_engine_config_reads_l3_cache_limit_from_app_config() -> Result<()> {
+        let temp = TempDir::new()?;
+        let config_dir = temp.path().join(".memo");
+        let data_dir = temp.path().join("memory-data");
+        fs::create_dir_all(&config_dir)?;
+        fs::write(
+            config_dir.join("config.toml"),
+            "[engine]\nl3_cache_limit = 7\n",
+        )?;
+
+        let config = build_engine_config(&data_dir, &config_dir)?;
+
+        assert_eq!(config.l3_cache_limit, 7);
         Ok(())
     }
 

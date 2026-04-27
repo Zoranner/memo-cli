@@ -4,14 +4,16 @@
 # Optional data dir override. Relative paths resolve under ~/.memo.
 # data_dir = "data"
 
+[engine]
+# Maximum number of L3 records loaded into the hot cache on startup/refresh.
+l3_cache_limit = 256
+
 [embed]
 # Reference format: <provider>.<service>
 embedding_provider = "openai.embed"
 # Retry retryable provider failures before giving up.
 # max_retries = 1
 # retry_backoff_ms = 200
-# Reserved for duplicate handling during remember.
-duplicate_threshold = 0.85
 
 [extract]
 # Reference format: <provider>.<service>

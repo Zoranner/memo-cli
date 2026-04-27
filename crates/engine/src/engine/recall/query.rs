@@ -121,6 +121,7 @@ impl MemoryEngine {
                     candidate.score += frequency_boost;
                     candidate.reasons.push(RecallReason::HitFrequencyBoost);
                 }
+                candidate.score += answer_shape_boost(&request.query, &candidate.memory);
                 candidate
             })
             .collect();

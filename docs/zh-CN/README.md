@@ -48,12 +48,12 @@ Memo 应当通过这套公开动作语言被学习和理解：
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install.ps1 | iex
 ```
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/install.sh | bash
 ```
 
 引导脚本从 `master` 分支加载，随后会按当前平台自动下载最新已发布的 GitHub Release，并默认把 `memo` 安装到 `~/.memo/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`。
@@ -122,8 +122,8 @@ memo awaken
 | 节 | 参数 | 必填 | 说明 | 默认值 |
 |----|------|:----:|------|--------|
 | `[storage]` | `data_dir` | ❌ | 在保持配置文件固定于 `~/.memo` 的前提下覆盖数据目录 | `~/.memo/data` |
+| `[engine]` | `l3_cache_limit` | ❌ | 启动或刷新时装入热缓存的 L3 记录上限 | `256` |
 | `[embed]` | `embedding_provider` | ❌ | Embedding 服务引用，例如 `openai.embed` | - |
-| `[embed]` | `duplicate_threshold` | ❌ | 重复检测阈值（0-1） | `0.85` |
 | `[embed]` | `max_retries` | ❌ | 可重试 embedding 失败时的重试次数 | `0` |
 | `[embed]` | `retry_backoff_ms` | ❌ | embedding 重试的线性退避基数 | `0` |
 | `[extract]` | `extraction_provider` | ❌ | Extraction 服务引用，例如 `openai.extract` | - |

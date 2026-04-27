@@ -437,6 +437,36 @@ fn pr_quality_datasets_meet_hard_gate() -> Result<()> {
 }
 
 #[test]
+fn temporal_quality_cases_rank_current_memory_first() -> Result<()> {
+    let report = run_dataset_from_file(include_str!("../../../evals/synthetic/quality.json"))?;
+    let temporal = report
+        .aspects
+        .iter()
+        .find(|aspect| aspect.aspect == "temporal_update")
+        .expect("temporal aspect report");
+
+    assert_eq!(temporal.recall_at_1, 1.0);
+    for case in report
+        .cases
+        .iter()
+        .filter(|case| case.aspect == "temporal_update")
+    {
+        assert_eq!(
+            case.matched_rank,
+            Some(1),
+            "expected current memory to rank first for {}",
+            case.id
+        );
+        assert_eq!(
+            case.forbidden_hit_count, 0,
+            "forbidden historical memories should not surface for {}",
+            case.id
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn recall_eval_rejects_unknown_case_memory_ids() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = MemoryEngine::open(EngineConfig::new(temp.path()))?;
