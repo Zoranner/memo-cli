@@ -21,7 +21,7 @@ fn open_sets_current_schema_user_version() -> Result<()> {
     let conn = Connection::open(&db_path)?;
     let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
-    assert_eq!(user_version, 1);
+    assert_eq!(user_version, 2);
     Ok(())
 }
 
@@ -332,6 +332,11 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
                 detail TEXT NULL,
                 last_rebuilt_at INTEGER NULL
             );
+            INSERT INTO memory_layers
+                (memory_id, memory_kind, layer, status, last_promoted_at, created_at, updated_at)
+            VALUES
+                ('legacy-l3', 'entity', 'L3', 'active', 111, 1, 2),
+                ('legacy-l2', 'entity', 'L2', 'active', 222, 1, 2);
             "#,
     )?;
     drop(conn);
@@ -339,7 +344,7 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
     let _db = Database::open(&db_path)?;
     let conn = Connection::open(&db_path)?;
     let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    assert_eq!(user_version, 1);
+    assert_eq!(user_version, 2);
 
     for (table, column) in [
         ("episodes", "session_id"),
@@ -347,6 +352,7 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
         ("facts", "valid_to"),
         ("edges", "valid_from"),
         ("edges", "valid_to"),
+        ("memory_layers", "last_l3_promoted_at"),
     ] {
         let pragma = format!("PRAGMA table_info({})", table);
         let names = conn
@@ -360,6 +366,19 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
             column
         );
     }
+
+    let legacy_l3_promoted_at: Option<i64> = conn.query_row(
+        "SELECT last_l3_promoted_at FROM memory_layers WHERE memory_id = 'legacy-l3'",
+        [],
+        |row| row.get(0),
+    )?;
+    let legacy_l2_promoted_at: Option<i64> = conn.query_row(
+        "SELECT last_l3_promoted_at FROM memory_layers WHERE memory_id = 'legacy-l2'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(legacy_l3_promoted_at, Some(111));
+    assert_eq!(legacy_l2_promoted_at, None);
 
     Ok(())
 }

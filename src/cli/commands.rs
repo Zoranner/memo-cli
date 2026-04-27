@@ -54,7 +54,12 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
             json,
         } => {
             let engine = open_engine()?;
-            let result = engine.recall(RecallRequest { query, limit, deep })?;
+            let result = engine.recall(RecallRequest {
+                query,
+                limit,
+                deep,
+                include_related_records: false,
+            })?;
             println!("{}", render_recall_result(&result, json)?);
         }
         Command::Reflect { id, json } => {

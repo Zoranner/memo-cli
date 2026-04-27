@@ -40,6 +40,8 @@ pub struct RecallRequest {
     pub limit: usize,
     #[serde(default)]
     pub deep: bool,
+    #[serde(default)]
+    pub include_related_records: bool,
 }
 
 fn default_limit() -> usize {

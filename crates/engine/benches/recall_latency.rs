@@ -34,6 +34,7 @@ fn bench_recall(c: &mut Criterion) {
                         query: "Ally".to_string(),
                         limit: 5,
                         deep: false,
+                        include_related_records: false,
                     })
                     .expect("recall alias");
                 black_box(result.results.len());
@@ -51,6 +52,7 @@ fn bench_recall(c: &mut Criterion) {
                         query: "warehouse drones".to_string(),
                         limit: 5,
                         deep: false,
+                        include_related_records: false,
                     })
                     .expect("recall bm25");
                 black_box(result.results.len());
@@ -68,6 +70,7 @@ fn bench_recall(c: &mut Criterion) {
                         query: "Alice".to_string(),
                         limit: 5,
                         deep: false,
+                        include_related_records: false,
                     })
                     .expect("recall graph");
                 black_box(result.results.len());
@@ -85,6 +88,7 @@ fn bench_recall(c: &mut Criterion) {
                         query: "Where is Alice currently based?".to_string(),
                         limit: 5,
                         deep: true,
+                        include_related_records: false,
                     })
                     .expect("recall current state");
                 black_box(result.results.len());
@@ -102,6 +106,7 @@ fn bench_recall(c: &mut Criterion) {
                         query: "autonomous warehouse aircraft".to_string(),
                         limit: 5,
                         deep: true,
+                        include_related_records: false,
                     })
                     .expect("recall vector semantic");
                 black_box(result.results.len());

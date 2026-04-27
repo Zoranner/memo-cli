@@ -418,7 +418,7 @@ impl MemoryEngine {
         id: &str,
         stale_before: chrono::DateTime<Utc>,
     ) -> Result<bool> {
-        let Some(previously_promoted_at) = self.db.last_promoted_at(kind, id)? else {
+        let Some(previously_promoted_at) = self.db.last_l3_promoted_at(kind, id)? else {
             return Ok(false);
         };
         if previously_promoted_at >= stale_before {

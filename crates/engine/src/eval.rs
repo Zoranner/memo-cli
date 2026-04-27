@@ -260,6 +260,7 @@ pub fn run_recall_eval(engine: &MemoryEngine, dataset: EvalDataset) -> Result<Ev
             query: case.query.clone(),
             limit: case.limit,
             deep: case.deep,
+            include_related_records: false,
         });
         let result_set = result_set?;
         let case_timing_ms = elapsed_ms(recall_started);

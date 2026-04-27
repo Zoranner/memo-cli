@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::Path,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -234,6 +235,7 @@ fn alias_query_hits_entity_record() -> Result<()> {
         query: "ally".to_string(),
         limit: 5,
         deep: false,
+        include_related_records: false,
     })?;
 
     assert!(!result.deep_search_used);
@@ -331,6 +333,7 @@ fn bm25_query_hits_episode() -> Result<()> {
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
 
     let episode = result.results.first().expect("expected one search result");
@@ -365,6 +368,7 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
 
     let episode = result
@@ -407,6 +411,7 @@ fn recall_skips_query_embedding_when_vector_index_is_empty() -> Result<()> {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
 
     assert_eq!(calls.load(Ordering::SeqCst), calls_after_remember);
@@ -433,6 +438,7 @@ fn recall_falls_back_to_non_vector_paths_when_query_embedding_fails() -> Result<
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
 
     assert!(result.results.iter().any(
@@ -642,7 +648,8 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
     let result = engine.recall(RecallRequest {
         query: "Alice".to_string(),
         limit: 5,
-        deep: false,
+        deep: true,
+        include_related_records: true,
     })?;
 
     let fact = result
@@ -656,6 +663,61 @@ fn graph_expansion_returns_related_fact() -> Result<()> {
         .reasons
         .iter()
         .any(|reason| matches!(reason, RecallReason::GraphHop { .. })));
+    Ok(())
+}
+
+#[test]
+fn default_recall_limit_keeps_source_level_dedupe_for_graph_records() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let result = engine.recall(RecallRequest {
+        query: "Alice".to_string(),
+        limit: 10,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    let mut source_keys = HashSet::new();
+    for item in &result.results {
+        assert!(
+            source_keys.insert(item.memory.source_key().to_string()),
+            "ordinary recall should not surface multiple records from source {}: {:?}",
+            item.memory.source_key(),
+            result.results
+        );
+    }
     Ok(())
 }
 
@@ -685,6 +747,7 @@ fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
         query: "Paris travel".to_string(),
         limit: 3,
         deep: true,
+        include_related_records: false,
     })?;
 
     let first = result.results.first().expect("expected search results");
@@ -743,6 +806,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
         query: "Paris travel".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
 
     assert!(result.deep_search_used);
@@ -786,6 +850,7 @@ fn deep_recall_keeps_results_when_rerank_provider_fails() -> Result<()> {
         query: "Paris travel".to_string(),
         limit: 3,
         deep: true,
+        include_related_records: false,
     })?;
 
     let first = result.results.first().expect("expected search results");
@@ -823,6 +888,7 @@ fn dream_merges_provider_extraction_into_memory() -> Result<()> {
         query: "Ally".to_string(),
         limit: 5,
         deep: false,
+        include_related_records: true,
     })?;
 
     assert!(result.results.iter().any(
@@ -883,12 +949,14 @@ fn reaccessed_entity_ranks_ahead_of_stale_alias_peer() -> Result<()> {
         query: "Alice lives in Paris".to_string(),
         limit: 5,
         deep: false,
+        include_related_records: false,
     })?;
 
     let result = engine.recall(RecallRequest {
         query: "captain".to_string(),
         limit: 5,
         deep: false,
+        include_related_records: false,
     })?;
 
     let first_entity = result
@@ -942,12 +1010,14 @@ fn reaccessed_episode_ranks_ahead_of_stale_peer() -> Result<()> {
         query: "warehouse memo alpha".to_string(),
         limit: 1,
         deep: false,
+        include_related_records: false,
     })?;
 
     let result = engine.recall(RecallRequest {
         query: "warehouse memo".to_string(),
         limit: 5,
         deep: false,
+        include_related_records: false,
     })?;
 
     let first_episode = result
@@ -1018,6 +1088,7 @@ fn dream_archives_duplicates_and_promotes_hot_memory() -> Result<()> {
             query: "Alice likes jasmine tea.".to_string(),
             limit: 1,
             deep: false,
+            include_related_records: false,
         })?;
     }
 
@@ -1081,6 +1152,7 @@ fn recall_ignores_archived_episode_from_stale_text_index_until_restore_runs() ->
         query: "Alice likes jasmine tea.".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     assert!(!result.results.iter().any(
@@ -1191,6 +1263,7 @@ fn dream_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         query: "Alice lives in Paris".to_string(),
         limit: 5,
         deep: false,
+        include_related_records: false,
     })?;
 
     let report = engine.dream(DreamTrigger::Manual)?;
@@ -1205,6 +1278,7 @@ fn dream_promotes_related_entities_and_facts_to_l2() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: true,
     })?;
 
     let entity = result
@@ -1277,6 +1351,7 @@ fn dream_promotes_repeated_entity_support_to_l2_without_query_heat() -> Result<(
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = result
@@ -1366,6 +1441,7 @@ fn dream_archives_duplicate_related_facts_and_edges() -> Result<()> {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: true,
     })?;
 
     let fact_count = result
@@ -1433,6 +1509,7 @@ fn dream_does_not_promote_same_session_entity_support_to_l2() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = result
@@ -1891,6 +1968,7 @@ fn dream_promotes_repeated_fact_support_to_l3_and_archives_duplicates() -> Resul
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: true,
     })?;
 
     let facts = result
@@ -1992,6 +2070,7 @@ fn dream_does_not_promote_same_session_fact_support_to_l3() -> Result<()> {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: true,
     })?;
 
     let facts = result
@@ -2067,6 +2146,7 @@ fn dream_requires_three_sessions_for_fact_l3_promotion() -> Result<()> {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: true,
     })?;
 
     let facts = result
@@ -2147,6 +2227,7 @@ fn dream_requires_fact_support_span_for_l3_promotion() -> Result<()> {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: true,
     })?;
 
     let facts = result
@@ -2206,6 +2287,7 @@ fn remember_propagates_recorded_at_to_structured_memory_timestamps() -> Result<(
         query: "Alice".to_string(),
         limit: 20,
         deep: true,
+        include_related_records: true,
     })?;
 
     let alice_entity = result
@@ -2294,6 +2376,7 @@ fn dream_requires_entity_support_span_for_l3_promotion() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = result
@@ -2358,6 +2441,7 @@ fn dream_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = result
@@ -2423,6 +2507,7 @@ fn dream_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
     let warmed_entity = warmed
         .results
@@ -2442,6 +2527,7 @@ fn dream_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = result
@@ -2597,6 +2683,7 @@ fn dream_cools_stale_l3_fact_support_back_to_l2() -> Result<()> {
         query: "Alice".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: true,
     })?;
 
     let fact = result
@@ -2683,11 +2770,13 @@ fn dream_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
         query: "Alice Paris".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: false,
     })?;
     let warmed = engine.recall(RecallRequest {
         query: "Alice Paris".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: false,
     })?;
     let warmed_fact = warmed
         .results
@@ -2713,6 +2802,7 @@ fn dream_keeps_reaccessed_fact_support_in_l3() -> Result<()> {
         query: "Alice Paris".to_string(),
         limit: 20,
         deep: false,
+        include_related_records: false,
     })?;
 
     let fact = result
@@ -2784,6 +2874,7 @@ fn dream_refreshes_l3_cache_after_cooling_entity_support() -> Result<()> {
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = query
@@ -2848,6 +2939,7 @@ fn dream_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<(
         query: "Ally".to_string(),
         limit: 10,
         deep: false,
+        include_related_records: false,
     })?;
 
     let entity = result
@@ -2860,6 +2952,85 @@ fn dream_promotes_repeated_entity_support_to_l3_without_query_heat() -> Result<(
         .expect("expected Alice entity after repeated cross-session dream");
 
     assert_eq!(entity.layer, MemoryLayer::L3);
+    Ok(())
+}
+
+#[test]
+fn dream_ignores_legacy_l2_last_promoted_at_when_promoting_entity_to_l3() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice joined the design review today.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice sent the updated roadmap tonight.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+    ] {
+        engine.remember(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            }],
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let first_report = engine.dream(DreamTrigger::Manual)?;
+    assert!(first_report.promoted_to_l2 >= 1);
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let alice_id: String = conn.query_row(
+        "SELECT id FROM entities WHERE canonical_name = 'Alice' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    conn.execute(
+        "UPDATE memory_layers
+         SET last_promoted_at = ?2
+         WHERE memory_id = ?1 AND memory_kind = 'entity'",
+        rusqlite::params![alice_id, chrono::Utc::now().timestamp_millis()],
+    )?;
+    drop(conn);
+
+    engine.remember(EpisodeInput {
+        content: "Alice followed up with final notes this morning.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Alice".to_string(),
+            aliases: vec!["Ally".to_string()],
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: Some("session-c".to_string()),
+        recorded_at: Some(
+            chrono::DateTime::parse_from_rfc3339("2024-01-03T09:00:00Z")?
+                .with_timezone(&chrono::Utc),
+        ),
+        confidence: 0.9,
+    })?;
+
+    let second_report = engine.dream(DreamTrigger::Manual)?;
+    assert!(second_report.promoted_to_l3 >= 1);
     Ok(())
 }
 
@@ -2967,6 +3138,7 @@ fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(!before_refresh.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
@@ -2988,6 +3160,7 @@ fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
         query: "warehouse drones".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(after_refresh.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
@@ -3027,6 +3200,7 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(!before_refresh.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
@@ -3048,6 +3222,7 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(after_refresh.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
@@ -3183,6 +3358,7 @@ fn reopening_engine_preserves_pending_text_updates_until_restore_runs() -> Resul
         query: "rebuild indexes automatically".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(!before_restore.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
@@ -3197,6 +3373,7 @@ fn reopening_engine_preserves_pending_text_updates_until_restore_runs() -> Resul
         query: "rebuild indexes automatically".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(after_restore.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
@@ -3345,6 +3522,7 @@ fn failed_vector_jobs_do_not_block_new_pending_restore_work() -> Result<()> {
         query: "开心".to_string(),
         limit: 3,
         deep: false,
+        include_related_records: false,
     })?;
     assert!(result.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)

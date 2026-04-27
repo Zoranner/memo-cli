@@ -86,8 +86,8 @@ fn recall_eval_reports_core_retrieval_metrics() -> Result<()> {
     assert_eq!(report.clean_hit_rate, 1.0);
     assert_eq!(report.successful_case_rate, 1.0);
     assert_eq!(report.precision_at_1, 0.5);
-    assert_eq!(report.precision_at_5, 1.0_f32 / 6.0);
-    assert_eq!(report.clean_precision_at_5, 1.0_f32 / 6.0);
+    assert_eq!(report.precision_at_5, 0.25);
+    assert_eq!(report.clean_precision_at_5, 0.25);
     assert_eq!(report.forbidden_rate, 0.0);
     assert!(report.noise_hit_rate > 0.0);
     assert_eq!(report.abstention_correctness, 1.0);

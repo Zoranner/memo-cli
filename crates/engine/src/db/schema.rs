@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use rusqlite::Connection;
 
-const CURRENT_SCHEMA_VERSION: i64 = 1;
+const CURRENT_SCHEMA_VERSION: i64 = 2;
 
 pub(super) fn init_schema(conn: &Connection) -> Result<()> {
     let user_version = schema_user_version(conn)?;
@@ -118,6 +118,7 @@ pub(super) fn init_schema(conn: &Connection) -> Result<()> {
             layer TEXT NOT NULL,
             status TEXT NOT NULL,
             last_promoted_at INTEGER NULL,
+            last_l3_promoted_at INTEGER NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(memory_id, memory_kind)
@@ -166,6 +167,9 @@ fn migrate_schema(conn: &Connection, from_version: i64) -> Result<()> {
     if from_version < 1 {
         migrate_to_v1(conn)?;
     }
+    if from_version < 2 {
+        migrate_to_v2(conn)?;
+    }
 
     Ok(())
 }
@@ -177,6 +181,17 @@ fn migrate_to_v1(conn: &Connection) -> Result<()> {
     ensure_column(conn, "edges", "valid_to", "INTEGER NULL")?;
     ensure_column(conn, "episodes", "session_id", "TEXT NULL")?;
     ensure_column(conn, "episodes", "structured_at", "INTEGER NULL")?;
+    Ok(())
+}
+
+fn migrate_to_v2(conn: &Connection) -> Result<()> {
+    ensure_column(conn, "memory_layers", "last_l3_promoted_at", "INTEGER NULL")?;
+    conn.execute(
+        "UPDATE memory_layers
+         SET last_l3_promoted_at = COALESCE(last_l3_promoted_at, last_promoted_at, updated_at)
+         WHERE layer = 'L3' AND last_l3_promoted_at IS NULL",
+        [],
+    )?;
     Ok(())
 }
 

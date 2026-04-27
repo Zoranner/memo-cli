@@ -148,7 +148,7 @@ impl Database {
         if layer == MemoryLayer::L3 {
             conn.execute(
                 "UPDATE memory_layers
-                 SET layer = ?2, last_promoted_at = ?3, updated_at = ?3
+                 SET layer = ?2, last_promoted_at = ?3, last_l3_promoted_at = ?3, updated_at = ?3
                  WHERE memory_id = ?1 AND memory_kind = ?4",
                 params![id, layer.as_str(), now, kind],
             )?;
@@ -165,10 +165,10 @@ impl Database {
         }
         Ok(())
     }
-    pub fn last_promoted_at(&self, kind: &str, id: &str) -> Result<Option<DateTime<Utc>>> {
+    pub fn last_l3_promoted_at(&self, kind: &str, id: &str) -> Result<Option<DateTime<Utc>>> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.query_row(
-            "SELECT last_promoted_at FROM memory_layers
+            "SELECT last_l3_promoted_at FROM memory_layers
              WHERE memory_id = ?1 AND memory_kind = ?2",
             params![id, kind],
             |row| row.get::<_, Option<i64>>(0),
