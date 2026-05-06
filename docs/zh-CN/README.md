@@ -77,7 +77,7 @@ memo recall "Alice 住在哪里？"
 memo reflect <memory-id>
 ```
 
-`memo remember` 会先写入本地真相源。手工 entities 和 facts 会立即落库；`memo remember --dry-run` 仍可在不改动状态的前提下预览 provider 抽取结果。`memo recall` 负责回忆相关内容，`memo reflect` 负责查看单条记忆详情。
+`memo remember` 会先写入本地真相源。手工 entities 和 facts 会立即落库。`memo recall` 负责回忆相关内容，`memo reflect` 负责查看单条记忆详情。
 
 ### 第四步：dream、restore 与 state
 

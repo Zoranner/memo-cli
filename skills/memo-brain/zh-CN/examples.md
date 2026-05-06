@@ -19,13 +19,7 @@ memo remember "Alice lives in Paris" --entity person:Alice --entity place:Paris 
 - 你已经知道核心实体和事实
 - 希望后续 recall 时更容易命中结构化结果
 
-## remember：先 dry-run 再落库
-
-```bash
-memo remember "Alice lives in Paris and often signs as Ally." --entity person:Alice:Ally --dry-run
-```
-
-看完预览后再正式写入：
+## remember：写入带别名的记忆
 
 ```bash
 memo remember "Alice lives in Paris and often signs as Ally." --entity person:Alice:Ally
@@ -33,8 +27,8 @@ memo remember "Alice lives in Paris and often signs as Ally." --entity person:Al
 
 适用场景：
 
-- 你不确定 provider 抽取和手工输入合并后的结果
-- 你想先检查 entities/facts 是否合理
+- 你已经知道实体别名
+- 希望后续用别名 recall 时也能命中
 
 ## recall：默认回忆
 

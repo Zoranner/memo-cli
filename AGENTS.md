@@ -59,11 +59,10 @@ Layer transitions are not cosmetic. Query ranking and dream behavior both depend
 `memo remember` and engine remembering follow this flow:
 
 1. CLI parses raw content plus optional manual `--entity` / `--fact` inputs in `src/main.rs`.
-2. `MemoryEngine::preview_remember` merges manual structured input with optional extraction-provider output.
-3. `MemoryEngine::remember` writes episode/entity/fact/edge records into SQLite.
-4. Embeddings are generated opportunistically when an embedding provider is configured.
-5. Derived indexes are marked pending, not necessarily rebuilt immediately.
-6. Session cache and L3 cache are refreshed.
+2. `MemoryEngine::remember` writes episode/entity/fact/edge records into SQLite.
+3. Embeddings are generated opportunistically when an embedding provider is configured.
+4. Derived indexes are marked pending, not necessarily rebuilt immediately.
+5. Session cache and L3 cache are refreshed.
 
 Important: current architecture treats SQLite as source of truth and text/vector indexes as derived state. When debugging mismatches, inspect DB truth first, then use `restore` semantics to rebuild derived layers when necessary.
 
@@ -134,5 +133,4 @@ Prefer extending those existing suites over creating parallel test harnesses.
 - engine integration tests in `crates/engine/tests/engine_flow.rs`
 
 If future work changes CLI semantics, update `README.md` and `docs/COMMANDS.md` together so they do not drift further.
-
 

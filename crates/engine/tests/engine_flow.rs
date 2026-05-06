@@ -168,47 +168,6 @@ fn open_engine_with_failing_rerank(path: &Path) -> Result<MemoryEngine> {
 }
 
 #[test]
-fn preview_remember_merges_provider_and_manual_inputs() -> Result<()> {
-    let temp = TempDir::new()?;
-    let engine = open_engine_with_extraction(temp.path())?;
-
-    let preview = engine.preview_remember(&EpisodeInput {
-        content: "Alice lives in Paris.".to_string(),
-        layer: MemoryLayer::L1,
-        entities: vec![EntityInput {
-            entity_type: "person".to_string(),
-            name: "Bob".to_string(),
-            aliases: Vec::new(),
-            confidence: 0.8,
-            source: ExtractionSource::Manual,
-        }],
-        facts: vec![FactInput {
-            subject: "Bob".to_string(),
-            predicate: "knows".to_string(),
-            object: "Alice".to_string(),
-            confidence: 0.8,
-            source: ExtractionSource::Manual,
-        }],
-        source_episode_id: None,
-        session_id: None,
-        recorded_at: None,
-        confidence: 0.9,
-    })?;
-
-    assert!(preview.entities.iter().any(|entity| entity.name == "Alice"));
-    assert!(preview.entities.iter().any(|entity| entity.name == "Bob"));
-    assert!(preview
-        .facts
-        .iter()
-        .any(|fact| fact.predicate == "lives_in" && fact.object == "Paris"));
-    assert!(preview
-        .facts
-        .iter()
-        .any(|fact| fact.predicate == "knows" && fact.subject == "Bob"));
-    Ok(())
-}
-
-#[test]
 fn alias_query_hits_entity_record() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

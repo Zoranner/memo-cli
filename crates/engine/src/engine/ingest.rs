@@ -5,7 +5,7 @@ use tracing::warn;
 
 use crate::{
     db::normalize_text,
-    types::{EntityInput, EntityRecord, EpisodeInput, FactInput, RememberPreview},
+    types::{EntityInput, EntityRecord, EpisodeInput, FactInput},
     ExtractedEntity, ExtractedFact, ExtractionResult,
 };
 
@@ -27,11 +27,9 @@ impl StructuredEpisodeSummary {
 
 impl MemoryEngine {
     pub fn remember(&self, input: EpisodeInput) -> Result<String> {
-        let payload = self.build_remember_preview(&input, false)?;
-
         let episode_vector = self.embed_if_available(&input.content)?;
         let episode = self.db.insert_episode(&input, episode_vector.as_deref())?;
-        let summary = self.ingest_episode_structure(&episode, payload.entities, payload.facts)?;
+        let summary = self.ingest_episode_structure(&episode, input.entities, input.facts)?;
         if summary.has_structure() {
             self.db.mark_episode_structured(&episode.id)?;
         }
@@ -69,10 +67,6 @@ impl MemoryEngine {
         )?;
         cache_entity_record(entity_records, record.clone());
         Ok(record)
-    }
-
-    pub fn preview_remember(&self, input: &EpisodeInput) -> Result<RememberPreview> {
-        self.build_remember_preview(input, true)
     }
 
     pub(super) fn structure_episode_with_provider(
@@ -198,29 +192,6 @@ impl MemoryEngine {
         Ok(summary)
     }
 
-    fn build_remember_preview(
-        &self,
-        input: &EpisodeInput,
-        include_provider_extraction: bool,
-    ) -> Result<RememberPreview> {
-        let extraction = if include_provider_extraction {
-            self.extract_content(&input.content)?
-        } else {
-            ExtractionResult::default()
-        };
-
-        Ok(RememberPreview {
-            content: input.content.clone(),
-            layer: input.layer,
-            entities: merge_entities(input.entities.clone(), extraction.entities),
-            facts: merge_facts(input.facts.clone(), extraction.facts),
-            source_episode_id: input.source_episode_id.clone(),
-            session_id: input.session_id.clone(),
-            recorded_at: input.recorded_at,
-            confidence: input.confidence,
-        })
-    }
-
     fn extract_content(&self, text: &str) -> Result<ExtractionResult> {
         self.config
             .extraction_provider
@@ -319,7 +290,7 @@ mod tests {
 
     use crate::{
         model::{ExtractionProvider, ExtractionResult},
-        types::{EngineConfig, EpisodeInput, FactInput, MemoryLayer},
+        types::{EngineConfig, EpisodeInput, MemoryLayer},
         ExtractedEntity, ExtractedFact, MemoryEngine,
     };
 
@@ -387,36 +358,6 @@ mod tests {
 
         let record = engine.reflect(&episode_id)?.id().to_string();
         assert_eq!(record, episode_id);
-
-        Ok(())
-    }
-
-    #[test]
-    fn preview_remember_still_includes_provider_extraction() -> Result<()> {
-        let temp_dir = tempdir()?;
-        let engine = build_engine(temp_dir.path())?;
-
-        let preview = engine.preview_remember(&EpisodeInput {
-            content: "Alice works at Memo".to_string(),
-            layer: MemoryLayer::L1,
-            entities: Vec::new(),
-            facts: vec![FactInput {
-                subject: "Alice".to_string(),
-                predicate: "works_at".to_string(),
-                object: "Memo".to_string(),
-                confidence: 0.92,
-                source: crate::ExtractionSource::Manual,
-            }],
-            source_episode_id: None,
-            session_id: None,
-            recorded_at: None,
-            confidence: 0.85,
-        })?;
-
-        assert_eq!(preview.entities.len(), 2);
-        assert_eq!(preview.facts.len(), 1);
-        assert!(preview.entities.iter().any(|entity| entity.name == "Alice"));
-        assert!(preview.entities.iter().any(|entity| entity.name == "Memo"));
 
         Ok(())
     }

@@ -151,7 +151,7 @@ Memo 的公开命令体系应同时满足以下目标：
 
 ```bash
 memo awaken
-memo remember <content> [--time <rfc3339>] [--entity <type:name> ...] [--fact <subject:predicate:object> ...] [--dry-run] [--json]
+memo remember <content> [--time <rfc3339>] [--entity <type:name> ...] [--fact <subject:predicate:object> ...] [--json]
 memo recall <query> [-n <limit>] [--deep] [--json]
 memo reflect <id> [--json]
 memo dream [--full] [--json]
@@ -256,9 +256,7 @@ memo restore [--full] [--json]
 
 它不应在默认情况下自动触发重型整理或全量恢复，因为那会破坏写入动作的轻量属性。
 
-`remember --dry-run` 的语义应定义为“预览最终会进入写入链路的内容形状，而不是保证零计算成本”。如果系统配置了 extraction provider，dry-run 可以调用该 provider 来生成完整预览，但不得写入真相源或改变系统状态。
-
-这里还应有一条边界：dry-run 允许为了预览完整性使用**用户已经显式配置**的 provider，但不应触发任何未经用户显式配置的网络服务。
+`remember` 不提供预览模式。provider-backed extraction 由后续整理动作承载，写入入口只负责确定性地记录用户给出的内容与手工结构化输入。
 
 ### `recall` 的默认行为
 

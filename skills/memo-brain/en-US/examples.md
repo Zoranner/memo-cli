@@ -19,13 +19,7 @@ Use this when:
 - You already know the important entities and facts
 - You want later recall to hit structured results more reliably
 
-## remember: Preview First with Dry Run
-
-```bash
-memo remember "Alice lives in Paris and often signs as Ally." --entity person:Alice:Ally --dry-run
-```
-
-After checking the preview, write it for real:
+## remember: Write Memory with an Alias
 
 ```bash
 memo remember "Alice lives in Paris and often signs as Ally." --entity person:Alice:Ally
@@ -33,8 +27,8 @@ memo remember "Alice lives in Paris and often signs as Ally." --entity person:Al
 
 Use this when:
 
-- You are unsure how provider extraction and manual input will merge
-- You want to inspect entities/facts before writing
+- You already know an entity alias
+- You want later recall to match the alias
 
 ## recall: Default Retrieval
 

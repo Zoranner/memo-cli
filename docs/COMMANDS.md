@@ -62,14 +62,11 @@ memo remember <content> [OPTIONS]
 | `--time <rfc3339>` | Observation timestamp |
 | `--entity <type:name[:alias1|alias2]>` | Add manual entities |
 | `--fact <subject:predicate:object>` | Add manual facts |
-| `--dry-run` | Preview the final remember payload without writing |
 | `--json` | Emit machine-readable output |
 
 ### Notes
 
-- `--dry-run` prints the final remember payload before writing
 - default `memo remember` writes only manual entities and facts immediately
-- `--dry-run` may include provider-backed extraction when the user has explicitly configured an extraction provider
 - by default commands use `~/.memo/data`; `MEMO_DATA_DIR` overrides `storage.data_dir`, and `storage.data_dir` overrides the default
 
 ---

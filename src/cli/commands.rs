@@ -8,7 +8,7 @@ use crate::{
         args::{build_remember_input, Cli, Command},
         output::{
             render_awaken_result, render_dream_report, render_json_or_text, render_recall_result,
-            render_reflection, render_remember_preview, render_restore_report, render_state,
+            render_reflection, render_restore_report, render_state,
         },
         paths::{default_config_dir, resolve_data_dir_for_config_dir},
     },
@@ -29,17 +29,10 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
             time,
             entities,
             facts,
-            dry_run,
             json,
         } => {
             let engine = open_engine()?;
             let input = build_remember_input(content, time, &entities, &facts)?;
-
-            if dry_run {
-                let preview = engine.preview_remember(&input)?;
-                println!("{}", render_remember_preview(&preview, json)?);
-                return Ok(());
-            }
 
             let id = engine.remember(input)?;
             println!(

@@ -3,7 +3,7 @@ mod memory;
 mod system;
 
 pub(crate) use common::render_json_or_text;
-pub(crate) use memory::{render_recall_result, render_reflection, render_remember_preview};
+pub(crate) use memory::{render_recall_result, render_reflection};
 pub(crate) use system::{
     render_awaken_result, render_dream_report, render_restore_report, render_state,
 };

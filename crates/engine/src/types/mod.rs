@@ -5,7 +5,7 @@ mod record;
 mod reports;
 
 pub use config::{EngineConfig, LayerState, MemoryLayer};
-pub use input::{EntityInput, EpisodeInput, ExtractionSource, FactInput, RememberPreview};
+pub use input::{EntityInput, EpisodeInput, ExtractionSource, FactInput};
 pub use recall::{RecallReason, RecallRequest, RecallResult, RecallResultSet};
 pub use record::{EdgeRecord, EntityRecord, EpisodeRecord, FactRecord, MemoryRecord};
 pub use reports::{

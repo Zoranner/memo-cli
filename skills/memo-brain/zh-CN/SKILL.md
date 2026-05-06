@@ -71,12 +71,6 @@ memo remember "<content>"
 memo remember "<content>" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
 ```
 
-如果你不确定最终合并结果，先预览：
-
-```bash
-memo remember "<content>" --dry-run
-```
-
 ### 回忆内容
 
 标准动作：`recall`
@@ -146,7 +140,6 @@ memo restore --full
 
 - 只记录值得长期保留的经验、事实、决策或排障过程
 - 优先写清内容本身，必要时补 `--entity` 和 `--fact`
-- 如果不确定 provider 抽取会产出什么，先 `--dry-run`
 - 当前没有 tags/update/merge/list 这类接口，不要围绕这些假能力设计工作流
 
 ### 检索原则

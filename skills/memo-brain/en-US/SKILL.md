@@ -71,12 +71,6 @@ If you already know structured information, add it explicitly:
 memo remember "<content>" --entity person:Alice --entity place:Paris --fact Alice:lives_in:Paris
 ```
 
-If you are unsure what the final merged payload will look like, preview first:
-
-```bash
-memo remember "<content>" --dry-run
-```
-
 ### Recall Content
 
 Standard action: `recall`
@@ -146,7 +140,6 @@ memo restore --full
 
 - Record durable experience, facts, decisions, or troubleshooting outcomes worth keeping
 - Focus on the content first; add `--entity` and `--fact` when you can do so concretely
-- If provider extraction may change the final payload, use `--dry-run` first
 - Do not design workflows around nonexistent features such as tags, update, merge, or list
 
 ### Retrieval Principles

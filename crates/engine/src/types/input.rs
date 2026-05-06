@@ -50,18 +50,6 @@ pub struct EpisodeInput {
     pub confidence: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RememberPreview {
-    pub content: String,
-    pub layer: MemoryLayer,
-    pub entities: Vec<EntityInput>,
-    pub facts: Vec<FactInput>,
-    pub source_episode_id: Option<String>,
-    pub session_id: Option<String>,
-    pub recorded_at: Option<DateTime<Utc>>,
-    pub confidence: f32,
-}
-
 fn default_l1() -> MemoryLayer {
     MemoryLayer::L1
 }

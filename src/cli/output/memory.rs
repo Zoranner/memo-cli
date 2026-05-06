@@ -1,19 +1,8 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use memo_engine::{MemoryRecord, RecallReason, RecallResultSet, RememberPreview};
+use memo_engine::{MemoryRecord, RecallReason, RecallResultSet};
 
 use super::common::render_json_or_text;
-
-pub(crate) fn render_remember_preview(preview: &RememberPreview, json: bool) -> Result<String> {
-    let human = format!(
-        "Remember preview\ncontent: {}\nlayer: {}\nentities: {}\nfacts: {}",
-        preview.content,
-        preview.layer.as_str(),
-        preview.entities.len(),
-        preview.facts.len(),
-    );
-    render_json_or_text(preview, &human, json)
-}
 
 pub(crate) fn render_recall_result(result: &RecallResultSet, json: bool) -> Result<String> {
     if json {

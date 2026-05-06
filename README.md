@@ -77,7 +77,7 @@ memo recall "Where does Alice live?"
 memo reflect <memory-id>
 ```
 
-`memo remember` writes memory into the local truth source. Manual entities and facts are written immediately; `memo remember --dry-run` can still preview provider-backed extraction without mutating state. `memo recall` retrieves relevant memory, and `memo reflect` inspects one memory record in detail.
+`memo remember` writes memory into the local truth source. Manual entities and facts are written immediately. `memo recall` retrieves relevant memory, and `memo reflect` inspects one memory record in detail.
 
 ### Step 4: Dream, Restore, and Inspect State
 

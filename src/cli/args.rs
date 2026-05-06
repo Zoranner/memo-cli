@@ -23,8 +23,6 @@ pub(crate) enum Command {
         #[arg(long = "fact")]
         facts: Vec<String>,
         #[arg(long)]
-        dry_run: bool,
-        #[arg(long)]
         json: bool,
     },
     Recall {
@@ -170,18 +168,17 @@ mod tests {
     }
 
     #[test]
-    fn cli_parses_remember_dry_run_flag() {
-        let cli = Cli::parse_from(["memo", "remember", "Alice lives in Paris.", "--dry-run"]);
+    fn cli_rejects_removed_remember_preview_flag() {
+        let removed_flag = ["--dry", "-run"].concat();
+        let error = Cli::try_parse_from([
+            "memo",
+            "remember",
+            "Alice lives in Paris.",
+            removed_flag.as_str(),
+        ])
+        .expect_err("expected removed remember preview flag to be rejected");
 
-        match cli.command {
-            Command::Remember {
-                content, dry_run, ..
-            } => {
-                assert_eq!(content, "Alice lives in Paris.");
-                assert!(dry_run);
-            }
-            _ => panic!("expected remember command"),
-        }
+        assert!(error.to_string().contains("unexpected argument"));
     }
 
     #[test]

@@ -62,14 +62,11 @@ memo remember <content> [OPTIONS]
 | `--time <rfc3339>` | 观测时间 |
 | `--entity <type:name[:alias1|alias2]>` | 手动补充实体 |
 | `--fact <subject:predicate:object>` | 手动补充事实 |
-| `--dry-run` | 只预览最终 remember payload，不落库 |
 | `--json` | 输出机器可读结果 |
 
 ### 说明
 
-- `--dry-run` 会输出最终 remember payload，再决定是否落库
 - 默认 `memo remember` 只会立即写入手工 entities 和 facts
-- 如果用户已经显式配置 extraction provider，`--dry-run` 可以把 provider 抽取结果一起预览出来
 - 默认情况下，其它命令使用 `~/.memo/data`；`MEMO_DATA_DIR` 优先于 `storage.data_dir`，而 `storage.data_dir` 优先于默认值
 
 ---
