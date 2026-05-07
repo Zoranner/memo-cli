@@ -177,6 +177,46 @@ impl Database {
         .map(|value| value.flatten().map(ts_to_dt))
         .map_err(Into::into)
     }
+    pub fn anchored_record_count(&self) -> Result<usize> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let count = conn.query_row(
+            "SELECT COUNT(*)
+             FROM memory_layers
+             WHERE anchored_at IS NOT NULL
+               AND status = 'active'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        Ok(count.max(0) as usize)
+    }
+    pub fn anchor_record(&self, kind: &str, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let now = now_ts();
+        let updated = conn.execute(
+            "UPDATE memory_layers
+             SET anchored_at = COALESCE(anchored_at, ?3), updated_at = ?3
+             WHERE memory_id = ?1 AND memory_kind = ?2 AND status = 'active'",
+            params![id, kind, now],
+        )?;
+        if updated == 0 {
+            anyhow::bail!("active memory layer not found: {kind}:{id}");
+        }
+        Ok(())
+    }
+    pub fn unanchor_record(&self, kind: &str, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let now = now_ts();
+        let updated = conn.execute(
+            "UPDATE memory_layers
+             SET anchored_at = NULL, updated_at = ?3
+             WHERE memory_id = ?1 AND memory_kind = ?2",
+            params![id, kind, now],
+        )?;
+        if updated == 0 {
+            anyhow::bail!("memory layer not found: {kind}:{id}");
+        }
+        Ok(())
+    }
     pub fn archive_record(&self, kind: &str, id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let table = table_for_kind(kind)?;

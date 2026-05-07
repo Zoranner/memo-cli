@@ -37,6 +37,10 @@ impl std::str::FromStr for DreamTrigger {
 pub struct DreamReport {
     pub trigger: String,
     pub passes_run: usize,
+    pub unstructured_l1: usize,
+    pub unstructured_l2: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub maintenance_notes: Vec<String>,
     pub structured_episodes: usize,
     pub structured_entities: usize,
     pub structured_facts: usize,
@@ -88,6 +92,10 @@ pub struct SystemState {
     pub entity_count: usize,
     pub fact_count: usize,
     pub edge_count: usize,
+    pub unstructured_l1: usize,
+    pub unstructured_l2: usize,
+    pub structured_total: usize,
+    pub anchored_records: usize,
     pub layers: LayerSummary,
     pub l3_cached: usize,
     pub text_index: IndexStatus,

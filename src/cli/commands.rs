@@ -73,7 +73,13 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
             let (engine, data_dir) = open_engine_with_data_dir()?;
             let state = engine.state()?;
             let provider_runtime = status::load_provider_runtime_summary(&data_dir);
-            println!("{}", render_state(&state, &provider_runtime, json)?);
+            let config_dir = default_config_dir()?;
+            let provider_readiness =
+                config::load_provider_readiness(&config_dir, &provider_runtime);
+            println!(
+                "{}",
+                render_state(&state, &provider_runtime, &provider_readiness, json)?
+            );
         }
         Command::Restore { full, json } => {
             let engine = open_engine()?;

@@ -38,6 +38,9 @@ impl MemoryEngine {
             passes_run: 1,
             ..Default::default()
         };
+        let (unstructured_l1, unstructured_l2) = self.db.unstructured_episode_counts()?;
+        report.unstructured_l1 = unstructured_l1;
+        report.unstructured_l2 = unstructured_l2;
 
         for group in self.db.duplicate_l1_episode_groups()? {
             if let Some(primary) = group.first() {
@@ -111,6 +114,12 @@ impl MemoryEngine {
 
     fn structure_pending_episodes(&self, report: &mut DreamReport) -> Result<()> {
         let Some(_) = &self.config.extraction_provider else {
+            if report.unstructured_l1 > 0 || report.unstructured_l2 > 0 {
+                report.maintenance_notes.push(format!(
+                    "extraction provider unavailable; {} unstructured episode(s) remain text-only",
+                    report.unstructured_l1 + report.unstructured_l2
+                ));
+            }
             return Ok(());
         };
 
@@ -445,6 +454,9 @@ fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
         target.trigger = next.trigger.clone();
     }
     target.passes_run += next.passes_run;
+    target.unstructured_l1 = next.unstructured_l1;
+    target.unstructured_l2 = next.unstructured_l2;
+    target.maintenance_notes.extend(next.maintenance_notes);
     target.structured_episodes += next.structured_episodes;
     target.structured_entities += next.structured_entities;
     target.structured_facts += next.structured_facts;

@@ -140,6 +140,8 @@ fn recall_reason_label(reason: &RecallReason) -> String {
         RecallReason::RecencyBoost => "recency_boost".to_string(),
         RecallReason::LayerBoost => "layer_boost".to_string(),
         RecallReason::HitFrequencyBoost => "hit_frequency_boost".to_string(),
+        RecallReason::WorkingSet => "working_set".to_string(),
+        RecallReason::SubjectMismatch => "subject_mismatch".to_string(),
         RecallReason::MmrSelected => "mmr_selected".to_string(),
     }
 }

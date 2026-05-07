@@ -168,6 +168,83 @@ fn open_engine_with_failing_rerank(path: &Path) -> Result<MemoryEngine> {
 }
 
 #[test]
+fn state_counts_unstructured_and_anchored_records() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice wrote a temporary note.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let state = engine.state()?;
+    assert_eq!(state.unstructured_l1, 1);
+    assert_eq!(state.unstructured_l2, 0);
+    assert_eq!(state.structured_total, 0);
+    assert_eq!(state.anchored_records, 0);
+
+    engine.anchor("episode", &episode_id)?;
+    let anchored = engine.state()?;
+    assert_eq!(anchored.anchored_records, 1);
+
+    engine.unanchor("episode", &episode_id)?;
+    let unanchored = engine.state()?;
+    assert_eq!(unanchored.anchored_records, 0);
+    Ok(())
+}
+
+#[test]
+fn working_set_boost_does_not_change_memory_layers() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Bob moved to Berlin this week.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "person".to_string(),
+            name: "Bob".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let _ = engine.recall(RecallRequest {
+        query: "Where is Bob now?".to_string(),
+        limit: 5,
+        deep: true,
+        include_related_records: false,
+    })?;
+    let result = engine.recall(RecallRequest {
+        query: "Bob".to_string(),
+        limit: 5,
+        deep: false,
+        include_related_records: false,
+    })?;
+    assert!(result.results.iter().any(|item| item
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::WorkingSet))));
+
+    let reflected = engine.reflect(&episode_id)?;
+    match reflected {
+        MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L1),
+        other => panic!("expected episode, got {other:?}"),
+    }
+    Ok(())
+}
+
+#[test]
 fn alias_query_hits_entity_record() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;

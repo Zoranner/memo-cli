@@ -133,6 +133,23 @@ pub(super) fn subject_coverage_boost(query: &str, memory: &MemoryRecord) -> f32 
         -0.18
     }
 }
+pub(super) fn query_subject_tokens(query: &str) -> HashSet<String> {
+    subject_tokens(query)
+}
+pub(super) fn memory_contains_subject(memory: &MemoryRecord, subject: &str) -> bool {
+    lexical_tokens(&memory.text_for_ranking()).contains(subject)
+}
+pub(super) fn query_coverage(query: &str, memory: &MemoryRecord) -> f32 {
+    let query_tokens = lexical_tokens(query);
+    if query_tokens.is_empty() {
+        return 0.0;
+    }
+    let record_tokens = lexical_tokens(&memory.text_for_ranking());
+    if record_tokens.is_empty() {
+        return 0.0;
+    }
+    query_tokens.intersection(&record_tokens).count() as f32 / query_tokens.len() as f32
+}
 pub(super) fn mmr_select(mut candidates: Vec<Candidate>, limit: usize) -> Vec<Candidate> {
     if candidates.len() <= limit {
         return candidates;

@@ -35,6 +35,46 @@ pub(crate) fn load_provider_config(
         .with_context(|| format!("failed to resolve {capability} provider `{provider_ref}`"))
 }
 
+pub(crate) fn provider_ref_uses_placeholder_key(
+    config_dir: &Path,
+    provider_ref: &str,
+) -> Result<bool> {
+    let providers_path = config_dir.join("providers.toml");
+    let providers_text = fs::read_to_string(&providers_path).with_context(|| {
+        format!(
+            "failed to read providers file: {}",
+            providers_path.display()
+        )
+    })?;
+    provider_ref_uses_placeholder_key_from_text(&providers_text, provider_ref)
+}
+
+pub(crate) fn provider_ref_uses_placeholder_key_from_text(
+    providers_toml: &str,
+    provider_ref: &str,
+) -> Result<bool> {
+    let providers =
+        parse_providers_config(providers_toml).context("failed to parse providers.toml")?;
+    let (provider_name, _) = split_provider_ref(provider_ref)?;
+    let provider_entry = providers
+        .get(provider_name)
+        .with_context(|| format!("provider `{provider_name}` not found"))?;
+    Ok(is_placeholder_api_key(
+        provider_name,
+        &provider_entry.api_key,
+    ))
+}
+
+pub(crate) fn is_placeholder_api_key(provider_name: &str, api_key: &str) -> bool {
+    let key = api_key.trim();
+    (key.is_empty() && provider_name != "ollama")
+        || key.contains("your-")
+        || key.contains("your_")
+        || key.eq_ignore_ascii_case("your-api-key")
+        || key.eq_ignore_ascii_case("your-google-api-key")
+        || key == format!("sk-your-{provider_name}-api-key")
+}
+
 fn resolve_provider_config(providers_toml: &str, provider_ref: &str) -> Result<ProviderConfig> {
     let providers =
         parse_providers_config(providers_toml).context("failed to parse providers.toml")?;

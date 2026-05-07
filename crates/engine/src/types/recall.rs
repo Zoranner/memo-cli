@@ -15,6 +15,8 @@ pub enum RecallReason {
     RecencyBoost,
     LayerBoost,
     HitFrequencyBoost,
+    WorkingSet,
+    SubjectMismatch,
     MmrSelected,
 }
 

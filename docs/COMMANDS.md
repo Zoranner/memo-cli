@@ -67,6 +67,7 @@ memo remember <content> [OPTIONS]
 ### Notes
 
 - default `memo remember` writes only manual entities and facts immediately
+- `--entity` and `--fact` are advanced structured inputs; normal users can write natural-language episodes and let `memo dream` structure them later when extraction is configured
 - by default commands use `~/.memo/data`; `MEMO_DATA_DIR` overrides `storage.data_dir`, and `storage.data_dir` overrides the default
 
 ---
@@ -123,6 +124,7 @@ memo dream [--full] [--json]
 - Default mode runs one manual dream pass
 - `--full` runs a fuller dream pass with an extra stabilization pass when the first pass changes memory state
 - when an extraction provider is configured, dream can enrich still-unstructured episodes on the slow path without changing `remember` default latency
+- if extraction is missing, degraded, or still using a template placeholder key, dream reports that unstructured episodes remain text-only instead of pretending semantic structuring is available
 - `--json` emits machine-readable output
 
 ---
@@ -141,6 +143,8 @@ memo state [--json]
 - layer and cache status
 - derived index health
 - provider runtime health, including the latest degraded capability summary when fallback paths were used
+- provider readiness, including `not_configured`, `placeholder_key`, `configured`, `degraded`, and `ok`
+- unstructured / structured episode counts and anchored record count
 - maintenance status
 
 ---

@@ -67,6 +67,7 @@ memo remember <content> [OPTIONS]
 ### 说明
 
 - 默认 `memo remember` 只会立即写入手工 entities 和 facts
+- `--entity` 和 `--fact` 是高级结构化入口；普通用户可以只写自然语言 episode，等配置 extraction 后由 `memo dream` 慢路径补结构化
 - 默认情况下，其它命令使用 `~/.memo/data`；`MEMO_DATA_DIR` 优先于 `storage.data_dir`，而 `storage.data_dir` 优先于默认值
 
 ---
@@ -123,6 +124,7 @@ memo dream [--full] [--json]
 - 默认执行一次手动 dream
 - `--full` 会执行更完整的一次 dream；当第一次整理改变了记忆状态时，会追加一次稳定化 pass
 - 配置了 extraction provider 时，dream 可以在慢路径补齐仍未结构化的 episode，而不会改变 `remember` 的默认延迟边界
+- 如果 extraction 未配置、不可用，或仍是模板占位 key，dream 会明确报告仍有 episode 只能作为文本记忆保留，而不是假装已经语义整理
 - `--json` 输出机器可读结果
 
 ---
@@ -141,6 +143,8 @@ memo state [--json]
 - layer 与 cache 状态
 - 派生索引健康度
 - provider 运行态健康度，包括走过降级路径时最近一次失败摘要
+- provider 可用性，包括 `not_configured`、`placeholder_key`、`configured`、`degraded`、`ok`
+- 未结构化 / 已结构化 episode 数量，以及 anchor 记录数量
 - 维护状态
 
 ---

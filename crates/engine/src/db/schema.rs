@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use rusqlite::Connection;
 
-const CURRENT_SCHEMA_VERSION: i64 = 2;
+const CURRENT_SCHEMA_VERSION: i64 = 3;
 
 pub(super) fn init_schema(conn: &Connection) -> Result<()> {
     let user_version = schema_user_version(conn)?;
@@ -119,6 +119,7 @@ pub(super) fn init_schema(conn: &Connection) -> Result<()> {
             status TEXT NOT NULL,
             last_promoted_at INTEGER NULL,
             last_l3_promoted_at INTEGER NULL,
+            anchored_at INTEGER NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(memory_id, memory_kind)
@@ -170,6 +171,9 @@ fn migrate_schema(conn: &Connection, from_version: i64) -> Result<()> {
     if from_version < 2 {
         migrate_to_v2(conn)?;
     }
+    if from_version < 3 {
+        migrate_to_v3(conn)?;
+    }
 
     Ok(())
 }
@@ -192,6 +196,11 @@ fn migrate_to_v2(conn: &Connection) -> Result<()> {
          WHERE layer = 'L3' AND last_l3_promoted_at IS NULL",
         [],
     )?;
+    Ok(())
+}
+
+fn migrate_to_v3(conn: &Connection) -> Result<()> {
+    ensure_column(conn, "memory_layers", "anchored_at", "INTEGER NULL")?;
     Ok(())
 }
 

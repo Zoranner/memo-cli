@@ -21,7 +21,7 @@ fn open_sets_current_schema_user_version() -> Result<()> {
     let conn = Connection::open(&db_path)?;
     let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
-    assert_eq!(user_version, 2);
+    assert_eq!(user_version, 3);
     Ok(())
 }
 
@@ -344,7 +344,7 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
     let _db = Database::open(&db_path)?;
     let conn = Connection::open(&db_path)?;
     let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    assert_eq!(user_version, 2);
+    assert_eq!(user_version, 3);
 
     for (table, column) in [
         ("episodes", "session_id"),
@@ -353,6 +353,7 @@ fn open_migrates_fact_and_edge_validity_columns() -> Result<()> {
         ("edges", "valid_from"),
         ("edges", "valid_to"),
         ("memory_layers", "last_l3_promoted_at"),
+        ("memory_layers", "anchored_at"),
     ] {
         let pragma = format!("PRAGMA table_info({})", table);
         let names = conn

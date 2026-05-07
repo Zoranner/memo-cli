@@ -100,6 +100,71 @@ impl Database {
         let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), map_episode)?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+    pub fn unstructured_episode_counts(&self) -> Result<(usize, usize)> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT layer, COUNT(*)
+             FROM episodes ep
+             WHERE ep.archived_at IS NULL
+               AND ep.invalidated_at IS NULL
+               AND ep.structured_at IS NULL
+               AND ep.layer IN ('L1', 'L2')
+               AND NOT EXISTS (
+                    SELECT 1 FROM entities e
+                    WHERE e.source_episode_id = ep.id
+                      AND e.archived_at IS NULL
+                      AND e.invalidated_at IS NULL
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM facts f
+                    WHERE f.source_episode_id = ep.id
+                      AND f.archived_at IS NULL
+                      AND f.invalidated_at IS NULL
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM edges ed
+                    WHERE ed.source_episode_id = ep.id
+                      AND ed.archived_at IS NULL
+                      AND ed.invalidated_at IS NULL
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM mentions m
+                    WHERE m.episode_id = ep.id
+               )
+             GROUP BY layer",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?.max(0) as usize,
+            ))
+        })?;
+
+        let mut l1 = 0;
+        let mut l2 = 0;
+        for row in rows {
+            let (layer, count) = row?;
+            match layer.as_str() {
+                "L1" => l1 = count,
+                "L2" => l2 = count,
+                _ => {}
+            }
+        }
+        Ok((l1, l2))
+    }
+    pub fn structured_episode_count(&self) -> Result<usize> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let count = conn.query_row(
+            "SELECT COUNT(*)
+             FROM episodes
+             WHERE structured_at IS NOT NULL
+               AND archived_at IS NULL
+               AND invalidated_at IS NULL",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        Ok(count.max(0) as usize)
+    }
     pub fn mark_episode_structured(&self, episode_id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         conn.execute(

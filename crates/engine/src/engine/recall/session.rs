@@ -1,17 +1,14 @@
-use super::{session_cache::trim_session_cache, *};
+use super::{ranking::query_subject_tokens, session_cache::trim_session_cache, *};
 
 impl MemoryEngine {
-    pub(super) fn commit_query_results(
-        &self,
-        normalized_query: &str,
-        results: &[RecallResult],
-    ) -> Result<()> {
+    pub(super) fn commit_query_results(&self, query: &str, results: &[RecallResult]) -> Result<()> {
+        let normalized_query = normalize_text(query);
         let memories = results
             .iter()
             .map(|result| result.memory.clone())
             .collect::<Vec<_>>();
         let _ = self.db.increment_hit_counts(&memories);
-        self.record_query_session(normalized_query, results)
+        self.record_query_session(query, &normalized_query, results)
     }
     pub(in crate::engine) fn refresh_session_cache<'a>(
         &self,
@@ -22,7 +19,14 @@ impl MemoryEngine {
         let mut session = self.session.lock().expect("session mutex poisoned");
         session.recent_memory_ids.push(episode_id.to_string());
         session.recent_topics.push(normalize_text(content));
+        for subject in query_subject_tokens(content) {
+            push_unique_recent(&mut session.active_subjects, subject);
+        }
         for entity in entities {
+            push_unique_recent(
+                &mut session.active_subjects,
+                normalize_text(&entity.canonical_name),
+            );
             session
                 .recent_aliases
                 .insert(normalize_text(&entity.canonical_name), entity.id.clone());
@@ -35,14 +39,29 @@ impl MemoryEngine {
         trim_session_cache(&mut session);
         Ok(())
     }
-    fn record_query_session(&self, normalized_query: &str, results: &[RecallResult]) -> Result<()> {
+    fn record_query_session(
+        &self,
+        query: &str,
+        normalized_query: &str,
+        results: &[RecallResult],
+    ) -> Result<()> {
         let mut session = self.session.lock().expect("session mutex poisoned");
         session.recent_topics.push(normalized_query.to_string());
+        for subject in query_subject_tokens(query) {
+            push_unique_recent(&mut session.active_subjects, subject);
+        }
         for result in results {
             session
                 .recent_memory_ids
                 .push(result.memory.id().to_string());
+            for subject in query_subject_tokens(&result.memory.text_for_ranking()) {
+                push_unique_recent(&mut session.active_subjects, subject);
+            }
             if let MemoryRecord::Entity(entity) = &result.memory {
+                push_unique_recent(
+                    &mut session.active_subjects,
+                    normalize_text(&entity.canonical_name),
+                );
                 session
                     .recent_aliases
                     .insert(normalize_text(&entity.canonical_name), entity.id.clone());
@@ -56,4 +75,12 @@ impl MemoryEngine {
         trim_session_cache(&mut session);
         Ok(())
     }
+}
+
+fn push_unique_recent(target: &mut Vec<String>, value: String) {
+    if value.is_empty() {
+        return;
+    }
+    target.retain(|existing| existing != &value);
+    target.push(value);
 }

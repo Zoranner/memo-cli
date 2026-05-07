@@ -12,6 +12,8 @@ impl MemoryEngine {
         let graph_limit = if deep { limit * 8 } else { limit * 4 };
         let graph_hops = if deep { 2 } else { 1 };
         let normalized = normalize_text(&request.query);
+        let active_subjects = self.active_working_subjects();
+        let recent_memory_ids = self.recent_working_memory_ids();
 
         if let Some(candidate) = self.l0_match(&normalized)? {
             add_candidate(&mut candidates, candidate);
@@ -111,7 +113,17 @@ impl MemoryEngine {
                     candidate.score += recency;
                     candidate.reasons.push(RecallReason::RecencyBoost);
                 }
-                let layer_boost = candidate.memory.layer().boost();
+                let working_boost = working_set_boost(
+                    &candidate.memory,
+                    &active_subjects,
+                    &recent_memory_ids,
+                    &request.query,
+                );
+                if working_boost > 0.0 {
+                    candidate.score += working_boost;
+                    candidate.reasons.push(RecallReason::WorkingSet);
+                }
+                let layer_boost = gated_layer_boost(&request.query, &candidate.memory);
                 if layer_boost > 0.0 {
                     candidate.score += layer_boost;
                     candidate.reasons.push(RecallReason::LayerBoost);
@@ -123,6 +135,9 @@ impl MemoryEngine {
                 }
                 candidate.score += answer_shape_boost(&request.query, &candidate.memory);
                 candidate.score += subject_coverage_boost(&request.query, &candidate.memory);
+                if has_subject_mismatch(&request.query, &candidate.memory) {
+                    candidate.reasons.push(RecallReason::SubjectMismatch);
+                }
                 candidate
             })
             .collect();
@@ -133,6 +148,9 @@ impl MemoryEngine {
         }
         let expand_graph_records = request.include_related_records;
         dedupe_candidates_by_source(&mut scored, expand_graph_records, expand_graph_records);
+        if !expand_graph_records && limit <= 5 {
+            truncate_weak_small_limit_tail(&mut scored);
+        }
 
         let selected = mmr_select(scored, limit);
         let results = selected
@@ -230,4 +248,77 @@ impl MemoryEngine {
         }
         Ok(result)
     }
+    fn active_working_subjects(&self) -> Vec<String> {
+        self.session
+            .lock()
+            .expect("session mutex poisoned")
+            .active_subjects
+            .clone()
+    }
+    fn recent_working_memory_ids(&self) -> Vec<String> {
+        self.session
+            .lock()
+            .expect("session mutex poisoned")
+            .recent_memory_ids
+            .clone()
+    }
+}
+
+fn working_set_boost(
+    memory: &MemoryRecord,
+    active_subjects: &[String],
+    recent_memory_ids: &[String],
+    query: &str,
+) -> f32 {
+    let mut boost: f32 = 0.0;
+    if recent_memory_ids
+        .iter()
+        .rev()
+        .take(16)
+        .any(|id| id == memory.id())
+    {
+        boost = boost.max(0.22);
+    }
+    let query_subjects = query_subject_tokens(query);
+    for subject in active_subjects.iter().rev().take(12) {
+        if !query_subjects.is_empty() && !query_subjects.contains(subject) {
+            continue;
+        }
+        if memory_contains_subject(memory, subject) {
+            boost = boost.max(0.30);
+        }
+    }
+    boost
+}
+
+fn gated_layer_boost(query: &str, memory: &MemoryRecord) -> f32 {
+    let base = memory.layer().boost();
+    if memory.layer() != crate::types::MemoryLayer::L3 {
+        return base;
+    }
+    if has_subject_mismatch(query, memory) || query_coverage(query, memory) < 0.25 {
+        return 0.0;
+    }
+    base
+}
+
+fn has_subject_mismatch(query: &str, memory: &MemoryRecord) -> bool {
+    let subjects = query_subject_tokens(query);
+    !subjects.is_empty()
+        && !subjects
+            .iter()
+            .any(|subject| memory_contains_subject(memory, subject))
+}
+
+fn truncate_weak_small_limit_tail(candidates: &mut Vec<Candidate>) {
+    if candidates.len() < 2 {
+        return;
+    }
+    candidates.sort_by(|left, right| right.score.total_cmp(&left.score));
+    let top_score = candidates[0].score;
+    if top_score < 1.8 {
+        return;
+    }
+    let min_score = top_score - 0.85;
+    candidates.retain(|candidate| candidate.score >= min_score);
 }

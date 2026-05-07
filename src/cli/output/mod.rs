@@ -12,7 +12,8 @@ pub(crate) use system::{
 mod tests {
     use super::{render_dream_report, render_recall_result, render_reflection, render_state};
     use crate::providers::status::{
-        ProviderCapabilityStatus, ProviderHealth, ProviderRuntimeSummary,
+        ProviderCapabilityReadiness, ProviderCapabilityStatus, ProviderHealth, ProviderReadiness,
+        ProviderReadinessSummary, ProviderRuntimeSummary,
     };
     use chrono::{TimeZone, Utc};
     use memo_engine::{
@@ -28,6 +29,10 @@ mod tests {
                 entity_count: 2,
                 fact_count: 1,
                 edge_count: 1,
+                unstructured_l1: 0,
+                unstructured_l2: 0,
+                structured_total: 0,
+                anchored_records: 0,
                 l3_cached: 4,
                 layers: memo_engine::LayerSummary {
                     l1: 2,
@@ -68,17 +73,27 @@ mod tests {
                 }],
                 read_error: None,
             },
+            &ProviderReadinessSummary {
+                capabilities: vec![ProviderCapabilityReadiness {
+                    capability: "extraction".to_string(),
+                    provider_ref: Some("openai.extract".to_string()),
+                    status: ProviderReadiness::PlaceholderKey,
+                    detail: Some("provider api_key is still a template placeholder".to_string()),
+                }],
+            },
             false,
         )
         .expect("expected human state output");
 
         assert!(output.contains("State"));
+        assert!(output.contains("structure: unstructured_l1=0 unstructured_l2=0"));
         assert!(output.contains("layers: l1=2 l2=1 l3=0 archived=3 invalidated=1"));
         assert!(output.contains("vector_index: failed docs=5"));
         assert!(output.contains("failed_updates=2"));
         assert!(output.contains("failed_attempts_max=3"));
         assert!(output.contains("last_error=vector dimension mismatch"));
         assert!(output.contains("provider_runtime: embedding=degraded"));
+        assert!(output.contains("provider_readiness: extraction=placeholder_key"));
         assert!(output.contains("consecutive_failures=2"));
         assert!(output.contains("last_error=rate limit"));
         assert!(!output.contains("dream_jobs"));
@@ -189,6 +204,7 @@ mod tests {
                 ..Default::default()
             },
             &ProviderRuntimeSummary::default(),
+            &ProviderReadinessSummary::default(),
             true,
         )
         .expect("expected json state output");
@@ -201,6 +217,10 @@ mod tests {
         assert!(parsed["provider_runtime"]["statuses"]
             .as_array()
             .expect("expected provider_runtime statuses array")
+            .is_empty());
+        assert!(parsed["provider_readiness"]["capabilities"]
+            .as_array()
+            .expect("expected provider_readiness capabilities array")
             .is_empty());
     }
 

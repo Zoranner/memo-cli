@@ -61,11 +61,16 @@ impl MemoryEngine {
 
     pub fn state(&self) -> Result<SystemState> {
         let (episode_count, entity_count, fact_count, edge_count) = self.db.stats()?;
+        let (unstructured_l1, unstructured_l2) = self.db.unstructured_episode_counts()?;
         Ok(SystemState {
             episode_count,
             entity_count,
             fact_count,
             edge_count,
+            unstructured_l1,
+            unstructured_l2,
+            structured_total: self.db.structured_episode_count()?,
+            anchored_records: self.db.anchored_record_count()?,
             layers: self.db.layer_summary()?,
             l3_cached: self.l3_cache.lock().expect("l3 mutex poisoned").len(),
             text_index: self.db.index_status("text")?,

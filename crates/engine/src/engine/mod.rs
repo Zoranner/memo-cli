@@ -30,6 +30,7 @@ struct SessionCache {
     recent_aliases: HashMap<String, String>,
     recent_memory_ids: Vec<String>,
     recent_topics: Vec<String>,
+    active_subjects: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -64,5 +65,13 @@ impl MemoryEngine {
         self.db
             .get_memory(id)?
             .with_context(|| format!("memory not found: {}", id))
+    }
+
+    pub fn anchor(&self, kind: &str, id: &str) -> Result<()> {
+        self.db.anchor_record(kind, id)
+    }
+
+    pub fn unanchor(&self, kind: &str, id: &str) -> Result<()> {
+        self.db.unanchor_record(kind, id)
     }
 }

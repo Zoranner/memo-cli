@@ -32,7 +32,6 @@ enum RecallSearchStrategy {
 impl MemoryEngine {
     pub fn recall(&self, request: RecallRequest) -> Result<RecallResultSet> {
         let started = Instant::now();
-        let normalized = normalize_text(&request.query);
         let mut result = self.execute_query(&request, request.deep)?;
         if !request.deep
             && matches!(
@@ -43,7 +42,7 @@ impl MemoryEngine {
             result = self.execute_query(&request, true)?;
         }
 
-        self.commit_query_results(&normalized, &result.results)?;
+        self.commit_query_results(&request.query, &result.results)?;
 
         debug!(
             query = %request.query,

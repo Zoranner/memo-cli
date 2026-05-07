@@ -11,6 +11,43 @@ use serde::{Deserialize, Serialize};
 const PROVIDER_RUNTIME_FILE: &str = "provider-runtime.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub(crate) struct ProviderReadinessSummary {
+    #[serde(default)]
+    pub capabilities: Vec<ProviderCapabilityReadiness>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ProviderCapabilityReadiness {
+    pub capability: String,
+    pub provider_ref: Option<String>,
+    pub status: ProviderReadiness,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProviderReadiness {
+    NotConfigured,
+    PlaceholderKey,
+    Configured,
+    Degraded,
+    Ok,
+}
+
+impl ProviderReadiness {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::NotConfigured => "not_configured",
+            Self::PlaceholderKey => "placeholder_key",
+            Self::Configured => "configured",
+            Self::Degraded => "degraded",
+            Self::Ok => "ok",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub(crate) struct ProviderRuntimeSummary {
     #[serde(default)]
     pub statuses: Vec<ProviderCapabilityStatus>,
