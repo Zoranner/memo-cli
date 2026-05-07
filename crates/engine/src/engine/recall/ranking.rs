@@ -119,6 +119,20 @@ pub(super) fn answer_shape_boost(query: &str, memory: &MemoryRecord) -> f32 {
         _ => 0.0,
     }
 }
+pub(super) fn subject_coverage_boost(query: &str, memory: &MemoryRecord) -> f32 {
+    let subject_tokens = subject_tokens(query);
+    if subject_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let memory_tokens = lexical_tokens(&memory.text_for_ranking());
+    let matched = subject_tokens.intersection(&memory_tokens).count();
+    if matched > 0 {
+        0.35 * matched as f32
+    } else {
+        -0.18
+    }
+}
 pub(super) fn mmr_select(mut candidates: Vec<Candidate>, limit: usize) -> Vec<Candidate> {
     if candidates.len() <= limit {
         return candidates;
@@ -202,6 +216,34 @@ fn looks_like_current_location_query(query: &str) -> bool {
         || tokens.contains("live")
         || tokens.contains("home")
         || tokens.contains("move")
+}
+fn subject_tokens(query: &str) -> HashSet<String> {
+    query
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| token.chars().next().is_some_and(char::is_uppercase))
+        .filter_map(|token| normalize_token(&token.to_ascii_lowercase()))
+        .filter(|token| !is_query_modifier(token))
+        .collect()
+}
+fn is_query_modifier(token: &str) -> bool {
+    matches!(
+        token,
+        "current"
+            | "recent"
+            | "live"
+            | "move"
+            | "home"
+            | "city"
+            | "office"
+            | "location"
+            | "role"
+            | "title"
+            | "job"
+            | "position"
+            | "base"
+            | "transfer"
+            | "promote"
+    )
 }
 fn is_stopword(token: &str) -> bool {
     matches!(
