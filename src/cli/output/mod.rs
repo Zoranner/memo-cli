@@ -4,9 +4,7 @@ mod system;
 
 pub(crate) use common::render_json_or_text;
 pub(crate) use memory::{render_recall_result, render_reflection};
-pub(crate) use system::{
-    render_awaken_result, render_dream_report, render_restore_report, render_state,
-};
+pub(crate) use system::{render_awaken_result, render_dream_report, render_state};
 
 #[cfg(test)]
 mod tests {
@@ -22,7 +20,7 @@ mod tests {
     };
 
     #[test]
-    fn render_state_without_json_uses_human_summary() {
+    fn render_state_text_prioritizes_provider_setup_without_internal_details() {
         let output = render_state(
             &SystemState {
                 episode_count: 3,
@@ -33,6 +31,7 @@ mod tests {
                 unstructured_l2: 0,
                 structured_total: 0,
                 anchored_records: 0,
+                pinned_records: 0,
                 l3_cached: 4,
                 layers: memo_engine::LayerSummary {
                     l1: 2,
@@ -55,7 +54,7 @@ mod tests {
                     name: "vector".to_string(),
                     doc_count: 5,
                     status: "failed".to_string(),
-                    detail: Some("restore failed for queued updates".to_string()),
+                    detail: Some("dream maintenance failed for derived updates".to_string()),
                     pending_updates: 0,
                     failed_updates: 2,
                     failed_attempts_max: 3,
@@ -85,18 +84,96 @@ mod tests {
         )
         .expect("expected human state output");
 
-        assert!(output.contains("State"));
-        assert!(output.contains("structure: unstructured_l1=0 unstructured_l2=0"));
-        assert!(output.contains("layers: l1=2 l2=1 l3=0 archived=3 invalidated=1"));
-        assert!(output.contains("vector_index: failed docs=5"));
-        assert!(output.contains("failed_updates=2"));
-        assert!(output.contains("failed_attempts_max=3"));
-        assert!(output.contains("last_error=vector dimension mismatch"));
-        assert!(output.contains("provider_runtime: embedding=degraded"));
-        assert!(output.contains("provider_readiness: extraction=placeholder_key"));
-        assert!(output.contains("consecutive_failures=2"));
-        assert!(output.contains("last_error=rate limit"));
-        assert!(!output.contains("dream_jobs"));
+        let lines = output.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "status: needs_setup");
+        assert_eq!(lines[1], "message: 需要先配置 provider");
+        assert_eq!(lines[2], "next: configure provider");
+        assert!(!output.contains("records:"));
+        assert!(!output.contains("layers:"));
+        assert!(!output.contains("index_state"));
+        assert!(!output.contains("index_jobs"));
+        assert!(!output.contains("vector_index"));
+        assert!(!output.contains("provider_readiness"));
+        assert!(!output.contains("provider_runtime"));
+    }
+
+    #[test]
+    fn render_state_text_reports_dream_needed_for_unstructured_content() {
+        let output = render_state(
+            &SystemState {
+                episode_count: 1,
+                unstructured_l1: 1,
+                layers: memo_engine::LayerSummary {
+                    l1: 1,
+                    ..Default::default()
+                },
+                text_index: IndexStatus {
+                    name: "text".to_string(),
+                    doc_count: 0,
+                    status: "ready".to_string(),
+                    ..Default::default()
+                },
+                vector_index: IndexStatus {
+                    name: "vector".to_string(),
+                    doc_count: 0,
+                    status: "ready".to_string(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &ProviderRuntimeSummary::default(),
+            &ProviderReadinessSummary {
+                capabilities: vec![ProviderCapabilityReadiness {
+                    capability: "extraction".to_string(),
+                    provider_ref: Some("openai.extract".to_string()),
+                    status: ProviderReadiness::Configured,
+                    detail: None,
+                }],
+            },
+            false,
+        )
+        .expect("expected human state output");
+
+        assert_eq!(
+            output,
+            "status: needs_dream\nmessage: 有新内容需要整理\nnext: memo dream"
+        );
+    }
+
+    #[test]
+    fn render_state_text_reports_setup_when_extraction_is_not_configured() {
+        let output = render_state(
+            &SystemState {
+                text_index: IndexStatus {
+                    name: "text".to_string(),
+                    status: "ready".to_string(),
+                    ..Default::default()
+                },
+                vector_index: IndexStatus {
+                    name: "vector".to_string(),
+                    status: "ready".to_string(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &ProviderRuntimeSummary::default(),
+            &ProviderReadinessSummary {
+                capabilities: vec![ProviderCapabilityReadiness {
+                    capability: "extraction".to_string(),
+                    provider_ref: None,
+                    status: ProviderReadiness::NotConfigured,
+                    detail: None,
+                }],
+            },
+            false,
+        )
+        .expect("expected human state output");
+
+        assert_eq!(
+            output,
+            "status: needs_setup\nmessage: 需要先配置 provider\nnext: configure provider"
+        );
     }
 
     #[test]
@@ -190,38 +267,64 @@ mod tests {
     }
 
     #[test]
-    fn render_state_with_json_returns_json() {
+    fn render_state_with_json_returns_status_and_diagnostics() {
         let output = render_state(
             &SystemState {
+                episode_count: 2,
+                unstructured_l1: 1,
+                structured_total: 1,
                 text_index: IndexStatus {
                     name: "text".to_string(),
+                    status: "pending".to_string(),
+                    pending_updates: 1,
                     ..Default::default()
                 },
                 vector_index: IndexStatus {
                     name: "vector".to_string(),
+                    status: "failed".to_string(),
+                    failed_updates: 1,
+                    last_error: Some("vector dimension mismatch".to_string()),
                     ..Default::default()
                 },
                 ..Default::default()
             },
             &ProviderRuntimeSummary::default(),
-            &ProviderReadinessSummary::default(),
+            &ProviderReadinessSummary {
+                capabilities: vec![ProviderCapabilityReadiness {
+                    capability: "extraction".to_string(),
+                    provider_ref: Some("openai.extract".to_string()),
+                    status: ProviderReadiness::Configured,
+                    detail: None,
+                }],
+            },
             true,
         )
         .expect("expected json state output");
 
         let parsed: serde_json::Value =
             serde_json::from_str(&output).expect("expected valid json output");
+        assert_eq!(parsed["status"], "needs_dream");
+        assert_eq!(parsed["message"], "有新内容需要整理");
+        assert_eq!(parsed["next"], "memo dream");
+        assert!(parsed.get("state").is_none());
+        assert!(parsed.get("provider_runtime").is_none());
+        assert!(parsed.get("provider_readiness").is_none());
         assert!(parsed.get("dream_jobs").is_none());
-        assert_eq!(parsed["state"]["layers"]["l1"], 0);
-        assert_eq!(parsed["state"]["layers"]["archived"], 0);
-        assert!(parsed["provider_runtime"]["statuses"]
+        assert_eq!(parsed["diagnostics"]["state"]["episode_count"], 2);
+        assert!(parsed["diagnostics"]["provider_runtime"]["statuses"]
             .as_array()
-            .expect("expected provider_runtime statuses array")
+            .expect("expected diagnostics provider_runtime statuses array")
             .is_empty());
-        assert!(parsed["provider_readiness"]["capabilities"]
+        assert_eq!(
+            parsed["diagnostics"]["provider_readiness"]["capabilities"][0]["status"],
+            "configured"
+        );
+        let reasons = parsed["diagnostics"]["internal_reasons"]
             .as_array()
-            .expect("expected provider_readiness capabilities array")
-            .is_empty());
+            .expect("expected internal reasons array");
+        assert!(reasons.iter().any(|reason| reason == "needs_structure"));
+        assert!(reasons.iter().any(|reason| reason == "sync_needed"));
+        assert!(reasons.iter().any(|reason| reason == "full_refresh_needed"));
     }
 
     #[test]
@@ -243,5 +346,25 @@ mod tests {
 
         assert!(output.contains("Dream (full) complete"));
         assert!(output.contains("passes_run: 2"));
+    }
+
+    #[test]
+    fn render_dream_report_includes_derived_maintenance_when_present() {
+        let output = render_dream_report(
+            &DreamReport {
+                derived_repairs: 2,
+                derived_text_documents: 2,
+                derived_vector_documents: 0,
+                ..Default::default()
+            },
+            false,
+            false,
+        )
+        .expect("expected human dream output");
+
+        assert!(output.contains("derived_repairs: 2"));
+        assert!(output.contains("derived_refreshes: 0"));
+        assert!(output.contains("derived_text_documents: 2"));
+        assert!(output.contains("derived_vector_documents: 0"));
     }
 }

@@ -14,7 +14,6 @@ Current command reference for the local single-process memo engine.
 - `memo reflect`
 - `memo dream`
 - `memo state`
-- `memo restore`
 
 ---
 
@@ -47,7 +46,7 @@ Prints a human-readable summary with:
 
 ## `memo remember`
 
-Write one episode into SQLite, update L0/session state, and mark derived indexes as pending.
+Write one episode into SQLite and mark derived indexes as needing `memo dream` maintenance when needed.
 
 ### Syntax
 
@@ -92,7 +91,7 @@ memo recall <query> [OPTIONS]
 
 ### Notes
 
-- Deep search can trigger rerank when configured
+- Default recall reads local memory state and should not require provider calls
 - Output includes `deep_search_used` and per-result `reasons`
 
 ---
@@ -125,6 +124,7 @@ memo dream [--full] [--json]
 - `--full` runs a fuller dream pass with an extra stabilization pass when the first pass changes memory state
 - when an extraction provider is configured, dream can enrich still-unstructured episodes on the slow path without changing `remember` default latency
 - if extraction is missing, degraded, or still using a template placeholder key, dream reports that unstructured episodes remain text-only instead of pretending semantic structuring is available
+- dream is also the public maintenance entrypoint for derived text/vector layers; internal repair details stay diagnostics, not a separate user workflow
 - `--json` emits machine-readable output
 
 ---
@@ -137,32 +137,26 @@ memo dream [--full] [--json]
 memo state [--json]
 ```
 
-### Includes
+### Text Output
 
-- episode / entity / fact / edge counts
-- layer and cache status
-- derived index health
-- provider runtime health, including the latest degraded capability summary when fallback paths were used
-- provider readiness, including `not_configured`, `placeholder_key`, `configured`, `degraded`, and `ok`
-- unstructured / structured episode counts and anchored record count
-- maintenance status
+Text output exposes only the user-facing action contract:
 
----
+- `status`: one of `ready`, `needs_setup`, `needs_dream`
+- `message`: short human-readable reason
+- `next`: one of `none`, `configure provider`, `memo dream`
 
-## `memo restore`
+Provider setup problems, including missing providers and placeholder keys, become `status: needs_setup` with `next: configure provider`.
 
-Recover derived layers from the local truth source when needed.
+Unstructured content, missing local semantic material, or unsynced/untrusted derived layers become `status: needs_dream` with `next: memo dream`.
 
-### Syntax
+### JSON Output
 
-```bash
-memo restore [--full] [--json]
-```
+`--json` keeps the same top-level `status`, `message`, and `next`, and adds `diagnostics` for internal details:
 
-### Notes
+- `diagnostics.internal_reasons`, such as `provider_not_ready`, `needs_structure`, `needs_vectors`, `sync_needed`, `full_refresh_needed`
+- engine state counts and index status
+- provider readiness and runtime health
 
-- Default mode performs a conservative restore
-- `--full` rebuilds derived layers completely from the truth source
-- `--json` emits machine-readable output
+Internal index bookkeeping such as index jobs/index state is diagnostics only and is not part of the text status line.
 
 

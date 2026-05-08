@@ -201,7 +201,7 @@ fn queue_index_job(
     mark_index_pending(
         conn,
         index_name,
-        Some("pending restore after queued updates"),
+        Some("pending dream maintenance after derived updates"),
     )?;
     Ok(())
 }

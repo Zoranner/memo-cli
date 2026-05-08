@@ -50,6 +50,10 @@ pub struct DreamReport {
     pub downgraded_records: usize,
     pub archived_records: usize,
     pub invalidated_records: usize,
+    pub derived_repairs: usize,
+    pub derived_refreshes: usize,
+    pub derived_text_documents: usize,
+    pub derived_vector_documents: usize,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -96,6 +100,7 @@ pub struct SystemState {
     pub unstructured_l2: usize,
     pub structured_total: usize,
     pub anchored_records: usize,
+    pub pinned_records: usize,
     pub layers: LayerSummary,
     pub l3_cached: usize,
     pub text_index: IndexStatus,

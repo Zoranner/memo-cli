@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use anyhow::Result;
-use memo_engine::{DreamReport, IndexStatus, RestoreReport, SystemState};
+use memo_engine::{DreamReport, IndexStatus, SystemState};
+use serde::Serialize;
 
 use crate::{config, providers::status};
 
@@ -50,6 +51,15 @@ pub(crate) fn render_dream_report(report: &DreamReport, full: bool, json: bool) 
         output.push_str("\nnotes: ");
         output.push_str(&report.maintenance_notes.join("; "));
     }
+    if report.derived_repairs > 0 || report.derived_refreshes > 0 {
+        output.push_str(&format!(
+            "\nderived_repairs: {}\nderived_refreshes: {}\nderived_text_documents: {}\nderived_vector_documents: {}",
+            report.derived_repairs,
+            report.derived_refreshes,
+            report.derived_text_documents,
+            report.derived_vector_documents
+        ));
+    }
     Ok(output)
 }
 
@@ -59,136 +69,126 @@ pub(crate) fn render_state(
     provider_readiness: &status::ProviderReadinessSummary,
     json: bool,
 ) -> Result<String> {
+    let summary = StateOutput::from_inputs(state, provider_runtime, provider_readiness);
     if json {
-        return render_json_or_text(
-            &serde_json::json!({
-                "state": state,
-                "provider_runtime": provider_runtime,
-                "provider_readiness": provider_readiness,
-            }),
-            "",
-            true,
-        );
+        return render_json_or_text(&summary, "", true);
     }
 
     Ok(format!(
-        "State\nrecords: episodes={} entities={} facts={} edges={}\nstructure: unstructured_l1={} unstructured_l2={} structured_total={} anchored={}\nlayers: l1={} l2={} l3={} archived={} invalidated={}\nl3_cached: {}\ntext_index: {}\nvector_index: {}\nprovider_readiness: {}\nprovider_runtime: {}",
-        state.episode_count,
-        state.entity_count,
-        state.fact_count,
-        state.edge_count,
-        state.unstructured_l1,
-        state.unstructured_l2,
-        state.structured_total,
-        state.anchored_records,
-        state.layers.l1,
-        state.layers.l2,
-        state.layers.l3,
-        state.layers.archived,
-        state.layers.invalidated,
-        state.l3_cached,
-        index_summary(&state.text_index),
-        index_summary(&state.vector_index),
-        provider_readiness_summary(provider_readiness),
-        provider_runtime_summary(provider_runtime),
+        "status: {}\nmessage: {}\nnext: {}",
+        summary.status, summary.message, summary.next
     ))
 }
 
-pub(crate) fn render_restore_report(
-    report: &RestoreReport,
-    full: bool,
-    json: bool,
-) -> Result<String> {
-    if json {
-        let payload = serde_json::json!({
-            "mode": if full { "full" } else { "standard" },
-            "restore": report,
+#[derive(Debug, Serialize)]
+struct StateOutput<'a> {
+    status: &'static str,
+    message: &'static str,
+    next: &'static str,
+    diagnostics: StateDiagnostics<'a>,
+}
+
+#[derive(Debug, Serialize)]
+struct StateDiagnostics<'a> {
+    internal_reasons: Vec<&'static str>,
+    state: &'a SystemState,
+    provider_runtime: &'a status::ProviderRuntimeSummary,
+    provider_readiness: &'a status::ProviderReadinessSummary,
+}
+
+impl<'a> StateOutput<'a> {
+    fn from_inputs(
+        state: &'a SystemState,
+        provider_runtime: &'a status::ProviderRuntimeSummary,
+        provider_readiness: &'a status::ProviderReadinessSummary,
+    ) -> Self {
+        let mut internal_reasons = internal_reasons(state, provider_runtime, provider_readiness);
+        let needs_setup = internal_reasons.contains(&"provider_not_ready");
+        let needs_dream = internal_reasons.iter().any(|reason| {
+            matches!(
+                *reason,
+                "needs_structure" | "needs_vectors" | "sync_needed" | "full_refresh_needed"
+            )
         });
-        return render_json_or_text(&payload, "", true);
-    }
+        let (status, message, next) = if needs_setup {
+            ("needs_setup", "需要先配置 provider", "configure provider")
+        } else if needs_dream {
+            ("needs_dream", "有新内容需要整理", "memo dream")
+        } else {
+            ("ready", "记忆系统已就绪", "none")
+        };
 
-    Ok(format!(
-        "Restore {}complete\ntext_documents: {}\nvector_documents: {}",
-        if full { "(full) " } else { "" },
-        report.text_documents,
-        report.vector_documents,
-    ))
+        internal_reasons.sort_unstable();
+        internal_reasons.dedup();
+
+        Self {
+            status,
+            message,
+            next,
+            diagnostics: StateDiagnostics {
+                internal_reasons,
+                state,
+                provider_runtime,
+                provider_readiness,
+            },
+        }
+    }
 }
 
-fn index_summary(index: &IndexStatus) -> String {
-    let mut segments = vec![format!("{} docs={}", index.status, index.doc_count)];
-    if index.pending_updates > 0 {
-        segments.push(format!("pending_updates={}", index.pending_updates));
+fn internal_reasons(
+    state: &SystemState,
+    provider_runtime: &status::ProviderRuntimeSummary,
+    provider_readiness: &status::ProviderReadinessSummary,
+) -> Vec<&'static str> {
+    let mut reasons = Vec::new();
+
+    if required_provider_not_ready(provider_readiness) {
+        reasons.push("provider_not_ready");
     }
-    if index.failed_updates > 0 {
-        segments.push(format!("failed_updates={}", index.failed_updates));
+    if provider_runtime.read_error.is_some() {
+        reasons.push("provider_runtime_unavailable");
     }
-    if index.failed_attempts_max > 0 {
-        segments.push(format!("failed_attempts_max={}", index.failed_attempts_max));
+    if state.unstructured_l1 > 0 || state.unstructured_l2 > 0 {
+        reasons.push("needs_structure");
     }
-    if let Some(last_error) = index.last_error.as_deref() {
-        segments.push(format!("last_error={last_error}"));
+    if state.episode_count > 0 && state.structured_total == 0 {
+        reasons.push("needs_structure");
     }
-    if let Some(detail) = index.detail.as_deref() {
-        segments.push(format!("detail={detail}"));
+    if state.structured_total > 0 && state.vector_index.doc_count == 0 {
+        reasons.push("needs_vectors");
     }
-    segments.join(" ")
+    if index_needs_sync(&state.text_index) || index_needs_sync(&state.vector_index) {
+        reasons.push("sync_needed");
+    }
+    if index_needs_full_refresh(&state.text_index) || index_needs_full_refresh(&state.vector_index)
+    {
+        reasons.push("full_refresh_needed");
+    }
+
+    reasons
 }
 
-fn provider_runtime_summary(summary: &status::ProviderRuntimeSummary) -> String {
-    if let Some(read_error) = summary.read_error.as_deref() {
-        return format!("unavailable detail={read_error}");
-    }
-
-    if summary.statuses.is_empty() {
-        return "idle".to_string();
-    }
-
-    summary
-        .statuses
-        .iter()
-        .map(|status| {
-            let mut segments = vec![
-                format!("{}={}", status.capability, status.status.as_str()),
-                format!("provider={}", status.provider_ref),
-            ];
-            if status.consecutive_failures > 0 {
-                segments.push(format!(
-                    "consecutive_failures={}",
-                    status.consecutive_failures
-                ));
-            }
-            if let Some(last_error) = status.last_error.as_deref() {
-                segments.push(format!("last_error={last_error}"));
-            }
-            segments.join(" ")
-        })
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
-fn provider_readiness_summary(summary: &status::ProviderReadinessSummary) -> String {
-    if summary.capabilities.is_empty() {
-        return "unknown".to_string();
-    }
-
-    summary
+fn required_provider_not_ready(summary: &status::ProviderReadinessSummary) -> bool {
+    let Some(extraction) = summary
         .capabilities
         .iter()
-        .map(|capability| {
-            let mut segments = vec![format!(
-                "{}={}",
-                capability.capability,
-                capability.status.as_str()
-            )];
-            if let Some(provider_ref) = capability.provider_ref.as_deref() {
-                segments.push(format!("provider={provider_ref}"));
-            }
-            if let Some(detail) = capability.detail.as_deref() {
-                segments.push(format!("detail={detail}"));
-            }
-            segments.join(" ")
-        })
-        .collect::<Vec<_>>()
-        .join("; ")
+        .find(|capability| capability.capability == "extraction")
+    else {
+        return true;
+    };
+
+    matches!(
+        extraction.status,
+        status::ProviderReadiness::NotConfigured
+            | status::ProviderReadiness::PlaceholderKey
+            | status::ProviderReadiness::Degraded
+    )
+}
+
+fn index_needs_sync(index: &IndexStatus) -> bool {
+    index.pending_updates > 0 || index.failed_updates > 0 || index.status == "pending"
+}
+
+fn index_needs_full_refresh(index: &IndexStatus) -> bool {
+    index.status == "failed" || index.failed_attempts_max > 0 || index.last_error.is_some()
 }

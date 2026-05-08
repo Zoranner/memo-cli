@@ -21,7 +21,7 @@ impl MemoryEngine {
                 .rebuild(&docs)?;
             self.db.clear_all_index_jobs("text")?;
             self.db
-                .record_index_ready("text", count, Some("tantivy rebuild complete"))?;
+                .record_index_ready("text", count, Some("tantivy derived refresh complete"))?;
             report.text_documents = count;
         }
 
@@ -34,7 +34,7 @@ impl MemoryEngine {
                 .rebuild(&docs)?;
             self.db.clear_all_index_jobs("vector")?;
             self.db
-                .record_index_ready("vector", count, Some("vector rebuild complete"))?;
+                .record_index_ready("vector", count, Some("vector derived refresh complete"))?;
             report.vector_documents = count;
         }
 
@@ -71,6 +71,7 @@ impl MemoryEngine {
             unstructured_l2,
             structured_total: self.db.structured_episode_count()?,
             anchored_records: self.db.anchored_record_count()?,
+            pinned_records: self.db.pinned_record_count()?,
             layers: self.db.layer_summary()?,
             l3_cached: self.l3_cache.lock().expect("l3 mutex poisoned").len(),
             text_index: self.db.index_status("text")?,
@@ -122,7 +123,7 @@ impl MemoryEngine {
                 self.db.record_index_ready(
                     "text",
                     count,
-                    Some("tantivy incremental restore complete"),
+                    Some("tantivy derived maintenance complete"),
                 )?;
                 Ok(count)
             }
@@ -175,7 +176,7 @@ impl MemoryEngine {
                 self.db.record_index_ready(
                     "vector",
                     count,
-                    Some("vector incremental restore complete"),
+                    Some("vector derived maintenance complete"),
                 )?;
                 Ok(count)
             }

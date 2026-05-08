@@ -31,8 +31,8 @@ impl Database {
         )?;
 
         conn.execute(
-            "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
-             VALUES (?1, 'episode', ?2, 'active', ?3, ?3)",
+            "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, working_set_at, created_at, updated_at)
+             VALUES (?1, 'episode', ?2, 'active', ?3, ?3, ?3)",
             params![id, input.layer.as_str(), now],
         )?;
         queue_text_index_job(&conn, "episode", &id, IndexJobOperation::Upsert)?;
@@ -95,8 +95,8 @@ impl Database {
                 ],
             )?;
             conn.execute(
-                "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
-                 VALUES (?1, 'entity', ?2, 'active', ?3, ?3)",
+                "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, working_set_at, created_at, updated_at)
+                 VALUES (?1, 'entity', ?2, 'active', ?3, ?3, ?3)",
                 params![entity_id, layer.as_str(), observed_at_ts],
             )?;
             entity_id
@@ -211,8 +211,8 @@ impl Database {
             ],
         )?;
         conn.execute(
-            "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
-             VALUES (?1, 'fact', ?2, 'active', ?3, ?3)",
+            "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, working_set_at, created_at, updated_at)
+             VALUES (?1, 'fact', ?2, 'active', ?3, ?3, ?3)",
             params![id, layer.as_str(), observed_at_ts],
         )?;
         queue_text_index_job(&conn, "fact", &id, IndexJobOperation::Upsert)?;
@@ -250,8 +250,8 @@ impl Database {
             ],
         )?;
         conn.execute(
-            "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, created_at, updated_at)
-             VALUES (?1, 'edge', ?2, 'active', ?3, ?3)",
+            "INSERT INTO memory_layers (memory_id, memory_kind, layer, status, working_set_at, created_at, updated_at)
+             VALUES (?1, 'edge', ?2, 'active', ?3, ?3, ?3)",
             params![id, layer.as_str(), observed_at_ts],
         )?;
         drop(conn);

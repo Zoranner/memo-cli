@@ -8,6 +8,7 @@ impl MemoryEngine {
             .map(|result| result.memory.clone())
             .collect::<Vec<_>>();
         let _ = self.db.increment_hit_counts(&memories);
+        self.db.mark_working_set_records(&memories)?;
         self.record_query_session(query, &normalized_query, results)
     }
     pub(in crate::engine) fn refresh_session_cache<'a>(

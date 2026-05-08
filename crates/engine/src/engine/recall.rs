@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{
     db::normalize_text,

@@ -101,12 +101,12 @@ impl Database {
         if failed_updates > 0 {
             status.status = "failed".to_string();
             if status.detail.is_none() {
-                status.detail = Some("restore failed for queued updates".to_string());
+                status.detail = Some("dream maintenance failed for derived updates".to_string());
             }
         } else if pending_updates > 0 {
             status.status = "pending".to_string();
             if status.detail.is_none() {
-                status.detail = Some("pending restore after queued updates".to_string());
+                status.detail = Some("pending dream maintenance after derived updates".to_string());
             }
         }
 

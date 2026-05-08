@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use rusqlite::Connection;
 
-const CURRENT_SCHEMA_VERSION: i64 = 3;
+const CURRENT_SCHEMA_VERSION: i64 = 4;
 
 pub(super) fn init_schema(conn: &Connection) -> Result<()> {
     let user_version = schema_user_version(conn)?;
@@ -120,6 +120,9 @@ pub(super) fn init_schema(conn: &Connection) -> Result<()> {
             last_promoted_at INTEGER NULL,
             last_l3_promoted_at INTEGER NULL,
             anchored_at INTEGER NULL,
+            working_set_at INTEGER NULL,
+            pinned_at INTEGER NULL,
+            pinned_reason TEXT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(memory_id, memory_kind)
@@ -174,6 +177,9 @@ fn migrate_schema(conn: &Connection, from_version: i64) -> Result<()> {
     if from_version < 3 {
         migrate_to_v3(conn)?;
     }
+    if from_version < 4 {
+        migrate_to_v4(conn)?;
+    }
 
     Ok(())
 }
@@ -201,6 +207,20 @@ fn migrate_to_v2(conn: &Connection) -> Result<()> {
 
 fn migrate_to_v3(conn: &Connection) -> Result<()> {
     ensure_column(conn, "memory_layers", "anchored_at", "INTEGER NULL")?;
+    Ok(())
+}
+
+fn migrate_to_v4(conn: &Connection) -> Result<()> {
+    ensure_column(conn, "memory_layers", "working_set_at", "INTEGER NULL")?;
+    ensure_column(conn, "memory_layers", "pinned_at", "INTEGER NULL")?;
+    ensure_column(conn, "memory_layers", "pinned_reason", "TEXT NULL")?;
+    conn.execute(
+        "UPDATE memory_layers
+         SET pinned_at = anchored_at
+         WHERE pinned_at IS NULL
+           AND anchored_at IS NOT NULL",
+        [],
+    )?;
     Ok(())
 }
 

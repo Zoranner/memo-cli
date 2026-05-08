@@ -148,14 +148,18 @@ impl Database {
         if layer == MemoryLayer::L3 {
             conn.execute(
                 "UPDATE memory_layers
-                 SET layer = ?2, last_promoted_at = ?3, last_l3_promoted_at = ?3, updated_at = ?3
+                 SET layer = ?2,
+                     last_promoted_at = ?3,
+                     last_l3_promoted_at = ?3,
+                     working_set_at = ?3,
+                     updated_at = ?3
                  WHERE memory_id = ?1 AND memory_kind = ?4",
                 params![id, layer.as_str(), now, kind],
             )?;
         } else {
             conn.execute(
                 "UPDATE memory_layers
-                 SET layer = ?2, updated_at = ?3
+                 SET layer = ?2, working_set_at = ?3, updated_at = ?3
                  WHERE memory_id = ?1 AND memory_kind = ?4",
                 params![id, layer.as_str(), now, kind],
             )?;
@@ -182,7 +186,7 @@ impl Database {
         let count = conn.query_row(
             "SELECT COUNT(*)
              FROM memory_layers
-             WHERE anchored_at IS NOT NULL
+             WHERE pinned_at IS NOT NULL
                AND status = 'active'",
             [],
             |row| row.get::<_, i64>(0),
@@ -190,31 +194,116 @@ impl Database {
         Ok(count.max(0) as usize)
     }
     pub fn anchor_record(&self, kind: &str, id: &str) -> Result<()> {
+        self.pin_record(kind, id, None)
+    }
+    pub fn unanchor_record(&self, kind: &str, id: &str) -> Result<()> {
+        self.unpin_record(kind, id)
+    }
+    pub fn pinned_record_count(&self) -> Result<usize> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let count = conn.query_row(
+            "SELECT COUNT(*)
+             FROM memory_layers
+             WHERE pinned_at IS NOT NULL
+               AND status = 'active'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        Ok(count.max(0) as usize)
+    }
+    pub fn pin_record(&self, kind: &str, id: &str, reason: Option<&str>) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let now = now_ts();
         let updated = conn.execute(
             "UPDATE memory_layers
-             SET anchored_at = COALESCE(anchored_at, ?3), updated_at = ?3
+             SET pinned_at = COALESCE(pinned_at, ?3),
+                 pinned_reason = COALESCE(?4, pinned_reason),
+                 anchored_at = COALESCE(anchored_at, ?3),
+                 updated_at = ?3
              WHERE memory_id = ?1 AND memory_kind = ?2 AND status = 'active'",
-            params![id, kind, now],
+            params![id, kind, now, reason],
         )?;
         if updated == 0 {
             anyhow::bail!("active memory layer not found: {kind}:{id}");
         }
         Ok(())
     }
-    pub fn unanchor_record(&self, kind: &str, id: &str) -> Result<()> {
+    pub fn unpin_record(&self, kind: &str, id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let now = now_ts();
         let updated = conn.execute(
             "UPDATE memory_layers
-             SET anchored_at = NULL, updated_at = ?3
+             SET pinned_at = NULL,
+                 pinned_reason = NULL,
+                 anchored_at = NULL,
+                 updated_at = ?3
              WHERE memory_id = ?1 AND memory_kind = ?2",
             params![id, kind, now],
         )?;
         if updated == 0 {
             anyhow::bail!("memory layer not found: {kind}:{id}");
         }
+        Ok(())
+    }
+    pub fn is_pinned(&self, kind: &str, id: &str) -> Result<bool> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let pinned_at = conn
+            .query_row(
+                "SELECT pinned_at FROM memory_layers
+                 WHERE memory_id = ?1 AND memory_kind = ?2",
+                params![id, kind],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(pinned_at.is_some())
+    }
+    pub fn mark_working_set(&self, kind: &str, id: &str) -> Result<()> {
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let now = now_ts();
+        let updated = conn.execute(
+            "UPDATE memory_layers
+             SET working_set_at = ?3, updated_at = ?3
+             WHERE memory_id = ?1 AND memory_kind = ?2",
+            params![id, kind, now],
+        )?;
+        if updated == 0 {
+            anyhow::bail!("memory layer not found: {kind}:{id}");
+        }
+        Ok(())
+    }
+    pub fn mark_working_set_records(&self, memories: &[MemoryRecord]) -> Result<()> {
+        if memories.is_empty() {
+            return Ok(());
+        }
+
+        let mut keys = Vec::new();
+        let mut seen = HashSet::new();
+        for memory in memories {
+            let key = format!("{}:{}", memory.kind(), memory.id());
+            if seen.insert(key) {
+                keys.push((memory.kind().to_string(), memory.id().to_string()));
+            }
+            if let Some(source_episode_id) = memory.source_episode_id() {
+                let key = format!("episode:{source_episode_id}");
+                if seen.insert(key) {
+                    keys.push(("episode".to_string(), source_episode_id.to_string()));
+                }
+            }
+        }
+
+        let now = now_ts();
+        let mut conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let transaction = conn.transaction()?;
+        for (kind, id) in keys {
+            transaction.execute(
+                "UPDATE memory_layers
+                 SET working_set_at = ?3, updated_at = ?3
+                 WHERE memory_id = ?1 AND memory_kind = ?2",
+                params![id, kind, now],
+            )?;
+        }
+        transaction.commit()?;
         Ok(())
     }
     pub fn archive_record(&self, kind: &str, id: &str) -> Result<()> {
@@ -233,7 +322,7 @@ impl Database {
         conn.execute(&sql, params![id, now])?;
         conn.execute(
             "UPDATE memory_layers
-             SET status = 'archived', updated_at = ?2
+             SET status = 'archived', working_set_at = ?2, updated_at = ?2
              WHERE memory_id = ?1 AND memory_kind = ?3",
             params![id, now, kind],
         )?;
@@ -256,7 +345,7 @@ impl Database {
         conn.execute(&sql, params![id, now])?;
         conn.execute(
             "UPDATE memory_layers
-             SET status = 'invalidated', updated_at = ?2
+             SET status = 'invalidated', working_set_at = ?2, updated_at = ?2
              WHERE memory_id = ?1 AND memory_kind = ?3",
             params![id, now, kind],
         )?;

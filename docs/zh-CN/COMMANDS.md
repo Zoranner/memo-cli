@@ -14,7 +14,6 @@
 - `memo reflect`
 - `memo dream`
 - `memo state`
-- `memo restore`
 
 ---
 
@@ -47,7 +46,7 @@ memo awaken
 
 ## `memo remember`
 
-把一条 episode 写入 SQLite，同时更新 L0/session 状态，并把派生索引标记为 `pending`。
+把一条 episode 写入 SQLite；如派生索引需要维护，由 `memo state` 提示后续运行 `memo dream`。
 
 ### 语法
 
@@ -92,7 +91,7 @@ memo recall <query> [OPTIONS]
 
 ### 说明
 
-- 配置了 rerank 时，deep search 可以触发精排
+- 默认 recall 读取本地记忆状态，不应要求 provider 调用
 - 输出里包含 `deep_search_used` 和每条结果的 `reasons`
 
 ---
@@ -125,6 +124,7 @@ memo dream [--full] [--json]
 - `--full` 会执行更完整的一次 dream；当第一次整理改变了记忆状态时，会追加一次稳定化 pass
 - 配置了 extraction provider 时，dream 可以在慢路径补齐仍未结构化的 episode，而不会改变 `remember` 的默认延迟边界
 - 如果 extraction 未配置、不可用，或仍是模板占位 key，dream 会明确报告仍有 episode 只能作为文本记忆保留，而不是假装已经语义整理
+- dream 也是公开的 text/vector 派生层维护入口；内部修复细节只作为诊断信息，不单独暴露成用户流程
 - `--json` 输出机器可读结果
 
 ---
@@ -137,31 +137,25 @@ memo dream [--full] [--json]
 memo state [--json]
 ```
 
-### 包含内容
+### 文本输出
 
-- episode / entity / fact / edge 数量
-- layer 与 cache 状态
-- 派生索引健康度
-- provider 运行态健康度，包括走过降级路径时最近一次失败摘要
-- provider 可用性，包括 `not_configured`、`placeholder_key`、`configured`、`degraded`、`ok`
-- 未结构化 / 已结构化 episode 数量，以及 anchor 记录数量
-- 维护状态
+文本输出只暴露面向用户的动作契约：
 
----
+- `status`：只能是 `ready`、`needs_setup`、`needs_dream`
+- `message`：简短原因
+- `next`：只能是 `none`、`configure provider`、`memo dream`
 
-## `memo restore`
+provider 未配置、未就绪或仍使用模板占位 key 时，输出 `status: needs_setup` 和 `next: configure provider`。
 
-在需要时基于本地真相源恢复派生层。
+存在未整理内容、缺少本地语义材料，或派生层未同步/不可信时，输出 `status: needs_dream` 和 `next: memo dream`。
 
-### 语法
+### JSON 输出
 
-```bash
-memo restore [--full] [--json]
-```
+`--json` 保留同样的顶层 `status`、`message`、`next`，并增加 `diagnostics`：
 
-### 说明
+- `diagnostics.internal_reasons`，例如 `provider_not_ready`、`needs_structure`、`needs_vectors`、`sync_needed`、`full_refresh_needed`
+- engine state 计数与索引状态
+- provider readiness 和 runtime health
 
-- 默认执行保守恢复
-- `--full` 表示从真相源完整重建派生层
-- `--json` 输出机器可读结果
+`index_jobs` / `index_state` 等内部账本只属于 diagnostics，不进入文本主状态行。
 

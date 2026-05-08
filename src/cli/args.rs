@@ -49,12 +49,6 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    Restore {
-        #[arg(long)]
-        full: bool,
-        #[arg(long)]
-        json: bool,
-    },
 }
 
 pub(crate) fn build_remember_input(
@@ -228,12 +222,10 @@ mod tests {
     }
 
     #[test]
-    fn cli_parses_restore_full_flag() {
-        let cli = Cli::parse_from(["memo", "restore", "--full"]);
+    fn cli_rejects_restore_command() {
+        let error = Cli::try_parse_from(["memo", "restore"])
+            .expect_err("expected restore command to be rejected");
 
-        match cli.command {
-            Command::Restore { full, .. } => assert!(full),
-            _ => panic!("expected restore command"),
-        }
+        assert!(error.to_string().contains("unrecognized subcommand"));
     }
 }

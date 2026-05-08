@@ -35,18 +35,6 @@ pub(crate) enum ProviderReadiness {
     Ok,
 }
 
-impl ProviderReadiness {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::NotConfigured => "not_configured",
-            Self::PlaceholderKey => "placeholder_key",
-            Self::Configured => "configured",
-            Self::Degraded => "degraded",
-            Self::Ok => "ok",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub(crate) struct ProviderRuntimeSummary {
     #[serde(default)]
@@ -71,15 +59,6 @@ pub(crate) struct ProviderCapabilityStatus {
 pub(crate) enum ProviderHealth {
     Ok,
     Degraded,
-}
-
-impl ProviderHealth {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Ok => "ok",
-            Self::Degraded => "degraded",
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

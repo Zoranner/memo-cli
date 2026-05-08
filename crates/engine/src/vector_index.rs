@@ -7,13 +7,6 @@ use anyhow::{Context, Result};
 use hnsw_rs::prelude::{AnnT, DistCosine, Hnsw};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
-pub struct VectorHit {
-    pub id: String,
-    pub kind: String,
-    pub score: f32,
-}
-
 pub enum VectorUpdate {
     Upsert {
         kind: String,
@@ -45,18 +38,11 @@ struct StoredVectorDisk {
 
 type AnnIndex = Hnsw<'static, f32, DistCosine>;
 
-#[derive(Debug, Clone)]
-struct HitRef {
-    id: String,
-    kind: String,
-}
-
 pub struct VectorIndex {
     path: PathBuf,
     dimension: usize,
     records: HashMap<String, StoredVector>,
     ann: AnnIndex,
-    record_refs_by_ann_id: HashMap<usize, HitRef>,
     next_ann_id: usize,
     defer_commit: bool,
 }
@@ -70,13 +56,11 @@ impl VectorIndex {
             .max()
             .map_or(0, |ann_id| ann_id.saturating_add(1));
         let ann = build_hnsw(dimension, &records)?;
-        let record_refs_by_ann_id = build_ann_ref_map(&records);
         Ok(Self {
             path,
             dimension,
             records,
             ann,
-            record_refs_by_ann_id,
             next_ann_id,
             defer_commit: false,
         })
@@ -158,35 +142,6 @@ impl VectorIndex {
         self.persist()
     }
 
-    pub fn search(&self, query: &[f32], limit: usize) -> Result<Vec<VectorHit>> {
-        if query.len() != self.dimension || limit == 0 || self.records.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let ef = search_ef(limit, self.records.len());
-        let mut hits = self
-            .ann
-            .search(query, limit.min(self.records.len()), ef)
-            .into_iter()
-            .filter_map(|neighbor| {
-                self.record_refs_by_ann_id
-                    .get(&neighbor.d_id)
-                    .cloned()
-                    .map(|record| VectorHit {
-                        id: record.id,
-                        kind: record.kind,
-                        score: (1.0 - neighbor.distance).clamp(-1.0, 1.0),
-                    })
-            })
-            .collect::<Vec<_>>();
-        hits.sort_by(|left, right| right.score.total_cmp(&left.score));
-        Ok(hits)
-    }
-
-    pub fn has_documents(&self) -> bool {
-        !self.records.is_empty()
-    }
-
     fn ensure_dimension(&self, vector: &[f32]) -> Result<()> {
         if vector.len() != self.dimension {
             anyhow::bail!(
@@ -223,7 +178,6 @@ impl VectorIndex {
 
     fn reindex(&mut self) -> Result<()> {
         self.ann = build_hnsw(self.dimension, &self.records)?;
-        self.record_refs_by_ann_id = build_ann_ref_map(&self.records);
         Ok(())
     }
 
@@ -310,26 +264,6 @@ fn new_hnsw(record_count: usize) -> AnnIndex {
     ann
 }
 
-fn build_ann_ref_map(records: &HashMap<String, StoredVector>) -> HashMap<usize, HitRef> {
-    records
-        .values()
-        .map(|record| {
-            (
-                record.ann_id,
-                HitRef {
-                    id: record.id.clone(),
-                    kind: record.kind.clone(),
-                },
-            )
-        })
-        .collect()
-}
-
-fn search_ef(limit: usize, record_count: usize) -> usize {
-    let base = limit.max(8).saturating_mul(4);
-    base.min(record_count.max(limit))
-}
-
 fn dump_basename(path: &Path) -> Result<String> {
     path.file_stem()
         .map(|stem| stem.to_string_lossy().into_owned())
@@ -392,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn reopen_restores_searchable_vectors() {
+    fn reopen_preserves_vector_documents() {
         let temp = TempDir::new().expect("temp dir");
         let path = temp.path().join("vector-index.json");
 
@@ -415,12 +349,6 @@ mod tests {
         }
 
         let reopened = VectorIndex::open(path, 3).expect("reopen index");
-        let hits = reopened
-            .search(&[0.95, 0.05, 0.0], 1)
-            .expect("search persisted index");
-
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].id, "episode-1");
-        assert_eq!(hits[0].kind, "episode");
+        assert_eq!(reopened.document_count(), 2);
     }
 }

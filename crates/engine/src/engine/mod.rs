@@ -62,9 +62,20 @@ impl MemoryEngine {
     }
 
     pub fn reflect(&self, id: &str) -> Result<MemoryRecord> {
-        self.db
+        let record = self
+            .db
             .get_memory(id)?
-            .with_context(|| format!("memory not found: {}", id))
+            .with_context(|| format!("memory not found: {}", id))?;
+        self.db.mark_working_set(record.kind(), record.id())?;
+        Ok(record)
+    }
+
+    pub fn pin(&self, kind: &str, id: &str, reason: Option<&str>) -> Result<()> {
+        self.db.pin_record(kind, id, reason)
+    }
+
+    pub fn unpin(&self, kind: &str, id: &str) -> Result<()> {
+        self.db.unpin_record(kind, id)
     }
 
     pub fn anchor(&self, kind: &str, id: &str) -> Result<()> {

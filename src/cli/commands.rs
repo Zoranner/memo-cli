@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use memo_engine::{DreamTrigger, MemoryEngine, RecallRequest, RestoreScope};
+use memo_engine::{DreamTrigger, MemoryEngine, RecallRequest};
 
 use crate::{
     cli::{
         args::{build_remember_input, Cli, Command},
         output::{
             render_awaken_result, render_dream_report, render_json_or_text, render_recall_result,
-            render_reflection, render_restore_report, render_state,
+            render_reflection, render_state,
         },
         paths::{default_config_dir, resolve_data_dir_for_config_dir},
     },
@@ -80,15 +80,6 @@ pub(crate) fn run(cli: Cli) -> Result<()> {
                 "{}",
                 render_state(&state, &provider_runtime, &provider_readiness, json)?
             );
-        }
-        Command::Restore { full, json } => {
-            let engine = open_engine()?;
-            let report = if full {
-                engine.restore_full(RestoreScope::All)?
-            } else {
-                engine.restore(RestoreScope::All)?
-            };
-            println!("{}", render_restore_report(&report, full, json)?);
         }
     }
 

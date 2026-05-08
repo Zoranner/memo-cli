@@ -88,7 +88,13 @@ fn cli_respects_configured_and_environment_data_dir_precedence() -> anyhow::Resu
     let state_output = run_memo(home.path(), workdir.path(), &[], &["state", "--json"])?;
     let state_stdout = assert_success(&state_output)?;
     let state_json: serde_json::Value = serde_json::from_str(&state_stdout)?;
-    assert_eq!(state_json["state"]["episode_count"], 0);
+    assert!(matches!(
+        state_json["status"].as_str(),
+        Some("needs_setup") | Some("needs_dream") | Some("ready")
+    ));
+    assert!(state_json["message"].is_string());
+    assert!(state_json["next"].is_string());
+    assert_eq!(state_json["diagnostics"]["state"]["episode_count"], 0);
 
     let overridden_output = run_memo(
         home.path(),

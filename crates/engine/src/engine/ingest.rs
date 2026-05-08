@@ -27,9 +27,9 @@ impl StructuredEpisodeSummary {
 
 impl MemoryEngine {
     pub fn remember(&self, input: EpisodeInput) -> Result<String> {
-        let episode_vector = self.embed_if_available(&input.content)?;
-        let episode = self.db.insert_episode(&input, episode_vector.as_deref())?;
-        let summary = self.ingest_episode_structure(&episode, input.entities, input.facts)?;
+        let episode = self.db.insert_episode(&input, None)?;
+        let summary =
+            self.ingest_episode_structure(&episode, input.entities, input.facts, false)?;
         if summary.has_structure() {
             self.db.mark_episode_structured(&episode.id)?;
         }
@@ -45,6 +45,7 @@ impl MemoryEngine {
         entity_records: &mut HashMap<String, EntityRecord>,
         episode: &crate::types::EpisodeRecord,
         fallback: EntityInput,
+        embed_vectors: bool,
     ) -> Result<EntityRecord> {
         let key = normalize_text(&fallback.name);
         if let Some(record) = entity_records.get(&key) {
@@ -55,7 +56,11 @@ impl MemoryEngine {
             return Ok(record);
         }
 
-        let vector = self.embed_if_available(&fallback.name)?;
+        let vector = if embed_vectors {
+            self.embed_if_available(&fallback.name)?
+        } else {
+            None
+        };
         let record = self.db.upsert_entity(
             &fallback,
             episode.layer,
@@ -82,6 +87,7 @@ impl MemoryEngine {
             episode,
             merge_entities(Vec::new(), extraction.entities),
             merge_facts(Vec::new(), extraction.facts),
+            true,
         )?;
         self.db.mark_episode_structured(&episode.id)?;
         Ok(Some(summary))
@@ -92,13 +98,18 @@ impl MemoryEngine {
         episode: &crate::types::EpisodeRecord,
         entities: Vec<EntityInput>,
         facts: Vec<FactInput>,
+        embed_vectors: bool,
     ) -> Result<StructuredEpisodeSummary> {
         let mut summary = StructuredEpisodeSummary::default();
         let mut entity_records = HashMap::<String, EntityRecord>::new();
         let mut mentioned_entity_ids = HashSet::<String>::new();
 
         for entity in entities {
-            let entity_vector = self.embed_if_available(&entity.name)?;
+            let entity_vector = if embed_vectors {
+                self.embed_if_available(&entity.name)?
+            } else {
+                None
+            };
             let record = self.db.upsert_entity(
                 &entity,
                 episode.layer,
@@ -128,6 +139,7 @@ impl MemoryEngine {
                     confidence: fact.confidence,
                     source: fact.source.clone(),
                 },
+                embed_vectors,
             )?;
             if mentioned_entity_ids.insert(subject_record.id.clone()) {
                 self.db.add_mention(
@@ -148,6 +160,7 @@ impl MemoryEngine {
                     confidence: fact.confidence,
                     source: fact.source.clone(),
                 },
+                embed_vectors,
             )?;
             if mentioned_entity_ids.insert(object_record.id.clone()) {
                 self.db.add_mention(
@@ -159,10 +172,14 @@ impl MemoryEngine {
                 summary.mentions += 1;
             }
 
-            let vector = self.embed_if_available(&format!(
-                "{} {} {}",
-                fact.subject, fact.predicate, fact.object
-            ))?;
+            let vector = if embed_vectors {
+                self.embed_if_available(&format!(
+                    "{} {} {}",
+                    fact.subject, fact.predicate, fact.object
+                ))?
+            } else {
+                None
+            };
             self.db.insert_fact(
                 &fact,
                 episode.layer,

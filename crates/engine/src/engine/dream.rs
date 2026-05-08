@@ -25,6 +25,7 @@ impl MemoryEngine {
                 break;
             }
         }
+        self.refresh_derived_layers_for_full_dream(&mut merged)?;
         Ok(merged)
     }
 
@@ -46,6 +47,9 @@ impl MemoryEngine {
             if let Some(primary) = group.first() {
                 report.promoted_to_l2 += self.promote_episode_cluster_to_l2(primary)?;
                 for duplicate in group.iter().skip(1) {
+                    if self.db.is_pinned("episode", duplicate)? {
+                        continue;
+                    }
                     report.archived_records += self.archive_episode_cluster(duplicate)?;
                     self.db.archive_record("episode", duplicate)?;
                     report.archived_records += 1;
@@ -108,8 +112,25 @@ impl MemoryEngine {
 
         report.downgraded_records += self.cool_stale_l3_records(stale_before)?;
 
+        self.repair_derived_layers_for_dream(&mut report)?;
         self.refresh_l3_cache()?;
         Ok(report)
+    }
+
+    fn repair_derived_layers_for_dream(&self, report: &mut DreamReport) -> Result<()> {
+        let refresh = self.restore(crate::types::RestoreScope::All)?;
+        report.derived_text_documents += refresh.text_documents;
+        report.derived_vector_documents += refresh.vector_documents;
+        report.derived_repairs += refresh.text_documents + refresh.vector_documents;
+        Ok(())
+    }
+
+    fn refresh_derived_layers_for_full_dream(&self, report: &mut DreamReport) -> Result<()> {
+        let refresh = self.restore_full(crate::types::RestoreScope::All)?;
+        report.derived_text_documents += refresh.text_documents;
+        report.derived_vector_documents += refresh.vector_documents;
+        report.derived_refreshes += refresh.text_documents + refresh.vector_documents;
+        Ok(())
     }
 
     fn structure_pending_episodes(&self, report: &mut DreamReport) -> Result<()> {
@@ -275,6 +296,9 @@ impl MemoryEngine {
                 if crate::db::normalize_text(&fact.object_text) == winner_object {
                     continue;
                 }
+                if self.db.is_pinned("fact", &fact.id)? {
+                    continue;
+                }
                 self.db.invalidate_record("fact", &fact.id)?;
                 invalidated += 1;
                 if let Some(source_episode_id) = fact.source_episode_id.as_deref() {
@@ -291,6 +315,9 @@ impl MemoryEngine {
                         object_entity_id,
                         &[MemoryLayer::L1, MemoryLayer::L2, MemoryLayer::L3],
                     )? {
+                        if self.db.is_pinned("edge", &edge_id)? {
+                            continue;
+                        }
                         self.db.invalidate_record("edge", &edge_id)?;
                         invalidated += 1;
                     }
@@ -298,9 +325,15 @@ impl MemoryEngine {
             }
         }
         for episode_id in conflict_source_episodes {
+            if self.db.is_pinned("episode", &episode_id)? {
+                continue;
+            }
             if self.db.active_fact_count_for_episode(&episode_id)? == 0 {
                 for kind in ["entity", "edge"] {
                     for id in self.db.active_related_ids_for_episode(kind, &episode_id)? {
+                        if self.db.is_pinned(kind, &id)? {
+                            continue;
+                        }
                         self.db.invalidate_record(kind, &id)?;
                         invalidated += 1;
                     }
@@ -383,6 +416,9 @@ impl MemoryEngine {
                 if fact.id == winner.id {
                     continue;
                 }
+                if self.db.is_pinned("fact", &fact.id)? {
+                    continue;
+                }
                 self.db.archive_record("fact", &fact.id)?;
                 archived += 1;
 
@@ -398,6 +434,9 @@ impl MemoryEngine {
                         source_episode_id,
                         &[MemoryLayer::L2, MemoryLayer::L3],
                     )? {
+                        if self.db.is_pinned("edge", &edge_id)? {
+                            continue;
+                        }
                         self.db.archive_record("edge", &edge_id)?;
                         archived += 1;
                     }
@@ -411,6 +450,9 @@ impl MemoryEngine {
     fn cool_stale_l3_records(&self, stale_before: chrono::DateTime<Utc>) -> Result<usize> {
         let mut downgraded = 0;
         for record in self.db.load_all_l3_records()? {
+            if self.db.is_pinned(record.kind(), record.id())? {
+                continue;
+            }
             if !should_cool_l3_record(&record, stale_before) {
                 continue;
             }
@@ -466,6 +508,10 @@ fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
     target.downgraded_records += next.downgraded_records;
     target.archived_records += next.archived_records;
     target.invalidated_records += next.invalidated_records;
+    target.derived_repairs += next.derived_repairs;
+    target.derived_refreshes += next.derived_refreshes;
+    target.derived_text_documents += next.derived_text_documents;
+    target.derived_vector_documents += next.derived_vector_documents;
 }
 
 fn dream_report_has_changes(report: &DreamReport) -> bool {

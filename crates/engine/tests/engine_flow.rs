@@ -127,6 +127,18 @@ impl RerankProvider for TestRerankProvider {
 }
 
 #[derive(Clone)]
+struct CountingRerankProvider {
+    calls: Arc<AtomicUsize>,
+}
+
+impl RerankProvider for CountingRerankProvider {
+    fn rerank(&self, query: &str, documents: &[String]) -> Result<Vec<RerankScore>> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        TestRerankProvider.rerank(query, documents)
+    }
+}
+
+#[derive(Clone)]
 struct FailingRerankProvider;
 
 impl RerankProvider for FailingRerankProvider {
@@ -167,6 +179,19 @@ fn open_engine_with_failing_rerank(path: &Path) -> Result<MemoryEngine> {
     )
 }
 
+fn episode_input(content: &str) -> EpisodeInput {
+    EpisodeInput {
+        content: content.to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    }
+}
+
 #[test]
 fn state_counts_unstructured_and_anchored_records() -> Result<()> {
     let temp = TempDir::new()?;
@@ -191,10 +216,12 @@ fn state_counts_unstructured_and_anchored_records() -> Result<()> {
     engine.anchor("episode", &episode_id)?;
     let anchored = engine.state()?;
     assert_eq!(anchored.anchored_records, 1);
+    assert_eq!(anchored.pinned_records, 1);
 
     engine.unanchor("episode", &episode_id)?;
     let unanchored = engine.state()?;
     assert_eq!(unanchored.anchored_records, 0);
+    assert_eq!(unanchored.pinned_records, 0);
     Ok(())
 }
 
@@ -241,6 +268,49 @@ fn working_set_boost_does_not_change_memory_layers() -> Result<()> {
         MemoryRecord::Episode(record) => assert_eq!(record.layer, MemoryLayer::L1),
         other => panic!("expected episode, got {other:?}"),
     }
+    Ok(())
+}
+
+#[test]
+fn remember_recall_and_reflect_persist_working_set_activity() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(episode_input("Alice keeps a launch checklist."))?;
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+
+    let remembered_working_set_at: Option<i64> = conn.query_row(
+        "SELECT working_set_at FROM memory_layers
+         WHERE memory_id = ?1 AND memory_kind = 'episode'",
+        [&episode_id],
+        |row| row.get(0),
+    )?;
+    assert!(
+        remembered_working_set_at.is_some(),
+        "remember should mark the inserted episode as active working set"
+    );
+
+    let _ = engine.recall(RecallRequest {
+        query: "Alice launch".to_string(),
+        limit: 5,
+        deep: false,
+        include_related_records: false,
+    })?;
+    let recalled_working_set_at: Option<i64> = conn.query_row(
+        "SELECT working_set_at FROM memory_layers
+         WHERE memory_id = ?1 AND memory_kind = 'episode'",
+        [&episode_id],
+        |row| row.get(0),
+    )?;
+    assert!(recalled_working_set_at >= remembered_working_set_at);
+
+    engine.reflect(&episode_id)?;
+    let reflected_working_set_at: Option<i64> = conn.query_row(
+        "SELECT working_set_at FROM memory_layers
+         WHERE memory_id = ?1 AND memory_kind = 'episode'",
+        [&episode_id],
+        |row| row.get(0),
+    )?;
+    assert!(reflected_working_set_at >= recalled_working_set_at);
     Ok(())
 }
 
@@ -385,10 +455,10 @@ fn bm25_query_hits_episode() -> Result<()> {
 }
 
 #[test]
-fn vector_query_hits_semantic_neighbor() -> Result<()> {
+fn default_recall_does_not_use_vector_query_path() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_vectors(temp.path())?;
-    let episode_id = engine.remember(EpisodeInput {
+    engine.remember(EpisodeInput {
         content: "我今天很高兴".to_string(),
         layer: MemoryLayer::L1,
         entities: Vec::new(),
@@ -407,17 +477,10 @@ fn vector_query_hits_semantic_neighbor() -> Result<()> {
         include_related_records: false,
     })?;
 
-    let episode = result
-        .results
-        .iter()
-        .find(
-            |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id),
-        )
-        .expect("expected vector hit");
-    assert!(episode
+    assert!(result.results.iter().all(|item| !item
         .reasons
         .iter()
-        .any(|reason| matches!(reason, RecallReason::Vector)));
+        .any(|reason| matches!(reason, RecallReason::Vector))));
     Ok(())
 }
 
@@ -451,6 +514,83 @@ fn recall_skips_query_embedding_when_vector_index_is_empty() -> Result<()> {
     })?;
 
     assert_eq!(calls.load(Ordering::SeqCst), calls_after_remember);
+    Ok(())
+}
+
+#[test]
+fn remember_does_not_call_embedding_provider_by_default() -> Result<()> {
+    let temp = TempDir::new()?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let engine = MemoryEngine::open(EngineConfig::new(temp.path()).with_embedding_provider(
+        Arc::new(CountingEmbeddingProvider {
+            calls: Arc::clone(&calls),
+        }),
+    ))?;
+
+    engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.9,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+#[test]
+fn default_recall_does_not_call_query_embedding_when_vector_index_has_documents() -> Result<()> {
+    let temp = TempDir::new()?;
+    {
+        let seed_engine = open_engine_with_vectors(temp.path())?;
+        seed_engine.remember(episode_input("我今天很高兴"))?;
+        seed_engine.restore(RestoreScope::Vector)?;
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let engine = MemoryEngine::open(EngineConfig::new(temp.path()).with_embedding_provider(
+        Arc::new(CountingEmbeddingProvider {
+            calls: Arc::clone(&calls),
+        }),
+    ))?;
+
+    let result = engine.recall(RecallRequest {
+        query: "开心".to_string(),
+        limit: 3,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(result.results.iter().all(|item| !item
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::Vector))));
     Ok(())
 }
 
@@ -758,7 +898,7 @@ fn default_recall_limit_keeps_source_level_dedupe_for_graph_records() -> Result<
 }
 
 #[test]
-fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
+fn deep_query_keeps_fused_order_without_rerank_reason() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_rerank(temp.path())?;
     engine.remember(EpisodeInput {
@@ -793,7 +933,7 @@ fn deep_query_uses_rerank_to_promote_best_candidate() -> Result<()> {
         }
         other => panic!("expected reranked episode result, got {other:?}"),
     }
-    assert!(first
+    assert!(!first
         .reasons
         .iter()
         .any(|reason| matches!(reason, RecallReason::Rerank)));
@@ -853,7 +993,7 @@ fn ambiguous_query_auto_escalates_to_deep_search() -> Result<()> {
         }
         other => panic!("expected reranked episode result, got {other:?}"),
     }
-    assert!(first
+    assert!(!first
         .reasons
         .iter()
         .any(|reason| matches!(reason, RecallReason::Rerank)));
@@ -900,6 +1040,64 @@ fn deep_recall_keeps_results_when_rerank_provider_fails() -> Result<()> {
         .reasons
         .iter()
         .any(|reason| matches!(reason, RecallReason::Rerank)));
+    Ok(())
+}
+
+#[test]
+fn deep_recall_does_not_call_rerank_provider_by_default() -> Result<()> {
+    let temp = TempDir::new()?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let engine = MemoryEngine::open(EngineConfig::new(temp.path()).with_rerank_provider(
+        Arc::new(CountingRerankProvider {
+            calls: Arc::clone(&calls),
+        }),
+    ))?;
+    engine.remember(EpisodeInput {
+        content: "Paris travel checklist for May.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "place".to_string(),
+            name: "Paris".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Paris tram maintenance window for May.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![EntityInput {
+            entity_type: "place".to_string(),
+            name: "Paris".to_string(),
+            aliases: Vec::new(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.restore(RestoreScope::Text)?;
+
+    let result = engine.recall(RecallRequest {
+        query: "Paris travel".to_string(),
+        limit: 3,
+        deep: true,
+        include_related_records: false,
+    })?;
+
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(result.results.iter().all(|item| !item
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::Rerank))));
     Ok(())
 }
 
@@ -1760,6 +1958,99 @@ fn dream_invalidates_conflicting_facts_and_edges() -> Result<()> {
 }
 
 #[test]
+fn dream_does_not_invalidate_pinned_conflicting_fact_or_source_episode() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    let pinned_episode_id = engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "Paris".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "Paris".to_string(),
+            confidence: 0.7,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-a".to_string()),
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let paris_fact_id: String = conn.query_row(
+        "SELECT id FROM facts
+         WHERE source_episode_id = ?1
+           AND predicate = 'lives_in'
+           AND object_text = 'Paris'
+         LIMIT 1",
+        [&pinned_episode_id],
+        |row| row.get(0),
+    )?;
+    engine.pin("fact", &paris_fact_id, Some("manual truth override"))?;
+
+    engine.remember(EpisodeInput {
+        content: "Alice lives in London.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: vec![
+            EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+            EntityInput {
+                entity_type: "place".to_string(),
+                name: "London".to_string(),
+                aliases: Vec::new(),
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            },
+        ],
+        facts: vec![FactInput {
+            subject: "Alice".to_string(),
+            predicate: "lives_in".to_string(),
+            object: "London".to_string(),
+            confidence: 0.95,
+            source: ExtractionSource::Manual,
+        }],
+        source_episode_id: None,
+        session_id: Some("session-b".to_string()),
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let _ = engine.dream(DreamTrigger::Manual)?;
+
+    match engine.reflect(&paris_fact_id)? {
+        MemoryRecord::Fact(fact) => assert!(fact.invalidated_at.is_none()),
+        other => panic!("expected fact, got {other:?}"),
+    }
+    match engine.reflect(&pinned_episode_id)? {
+        MemoryRecord::Episode(episode) => assert!(episode.invalidated_at.is_none()),
+        other => panic!("expected episode, got {other:?}"),
+    }
+    Ok(())
+}
+
+#[test]
 fn conflicting_edge_keeps_validity_window_when_invalidated() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
@@ -2494,6 +2785,112 @@ fn dream_cools_stale_l3_entity_support_back_to_l2() -> Result<()> {
 }
 
 #[test]
+fn dream_does_not_cool_pinned_l3_entity_support() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+
+    for (content, session_id, recorded_at) in [
+        (
+            "Alice joined the design review today.",
+            "session-a",
+            "2024-01-01T09:00:00Z",
+        ),
+        (
+            "Alice sent the updated roadmap tonight.",
+            "session-b",
+            "2024-01-02T09:00:00Z",
+        ),
+        (
+            "Alice followed up with final notes this morning.",
+            "session-c",
+            "2024-01-03T09:00:00Z",
+        ),
+    ] {
+        engine.remember(EpisodeInput {
+            content: content.to_string(),
+            layer: MemoryLayer::L1,
+            entities: vec![EntityInput {
+                entity_type: "person".to_string(),
+                name: "Alice".to_string(),
+                aliases: vec!["Ally".to_string()],
+                confidence: 0.95,
+                source: ExtractionSource::Manual,
+            }],
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: Some(session_id.to_string()),
+            recorded_at: Some(
+                chrono::DateTime::parse_from_rfc3339(recorded_at)?.with_timezone(&chrono::Utc),
+            ),
+            confidence: 0.9,
+        })?;
+    }
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let alice_id: String = conn.query_row(
+        "SELECT id FROM entities WHERE canonical_name = 'Alice' LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?;
+    engine.pin("entity", &alice_id, Some("keep Alice stable"))?;
+
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert_eq!(report.downgraded_records, 0);
+
+    match engine.reflect(&alice_id)? {
+        MemoryRecord::Entity(entity) => assert_eq!(entity.layer, MemoryLayer::L3),
+        other => panic!("expected entity, got {other:?}"),
+    }
+    Ok(())
+}
+
+#[test]
+fn dream_layer_updates_persist_working_set_activity() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Alice likes jasmine tea.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let before: Option<i64> = conn.query_row(
+        "SELECT working_set_at FROM memory_layers
+         WHERE memory_id = ?1 AND memory_kind = 'episode'",
+        [&episode_id],
+        |row| row.get(0),
+    )?;
+
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert!(report.promoted_to_l2 >= 1);
+
+    let after: Option<i64> = conn.query_row(
+        "SELECT working_set_at FROM memory_layers
+         WHERE memory_id = ?1 AND memory_kind = 'episode'",
+        [&episode_id],
+        |row| row.get(0),
+    )?;
+    assert!(after >= before);
+    Ok(())
+}
+
+#[test]
 fn dream_keeps_reaccessed_entity_support_in_l3() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine(temp.path())?;
@@ -3167,7 +3564,7 @@ fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
     assert_eq!(pending_stats.text_index.failed_updates, 0);
     assert_eq!(
         pending_stats.text_index.detail.as_deref(),
-        Some("pending restore after queued updates")
+        Some("pending dream maintenance after derived updates")
     );
 
     let before_refresh = engine.recall(RecallRequest {
@@ -3209,7 +3606,67 @@ fn remember_marks_text_index_pending_until_restore_runs() -> Result<()> {
 }
 
 #[test]
-fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
+fn dream_repairs_pending_text_index_jobs_without_changing_record_state() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Riverbank Robotics builds warehouse drones.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let pending_stats = engine.state()?;
+    assert_eq!(pending_stats.text_index.status, "pending");
+    assert_eq!(pending_stats.text_index.pending_updates, 1);
+
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert_eq!(report.derived_repairs, 1);
+    assert_eq!(report.derived_text_documents, 1);
+    assert_eq!(report.promoted_to_l2, 0);
+    assert_eq!(report.promoted_to_l3, 0);
+    assert_eq!(report.downgraded_records, 0);
+    assert_eq!(report.archived_records, 0);
+    assert_eq!(report.invalidated_records, 0);
+
+    let ready_stats = engine.state()?;
+    assert_eq!(ready_stats.text_index.status, "ready");
+    assert_eq!(ready_stats.text_index.pending_updates, 0);
+    assert_eq!(ready_stats.text_index.failed_updates, 0);
+    assert_eq!(ready_stats.text_index.doc_count, 1);
+
+    match engine.reflect(&episode_id)? {
+        MemoryRecord::Episode(record) => {
+            assert_eq!(record.layer, MemoryLayer::L1);
+            assert!(record.archived_at.is_none());
+            assert!(record.invalidated_at.is_none());
+        }
+        other => panic!("expected episode record, got {other:?}"),
+    }
+
+    let after_refresh = engine.recall(RecallRequest {
+        query: "warehouse drones".to_string(),
+        limit: 3,
+        deep: false,
+        include_related_records: false,
+    })?;
+    assert!(after_refresh.results.iter().any(
+        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
+            && item
+                .reasons
+                .iter()
+                .any(|reason| matches!(reason, RecallReason::Bm25))
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn dream_repairs_failed_vector_index_jobs_and_clears_successful_bookkeeping() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_vectors(temp.path())?;
     let episode_id = engine.remember(EpisodeInput {
@@ -3223,17 +3680,88 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let pending_stats = engine.state()?;
-    assert_eq!(pending_stats.vector_index.status, "pending");
-    assert_eq!(pending_stats.vector_index.pending_updates, 1);
-    assert_eq!(pending_stats.vector_index.failed_updates, 0);
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    conn.execute(
+        "UPDATE episodes SET vector_json = ?2 WHERE id = ?1",
+        rusqlite::params![episode_id, "[1.0,0.0,0.0,0.0]"],
+    )?;
+    conn.execute(
+        "INSERT INTO index_jobs
+         (id, index_name, memory_kind, memory_id, operation, status, attempts, last_error, created_at, updated_at)
+         VALUES ('failed-vector-job', 'vector', 'episode', ?1, 'upsert', 'failed', 1, 'previous vector write failed', strftime('%s','now'), strftime('%s','now'))",
+        [&episode_id],
+    )?;
+    conn.execute(
+        "INSERT INTO index_state (index_name, doc_count, status, detail, last_rebuilt_at)
+         VALUES ('vector', 0, 'failed', 'dream maintenance failed for derived updates', NULL)
+         ON CONFLICT(index_name) DO UPDATE SET
+             doc_count = excluded.doc_count,
+             status = excluded.status,
+             detail = excluded.detail",
+        [],
+    )?;
+
+    let failed = engine.state()?;
+    assert_eq!(failed.vector_index.status, "failed");
+    assert_eq!(failed.vector_index.failed_updates, 1);
     assert_eq!(
-        pending_stats.vector_index.detail.as_deref(),
-        Some("pending restore after queued updates")
+        failed.vector_index.last_error.as_deref(),
+        Some("previous vector write failed")
     );
 
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert_eq!(report.derived_repairs, 2);
+    assert_eq!(report.derived_text_documents, 1);
+    assert_eq!(report.derived_vector_documents, 1);
+
+    let ready = engine.state()?;
+    assert_eq!(ready.vector_index.status, "ready");
+    assert_eq!(ready.vector_index.pending_updates, 0);
+    assert_eq!(ready.vector_index.failed_updates, 0);
+    assert_eq!(ready.vector_index.doc_count, 1);
+
+    match engine.reflect(&episode_id)? {
+        MemoryRecord::Episode(record) => {
+            assert_eq!(record.layer, MemoryLayer::L1);
+            assert!(record.archived_at.is_none());
+            assert!(record.invalidated_at.is_none());
+        }
+        other => panic!("expected episode record, got {other:?}"),
+    }
+
+    Ok(())
+}
+
+#[test]
+fn full_dream_refreshes_text_index_from_sqlite_truth_without_changing_record_state() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let episode_id = engine.remember(EpisodeInput {
+        content: "Full dream refreshes missing derived text.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    conn.execute("DELETE FROM index_jobs WHERE index_name = 'text'", [])?;
+    conn.execute(
+        "INSERT INTO index_state (index_name, doc_count, status, detail, last_rebuilt_at)
+         VALUES ('text', 0, 'ready', 'stale ready marker', strftime('%s','now'))
+         ON CONFLICT(index_name) DO UPDATE SET
+             doc_count = excluded.doc_count,
+             status = excluded.status,
+             detail = excluded.detail,
+             last_rebuilt_at = excluded.last_rebuilt_at",
+        [],
+    )?;
+
     let before_refresh = engine.recall(RecallRequest {
-        query: "开心".to_string(),
+        query: "missing derived text".to_string(),
         limit: 3,
         deep: false,
         include_related_records: false,
@@ -3243,19 +3771,31 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
             && item
                 .reasons
                 .iter()
-                .any(|reason| matches!(reason, RecallReason::Vector))
+                .any(|reason| matches!(reason, RecallReason::Bm25))
     ));
 
-    let refresh = engine.restore(RestoreScope::Vector)?;
-    assert_eq!(refresh.vector_documents, 1);
+    let report = engine.dream_full(DreamTrigger::Manual)?;
+    assert_eq!(report.derived_repairs, 0);
+    assert_eq!(report.derived_refreshes, 1);
+    assert_eq!(report.derived_text_documents, 1);
 
-    let ready_stats = engine.state()?;
-    assert_eq!(ready_stats.vector_index.status, "ready");
-    assert_eq!(ready_stats.vector_index.pending_updates, 0);
-    assert_eq!(ready_stats.vector_index.failed_updates, 0);
+    let ready = engine.state()?;
+    assert_eq!(ready.text_index.status, "ready");
+    assert_eq!(ready.text_index.doc_count, 1);
+    assert_eq!(ready.text_index.pending_updates, 0);
+    assert_eq!(ready.text_index.failed_updates, 0);
+
+    match engine.reflect(&episode_id)? {
+        MemoryRecord::Episode(record) => {
+            assert_eq!(record.layer, MemoryLayer::L1);
+            assert!(record.archived_at.is_none());
+            assert!(record.invalidated_at.is_none());
+        }
+        other => panic!("expected episode record, got {other:?}"),
+    }
 
     let after_refresh = engine.recall(RecallRequest {
-        query: "开心".to_string(),
+        query: "missing derived text".to_string(),
         limit: 3,
         deep: false,
         include_related_records: false,
@@ -3265,8 +3805,42 @@ fn remember_marks_vector_index_pending_until_restore_runs() -> Result<()> {
             && item
                 .reasons
                 .iter()
-                .any(|reason| matches!(reason, RecallReason::Vector))
+                .any(|reason| matches!(reason, RecallReason::Bm25))
     ));
+
+    Ok(())
+}
+
+#[test]
+fn remember_does_not_mark_vector_index_pending() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine_with_vectors(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "我今天很高兴".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let state = engine.state()?;
+    assert_eq!(state.vector_index.status, "unknown");
+    assert_eq!(state.vector_index.pending_updates, 0);
+    assert_eq!(state.vector_index.failed_updates, 0);
+
+    let recall = engine.recall(RecallRequest {
+        query: "开心".to_string(),
+        limit: 3,
+        deep: false,
+        include_related_records: false,
+    })?;
+    assert!(recall.results.iter().all(|item| !item
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::Vector))));
     Ok(())
 }
 
@@ -3456,9 +4030,10 @@ fn dream_marks_text_index_pending_after_memory_lifecycle_changes() -> Result<()>
     let report = engine.dream_full(DreamTrigger::Manual)?;
     assert_eq!(report.passes_run, 2);
 
-    let pending = engine.state()?;
-    assert_eq!(pending.text_index.status, "pending");
-    assert!(pending.text_index.pending_updates >= 1);
+    let ready_after_dream = engine.state()?;
+    assert_eq!(ready_after_dream.text_index.status, "ready");
+    assert_eq!(ready_after_dream.text_index.pending_updates, 0);
+    assert!(report.derived_repairs >= 1);
 
     Ok(())
 }
@@ -3508,7 +4083,7 @@ fn dream_continues_structuring_when_embeddings_fail() -> Result<()> {
 }
 
 #[test]
-fn failed_vector_jobs_do_not_block_new_pending_restore_work() -> Result<()> {
+fn failed_vector_jobs_do_not_trigger_provider_vector_backfill() -> Result<()> {
     let temp = TempDir::new()?;
     let engine = open_engine_with_vectors(temp.path())?;
 
@@ -3523,15 +4098,21 @@ fn failed_vector_jobs_do_not_block_new_pending_restore_work() -> Result<()> {
         confidence: 0.9,
     })?;
     let conn = Connection::open(temp.path().join("memory.db"))?;
+    let stale_id: String = conn.query_row(
+        "SELECT id FROM episodes WHERE content = ?1 LIMIT 1",
+        rusqlite::params!["stale broken vector"],
+        |row| row.get(0),
+    )?;
     conn.execute(
         "UPDATE episodes SET vector_json = ?2 WHERE content = ?1",
         rusqlite::params!["stale broken vector", "[1.0, 2.0]"],
     )?;
     conn.execute(
-        "UPDATE index_jobs
-         SET status = 'failed', attempts = 2, last_error = 'vector dimension mismatch'
-         WHERE index_name = 'vector'",
-        [],
+        "INSERT INTO index_jobs
+         (id, index_name, memory_kind, memory_id, operation, status, attempts, last_error, created_at, updated_at)
+         VALUES
+         ('failed-vector-job', 'vector', 'episode', ?1, 'upsert', 'failed', 2, 'vector dimension mismatch', 1, 1)",
+        rusqlite::params![stale_id],
     )?;
 
     let episode_id = engine.remember(EpisodeInput {
@@ -3545,14 +4126,16 @@ fn failed_vector_jobs_do_not_block_new_pending_restore_work() -> Result<()> {
         confidence: 0.9,
     })?;
 
-    let report = engine.restore(RestoreScope::Vector)?;
-    assert_eq!(report.vector_documents, 1);
+    let error = engine
+        .restore(RestoreScope::Vector)
+        .expect_err("failed local vector material should remain a maintenance error");
+    assert!(error.to_string().contains("vector dimension mismatch"));
 
     let state = engine.state()?;
     assert_eq!(state.vector_index.status, "failed");
     assert_eq!(state.vector_index.failed_updates, 1);
     assert_eq!(state.vector_index.pending_updates, 0);
-    assert_eq!(state.vector_index.failed_attempts_max, 2);
+    assert_eq!(state.vector_index.failed_attempts_max, 3);
 
     let result = engine.recall(RecallRequest {
         query: "开心".to_string(),
@@ -3560,12 +4143,13 @@ fn failed_vector_jobs_do_not_block_new_pending_restore_work() -> Result<()> {
         deep: false,
         include_related_records: false,
     })?;
-    assert!(result.results.iter().any(
-        |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == episode_id)
-            && item
-                .reasons
-                .iter()
-                .any(|reason| matches!(reason, RecallReason::Vector))
+    assert!(result.results.iter().all(|item| !item
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::Vector))));
+    assert!(matches!(
+        engine.reflect(&episode_id)?,
+        MemoryRecord::Episode(record) if record.content == "我今天很高兴"
     ));
 
     Ok(())
