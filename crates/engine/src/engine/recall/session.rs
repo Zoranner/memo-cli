@@ -83,7 +83,7 @@ fn has_retrieval_evidence(result: &RecallResult) -> bool {
     result.reasons.iter().any(|reason| {
         matches!(
             reason,
-            RecallReason::L0
+            RecallReason::SessionCache
                 | RecallReason::L3
                 | RecallReason::Exact
                 | RecallReason::Alias

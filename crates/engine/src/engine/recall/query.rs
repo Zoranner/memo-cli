@@ -15,7 +15,7 @@ impl MemoryEngine {
         let active_subjects = self.active_working_subjects()?;
         let recent_memory_ids = self.recent_working_memory_ids()?;
 
-        if let Some(candidate) = self.l0_match(&normalized)? {
+        if let Some(candidate) = self.session_cache_match(&normalized)? {
             add_candidate(&mut candidates, candidate);
         }
 
@@ -149,7 +149,7 @@ impl MemoryEngine {
             capabilities,
         })
     }
-    fn l0_match(&self, normalized_query: &str) -> Result<Option<Candidate>> {
+    fn session_cache_match(&self, normalized_query: &str) -> Result<Option<Candidate>> {
         let session = self.session.lock().expect("session mutex poisoned");
         let Some(entity_id) = session.recent_aliases.get(normalized_query).cloned() else {
             return Ok(None);
@@ -158,11 +158,11 @@ impl MemoryEngine {
         let memory = self
             .db
             .get_active_memory(&entity_id)?
-            .with_context(|| format!("dangling L0 entity reference: {}", entity_id))?;
+            .with_context(|| format!("dangling session cache entity reference: {}", entity_id))?;
         Ok(Some(Candidate {
             memory,
             score: 3.5,
-            reasons: vec![RecallReason::L0],
+            reasons: vec![RecallReason::SessionCache],
         }))
     }
     fn l3_matches(&self, normalized_query: &str) -> Result<Vec<Candidate>> {

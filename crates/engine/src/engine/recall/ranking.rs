@@ -37,14 +37,20 @@ pub(super) fn dedupe_candidates_by_source(
     keep_graph_facts: bool,
     keep_graph_edges: bool,
 ) {
-    let mut seen = HashSet::new();
-    candidates.retain(|candidate| {
-        seen.insert(candidate_source_dedupe_key(
-            candidate,
-            keep_graph_facts,
-            keep_graph_edges,
-        ))
-    });
+    let mut by_source = HashMap::<String, Candidate>::new();
+    for candidate in candidates.drain(..) {
+        let key = candidate_source_dedupe_key(&candidate, keep_graph_facts, keep_graph_edges);
+        by_source
+            .entry(key)
+            .and_modify(|existing| {
+                if compare_source_dedupe_candidate(&candidate, existing).is_gt() {
+                    *existing = candidate.clone();
+                }
+            })
+            .or_insert(candidate);
+    }
+    *candidates = by_source.into_values().collect();
+    candidates.sort_by(|left, right| right.score.total_cmp(&left.score));
 }
 
 fn candidate_source_dedupe_key(
@@ -69,6 +75,21 @@ fn candidate_source_dedupe_key(
     }
 
     candidate.memory.source_key().to_string()
+}
+
+fn candidate_kind_priority(memory: &MemoryRecord) -> u8 {
+    match memory {
+        MemoryRecord::Fact(_) => 3,
+        MemoryRecord::Entity(_) => 2,
+        MemoryRecord::Episode(_) => 1,
+        MemoryRecord::Edge(_) => 0,
+    }
+}
+
+fn compare_source_dedupe_candidate(left: &Candidate, right: &Candidate) -> std::cmp::Ordering {
+    candidate_kind_priority(&left.memory)
+        .cmp(&candidate_kind_priority(&right.memory))
+        .then(left.score.total_cmp(&right.score))
 }
 pub(super) fn filter_candidates_by_query_coverage(query: &str, candidates: &mut Vec<Candidate>) {
     let query_tokens = lexical_tokens(query);

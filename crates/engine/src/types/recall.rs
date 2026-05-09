@@ -4,14 +4,17 @@ use super::MemoryRecord;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RecallReason {
-    L0,
+    #[serde(rename = "session_cache", alias = "L0", alias = "l0")]
+    SessionCache,
     L3,
     Exact,
     Alias,
     Bm25,
     Vector,
     Rerank,
-    GraphHop { hops: usize },
+    GraphHop {
+        hops: usize,
+    },
     RecencyBoost,
     LayerBoost,
     HitFrequencyBoost,

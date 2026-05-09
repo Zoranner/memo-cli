@@ -48,6 +48,7 @@ impl MemoryEngine {
                 report.promoted_to_l2 += self.promote_episode_cluster_to_l2(primary)?;
                 for duplicate in group.iter().skip(1) {
                     if self.db.is_pinned("episode", duplicate)? {
+                        report.pinned_skipped += 1;
                         continue;
                     }
                     report.archived_records += self.archive_episode_cluster(duplicate)?;
@@ -71,10 +72,14 @@ impl MemoryEngine {
 
         report.promoted_to_l2 += self.promote_supported_fact_clusters_to_l2()?;
         let _ = self.backfill_mentions_from_active_facts()?;
-        report.invalidated_records += self.invalidate_conflicting_facts()?;
-        let (archived_duplicates, promoted_supported) = self.merge_supported_fact_clusters()?;
+        let (invalidated, skipped_invalidations) = self.invalidate_conflicting_facts()?;
+        report.invalidated_records += invalidated;
+        report.pinned_skipped += skipped_invalidations;
+        let (archived_duplicates, promoted_supported, skipped_merges) =
+            self.merge_supported_fact_clusters()?;
         report.archived_records += archived_duplicates;
         report.promoted_to_l3 += promoted_supported;
+        report.pinned_skipped += skipped_merges;
 
         for entity_id in self.db.active_entity_ids_in_layers(&[MemoryLayer::L2])? {
             let support_scopes = self.db.entity_support_scopes(&entity_id)?;
@@ -110,7 +115,9 @@ impl MemoryEngine {
             }
         }
 
-        report.downgraded_records += self.cool_stale_l3_records(stale_before)?;
+        let (downgraded, skipped_cooling) = self.cool_stale_l3_records(stale_before)?;
+        report.downgraded_records += downgraded;
+        report.pinned_skipped += skipped_cooling;
 
         self.repair_derived_layers_for_dream(&mut report)?;
         self.refresh_l3_cache()?;
@@ -148,8 +155,10 @@ impl MemoryEngine {
             .db
             .load_unstructured_episodes(&[MemoryLayer::L1, MemoryLayer::L2])?
         {
+            report.provider_calls.extraction_calls += 1;
             match self.structure_episode_with_provider(&episode) {
                 Ok(Some(summary)) => {
+                    report.provider_calls.embedding_calls += summary.entities + summary.facts;
                     report.structured_episodes += 1;
                     report.structured_entities += summary.entities;
                     report.structured_facts += summary.facts;
@@ -260,7 +269,7 @@ impl MemoryEngine {
         Ok(promoted)
     }
 
-    fn invalidate_conflicting_facts(&self) -> Result<usize> {
+    fn invalidate_conflicting_facts(&self) -> Result<(usize, usize)> {
         let facts =
             self.db
                 .active_facts_in_layers(&[MemoryLayer::L1, MemoryLayer::L2, MemoryLayer::L3])?;
@@ -275,6 +284,7 @@ impl MemoryEngine {
         }
 
         let mut invalidated = 0;
+        let mut pinned_skipped = 0;
         let mut conflict_source_episodes = HashSet::new();
         for facts in groups.into_values() {
             let unique_objects = facts
@@ -297,6 +307,7 @@ impl MemoryEngine {
                     continue;
                 }
                 if self.db.is_pinned("fact", &fact.id)? {
+                    pinned_skipped += 1;
                     continue;
                 }
                 self.db.invalidate_record("fact", &fact.id)?;
@@ -316,6 +327,7 @@ impl MemoryEngine {
                         &[MemoryLayer::L1, MemoryLayer::L2, MemoryLayer::L3],
                     )? {
                         if self.db.is_pinned("edge", &edge_id)? {
+                            pinned_skipped += 1;
                             continue;
                         }
                         self.db.invalidate_record("edge", &edge_id)?;
@@ -326,12 +338,14 @@ impl MemoryEngine {
         }
         for episode_id in conflict_source_episodes {
             if self.db.is_pinned("episode", &episode_id)? {
+                pinned_skipped += 1;
                 continue;
             }
             if self.db.active_fact_count_for_episode(&episode_id)? == 0 {
                 for kind in ["entity", "edge"] {
                     for id in self.db.active_related_ids_for_episode(kind, &episode_id)? {
                         if self.db.is_pinned(kind, &id)? {
+                            pinned_skipped += 1;
                             continue;
                         }
                         self.db.invalidate_record(kind, &id)?;
@@ -342,10 +356,10 @@ impl MemoryEngine {
                 invalidated += 1;
             }
         }
-        Ok(invalidated)
+        Ok((invalidated, pinned_skipped))
     }
 
-    fn merge_supported_fact_clusters(&self) -> Result<(usize, usize)> {
+    fn merge_supported_fact_clusters(&self) -> Result<(usize, usize, usize)> {
         const FACT_L3_MIN_SESSION_SPAN: Duration = Duration::days(1);
 
         let facts = self
@@ -364,6 +378,7 @@ impl MemoryEngine {
 
         let mut archived = 0;
         let mut promoted = 0;
+        let mut pinned_skipped = 0;
         for facts in groups.into_values() {
             let mut distinct_sources = HashMap::new();
             for fact in &facts {
@@ -417,6 +432,7 @@ impl MemoryEngine {
                     continue;
                 }
                 if self.db.is_pinned("fact", &fact.id)? {
+                    pinned_skipped += 1;
                     continue;
                 }
                 self.db.archive_record("fact", &fact.id)?;
@@ -435,6 +451,7 @@ impl MemoryEngine {
                         &[MemoryLayer::L2, MemoryLayer::L3],
                     )? {
                         if self.db.is_pinned("edge", &edge_id)? {
+                            pinned_skipped += 1;
                             continue;
                         }
                         self.db.archive_record("edge", &edge_id)?;
@@ -444,23 +461,25 @@ impl MemoryEngine {
             }
         }
 
-        Ok((archived, promoted))
+        Ok((archived, promoted, pinned_skipped))
     }
 
-    fn cool_stale_l3_records(&self, stale_before: chrono::DateTime<Utc>) -> Result<usize> {
+    fn cool_stale_l3_records(&self, stale_before: chrono::DateTime<Utc>) -> Result<(usize, usize)> {
         let mut downgraded = 0;
+        let mut pinned_skipped = 0;
         for record in self.db.load_all_l3_records()? {
-            if self.db.is_pinned(record.kind(), record.id())? {
+            if !should_cool_l3_record(&record, stale_before) {
                 continue;
             }
-            if !should_cool_l3_record(&record, stale_before) {
+            if self.db.is_pinned(record.kind(), record.id())? {
+                pinned_skipped += 1;
                 continue;
             }
             self.db
                 .update_layer(record.kind(), record.id(), MemoryLayer::L2)?;
             downgraded += 1;
         }
-        Ok(downgraded)
+        Ok((downgraded, pinned_skipped))
     }
 
     fn should_skip_stale_l3_repromotion(
@@ -503,11 +522,14 @@ fn merge_dream_reports(target: &mut DreamReport, next: DreamReport) {
     target.structured_entities += next.structured_entities;
     target.structured_facts += next.structured_facts;
     target.extraction_failures += next.extraction_failures;
+    target.provider_calls.extraction_calls += next.provider_calls.extraction_calls;
+    target.provider_calls.embedding_calls += next.provider_calls.embedding_calls;
     target.promoted_to_l2 += next.promoted_to_l2;
     target.promoted_to_l3 += next.promoted_to_l3;
     target.downgraded_records += next.downgraded_records;
     target.archived_records += next.archived_records;
     target.invalidated_records += next.invalidated_records;
+    target.pinned_skipped += next.pinned_skipped;
     target.derived_repairs += next.derived_repairs;
     target.derived_refreshes += next.derived_refreshes;
     target.derived_text_documents += next.derived_text_documents;

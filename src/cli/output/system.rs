@@ -32,7 +32,7 @@ pub(crate) fn render_dream_report(report: &DreamReport, full: bool, json: bool) 
     }
 
     let mut output = format!(
-        "Dream {}complete\npasses_run: {}\nunstructured_l1: {}\nunstructured_l2: {}\nstructured_episodes: {}\nstructured_entities: {}\nstructured_facts: {}\nextraction_failures: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}",
+        "Dream {}complete\npasses_run: {}\nunstructured_l1: {}\nunstructured_l2: {}\nstructured_episodes: {}\nstructured_entities: {}\nstructured_facts: {}\nextraction_failures: {}\nprovider_extraction_calls: {}\nprovider_embedding_calls: {}\npromoted_to_l2: {}\npromoted_to_l3: {}\ndowngraded: {}\narchived: {}\ninvalidated: {}\npinned_skipped: {}",
         if full { "(full) " } else { "" },
         report.passes_run,
         report.unstructured_l1,
@@ -41,11 +41,14 @@ pub(crate) fn render_dream_report(report: &DreamReport, full: bool, json: bool) 
         report.structured_entities,
         report.structured_facts,
         report.extraction_failures,
+        report.provider_calls.extraction_calls,
+        report.provider_calls.embedding_calls,
         report.promoted_to_l2,
         report.promoted_to_l3,
         report.downgraded_records,
         report.archived_records,
         report.invalidated_records,
+        report.pinned_skipped,
     );
     if !report.maintenance_notes.is_empty() {
         output.push_str("\nnotes: ");

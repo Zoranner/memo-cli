@@ -38,7 +38,10 @@ fn has_decisive_reason(reasons: &[RecallReason]) -> bool {
     reasons.iter().any(|reason| {
         matches!(
             reason,
-            RecallReason::L0 | RecallReason::L3 | RecallReason::Exact | RecallReason::Alias
+            RecallReason::SessionCache
+                | RecallReason::L3
+                | RecallReason::Exact
+                | RecallReason::Alias
         )
     })
 }

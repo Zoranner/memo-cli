@@ -34,6 +34,12 @@ impl std::str::FromStr for DreamTrigger {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DreamProviderCallSummary {
+    pub extraction_calls: usize,
+    pub embedding_calls: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DreamReport {
     pub trigger: String,
     pub passes_run: usize,
@@ -45,11 +51,13 @@ pub struct DreamReport {
     pub structured_entities: usize,
     pub structured_facts: usize,
     pub extraction_failures: usize,
+    pub provider_calls: DreamProviderCallSummary,
     pub promoted_to_l2: usize,
     pub promoted_to_l3: usize,
     pub downgraded_records: usize,
     pub archived_records: usize,
     pub invalidated_records: usize,
+    pub pinned_skipped: usize,
     pub derived_repairs: usize,
     pub derived_refreshes: usize,
     pub derived_text_documents: usize,

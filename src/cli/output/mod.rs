@@ -15,8 +15,8 @@ mod tests {
     };
     use chrono::{TimeZone, Utc};
     use memo_engine::{
-        DreamReport, EpisodeRecord, FactRecord, IndexStatus, MemoryLayer, MemoryRecord,
-        RecallCapabilities, RecallReason, RecallResult, RecallResultSet, SystemState,
+        DreamProviderCallSummary, DreamReport, EpisodeRecord, FactRecord, IndexStatus, MemoryLayer,
+        MemoryRecord, RecallCapabilities, RecallReason, RecallResult, RecallResultSet, SystemState,
     };
 
     #[test]
@@ -225,6 +225,48 @@ mod tests {
     }
 
     #[test]
+    fn render_recall_text_labels_session_cache_reason_without_l0() {
+        let output = render_recall_result(
+            &RecallResultSet {
+                total_candidates: 1,
+                provider_calls: 0,
+                capabilities: RecallCapabilities {
+                    text: false,
+                    vector: false,
+                    l1: true,
+                    l2: false,
+                    l3: false,
+                    working_set: false,
+                },
+                deep_search_used: false,
+                results: vec![RecallResult {
+                    memory: MemoryRecord::Episode(EpisodeRecord {
+                        id: "ep-session".to_string(),
+                        content: "Session cached memory.".to_string(),
+                        layer: MemoryLayer::L1,
+                        confidence: 0.9,
+                        source_episode_id: None,
+                        session_id: None,
+                        created_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                        updated_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                        last_seen_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                        archived_at: None,
+                        invalidated_at: None,
+                        hit_count: 0,
+                    }),
+                    score: 3.5,
+                    reasons: vec![RecallReason::SessionCache],
+                }],
+            },
+            false,
+        )
+        .expect("expected human recall output");
+
+        assert!(output.contains("reasons: session_cache"));
+        assert!(!output.contains("l0"));
+    }
+
+    #[test]
     fn render_recall_with_json_reports_provider_calls_capabilities_and_candidates() {
         let output = render_recall_result(
             &RecallResultSet {
@@ -410,5 +452,49 @@ mod tests {
         assert!(output.contains("derived_refreshes: 0"));
         assert!(output.contains("derived_text_documents: 2"));
         assert!(output.contains("derived_vector_documents: 0"));
+    }
+
+    #[test]
+    fn render_dream_report_includes_pinned_skips_and_provider_calls() {
+        let output = render_dream_report(
+            &DreamReport {
+                pinned_skipped: 2,
+                provider_calls: DreamProviderCallSummary {
+                    extraction_calls: 1,
+                    embedding_calls: 3,
+                },
+                ..Default::default()
+            },
+            false,
+            false,
+        )
+        .expect("expected human dream output");
+
+        assert!(output.contains("pinned_skipped: 2"));
+        assert!(output.contains("provider_extraction_calls: 1"));
+        assert!(output.contains("provider_embedding_calls: 3"));
+    }
+
+    #[test]
+    fn render_dream_report_json_serializes_provider_call_summary() {
+        let output = render_dream_report(
+            &DreamReport {
+                pinned_skipped: 2,
+                provider_calls: DreamProviderCallSummary {
+                    extraction_calls: 1,
+                    embedding_calls: 3,
+                },
+                ..Default::default()
+            },
+            false,
+            true,
+        )
+        .expect("expected json dream output");
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&output).expect("expected valid json output");
+        assert_eq!(parsed["dream"]["pinned_skipped"], 2);
+        assert_eq!(parsed["dream"]["provider_calls"]["extraction_calls"], 1);
+        assert_eq!(parsed["dream"]["provider_calls"]["embedding_calls"], 3);
     }
 }

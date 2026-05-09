@@ -139,7 +139,7 @@ fn memory_summary(memory: &MemoryRecord) -> String {
 
 fn recall_reason_label(reason: &RecallReason) -> String {
     match reason {
-        RecallReason::L0 => "l0".to_string(),
+        RecallReason::SessionCache => "session_cache".to_string(),
         RecallReason::L3 => "l3".to_string(),
         RecallReason::Exact => "exact".to_string(),
         RecallReason::Alias => "alias".to_string(),

@@ -12,8 +12,9 @@ pub use model::{
     RerankProvider, RerankScore,
 };
 pub use types::{
-    DreamReport, DreamTrigger, EdgeRecord, EngineConfig, EntityInput, EntityRecord, EpisodeInput,
-    EpisodeRecord, ExtractionSource, FactInput, FactRecord, IndexStatus, LayerState, LayerSummary,
-    MemoryLayer, MemoryRecord, RecallCapabilities, RecallReason, RecallRequest, RecallResult,
-    RecallResultSet, RestoreReport, RestoreScope, SystemState,
+    DreamProviderCallSummary, DreamReport, DreamTrigger, EdgeRecord, EngineConfig, EntityInput,
+    EntityRecord, EpisodeInput, EpisodeRecord, ExtractionSource, FactInput, FactRecord,
+    IndexStatus, LayerState, LayerSummary, MemoryLayer, MemoryRecord, RecallCapabilities,
+    RecallReason, RecallRequest, RecallResult, RecallResultSet, RestoreReport, RestoreScope,
+    SystemState,
 };

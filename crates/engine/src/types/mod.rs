@@ -9,5 +9,6 @@ pub use input::{EntityInput, EpisodeInput, ExtractionSource, FactInput};
 pub use recall::{RecallCapabilities, RecallReason, RecallRequest, RecallResult, RecallResultSet};
 pub use record::{EdgeRecord, EntityRecord, EpisodeRecord, FactRecord, MemoryRecord};
 pub use reports::{
-    DreamReport, DreamTrigger, IndexStatus, LayerSummary, RestoreReport, RestoreScope, SystemState,
+    DreamProviderCallSummary, DreamReport, DreamTrigger, IndexStatus, LayerSummary, RestoreReport,
+    RestoreScope, SystemState,
 };

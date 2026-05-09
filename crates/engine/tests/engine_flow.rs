@@ -71,6 +71,15 @@ impl EmbeddingProvider for FailingEmbeddingProvider {
 }
 
 #[derive(Clone)]
+struct FailingExtractionProvider;
+
+impl ExtractionProvider for FailingExtractionProvider {
+    fn extract(&self, _text: &str) -> Result<ExtractionResult> {
+        anyhow::bail!("extraction backend unavailable")
+    }
+}
+
+#[derive(Clone)]
 struct TestExtractionProvider;
 
 impl ExtractionProvider for TestExtractionProvider {
@@ -101,6 +110,18 @@ impl ExtractionProvider for TestExtractionProvider {
         } else {
             Ok(ExtractionResult::default())
         }
+    }
+}
+
+#[derive(Clone)]
+struct CountingExtractionProvider {
+    calls: Arc<AtomicUsize>,
+}
+
+impl ExtractionProvider for CountingExtractionProvider {
+    fn extract(&self, text: &str) -> Result<ExtractionResult> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        TestExtractionProvider.extract(text)
     }
 }
 
@@ -686,7 +707,7 @@ fn pure_working_set_recall_does_not_refresh_persisted_heat() -> Result<()> {
         .any(|reason| matches!(reason, RecallReason::WorkingSet)));
     assert!(topic.reasons.iter().all(|reason| !matches!(
         reason,
-        RecallReason::L0
+        RecallReason::SessionCache
             | RecallReason::L3
             | RecallReason::Exact
             | RecallReason::Alias
@@ -1323,6 +1344,68 @@ fn dream_merges_provider_extraction_into_memory() -> Result<()> {
     assert!(result.results.iter().any(
         |item| matches!(&item.memory, MemoryRecord::Fact(fact) if fact.predicate == "lives_in" && fact.object_text == "Paris")
     ));
+    Ok(())
+}
+
+#[test]
+fn dream_report_counts_provider_calls_used_by_structuring() -> Result<()> {
+    let temp = TempDir::new()?;
+    let extraction_calls = Arc::new(AtomicUsize::new(0));
+    let embedding_calls = Arc::new(AtomicUsize::new(0));
+    let engine = MemoryEngine::open(
+        EngineConfig::new(temp.path())
+            .with_extraction_provider(Arc::new(CountingExtractionProvider {
+                calls: Arc::clone(&extraction_calls),
+            }))
+            .with_embedding_provider(Arc::new(CountingEmbeddingProvider {
+                calls: Arc::clone(&embedding_calls),
+            })),
+    )?;
+
+    engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.dream(DreamTrigger::Manual)?;
+
+    assert_eq!(extraction_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(embedding_calls.load(Ordering::SeqCst), 3);
+    assert_eq!(report.provider_calls.extraction_calls, 1);
+    assert_eq!(report.provider_calls.embedding_calls, 3);
+    Ok(())
+}
+
+#[test]
+fn dream_report_counts_failed_extraction_provider_call() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = MemoryEngine::open(
+        EngineConfig::new(temp.path())
+            .with_extraction_provider(Arc::new(FailingExtractionProvider)),
+    )?;
+
+    engine.remember(EpisodeInput {
+        content: "Alice lives in Paris.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+
+    let report = engine.dream(DreamTrigger::Manual)?;
+
+    assert_eq!(report.provider_calls.extraction_calls, 1);
+    assert_eq!(report.provider_calls.embedding_calls, 0);
+    assert_eq!(report.extraction_failures, 1);
     Ok(())
 }
 
@@ -2229,7 +2312,8 @@ fn dream_does_not_invalidate_pinned_conflicting_fact_or_source_episode() -> Resu
         confidence: 0.9,
     })?;
 
-    let _ = engine.dream(DreamTrigger::Manual)?;
+    let report = engine.dream(DreamTrigger::Manual)?;
+    assert_eq!(report.pinned_skipped, 1);
 
     match engine.reflect(&paris_fact_id)? {
         MemoryRecord::Fact(fact) => assert!(fact.invalidated_at.is_none()),
