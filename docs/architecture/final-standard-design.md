@@ -141,7 +141,7 @@ memo-brain 是本地 CLI 记忆引擎。
 - `crates/engine/src/engine/ingest.rs`：remember 和结构化写入；
 - `crates/engine/src/engine/recall/*`：recall pipeline；
 - `crates/engine/src/engine/dream.rs`：dream pipeline；
-- `crates/engine/src/engine/restore.rs`：当前遗留 restore/full restore 实现，最终应删除公开命令语义并把可保留的派生层维护能力迁入 `dream`；
+- `crates/engine/src/engine/restore.rs`：内部 restore/full restore helper，只作为 `dream` 复用的派生层维护实现，不形成公开命令语义；
 - `crates/engine/src/text_index.rs`：Tantivy；
 - `crates/engine/src/vector_index.rs`：HNSW；
 - `crates/engine/src/eval.rs`：eval runner；
@@ -251,7 +251,7 @@ memo-brain 是本地 CLI 记忆引擎。
 - 写入后持久化 Working Set；
 - 写入时 queue text index job；只有已经存在 `vector_json` 的结构化维护路径才会 queue vector index job。
 
-当前问题：
+当前注意：
 
 - 当前 recall 输出已稳定展示 `provider_calls=0` 诊断语义；
 - 手工结构化输入仍属于高级入口，普通自然语言结构化依赖后续 `dream`。
@@ -537,7 +537,7 @@ memo-brain 的记忆模型是多轴模型，不是单一 L 轴。
 
 ## SQLite 真相源
 
-当前 schema version 为 `3`。
+当前 schema version 为 `4`。
 
 SQLite 表：
 
@@ -551,7 +551,7 @@ SQLite 表：
 - `index_state`
 - `index_jobs`
 
-当前初始化会 `DROP TABLE IF EXISTS dream_jobs`，说明旧 dream jobs 概念已经被移除。最终设计也不引入后台 dream job。
+当前初始化会 `DROP TABLE IF EXISTS dream_jobs`，说明旧 dream jobs 概念已经被移除。schema v4 已包含 `working_set_at`、`pinned_at` 和 `pinned_reason`。最终设计也不引入后台 dream job。
 
 ### `episodes`
 
@@ -2071,12 +2071,14 @@ synthetic datasets：
 需要按最终标准收敛的差距：
 
 - 当前 `dream` 的 embedding 职责已进入维护路径，但 provider call 统计输出还不完整；
+- 当前 `DreamReport` 已包含 `derived_repairs` / `derived_refreshes` / 派生文档数，但还没有 `pinned_skipped` 和明确的 provider capability summary；
 - 当前 recall 输出已稳定展示 `provider_calls=0`、`total_candidates` 和 candidate `capabilities` 诊断语义，后续文档需保持同一契约；
 - 当前 L0/session cache 仍出现在 recall reason；
 - 当前 `anchored_at` 仍保留为兼容字段，对外命名还未完全统一成 Pinned；
 - 当前 Pinned 没有完整 recall 加权语义；
-- README、COMMANDS、中文文档、skill、安装脚本说明和模板注释尚未同步本文的默认路径、Working Set、Pinned 和 provider 边界；
-- 其他文档和分发材料仍有旧恢复命令、L0/session、provider 可选增强等口径漂移风险。
+- README、COMMANDS、中文文档已基本收敛到六个公开命令、默认 home 路径和 `dream` 维护入口，但仍需随实现继续复核；
+- skill、旧架构文档、安装脚本说明和模板注释仍需同步本文的默认路径、Working Set、Pinned 和 provider 边界；
+- 其他文档和分发材料仍有旧恢复命令、L0/session、provider 可选增强等口径漂移风险，尤其不能把 `restore`、`search`、`embed` 写成当前公开命令。
 
 ## 最终验收标准
 
@@ -2133,13 +2135,14 @@ synthetic datasets：
 
 ## 推荐实施顺序
 
-后续代码改造建议按以下顺序推进：
+后续代码和文档改造建议按以下顺序推进：
 
 - 继续补 provider call 统计输出；
-- 继续收敛公开文档、README、skill 和模板口径；
+- 补充 `DreamReport` 的 `pinned_skipped` 和 provider capability summary；
+- 继续收敛 skill、旧架构文档、安装脚本说明和模板口径；
 - 将 anchored CLI/output/state 语义收敛为 Pinned；
 - 修改 recall 排序，保证 L2 强匹配优先于弱相关 L3；
-- 更新 README、COMMANDS、中文文档、架构文档、skill、安装脚本说明和模板注释；
+- 持续复核 README、COMMANDS、中文文档、架构文档、skill、安装脚本说明和模板注释；
 - 补全或更新 `tests/global_home_cli.rs` 覆盖默认路径和 `MEMO_DATA_DIR`；
 - 跑 `cargo fmt --all`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo build --all-features`、`cargo test --all-features`。
 

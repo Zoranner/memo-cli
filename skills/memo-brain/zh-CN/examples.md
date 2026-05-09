@@ -85,29 +85,29 @@ memo state
 
 - 想看 episode/entity/fact/edge 数量
 - 想确认 text/vector 索引是否 pending
-- 想看 dream 队列状态
+- 想看 provider readiness 和是否需要运行 dream
 
-## restore：刷新 pending 派生索引
+## dream：维护派生层
 
 ```bash
-memo restore
+memo dream
 ```
 
 适用场景：
 
 - remember 之后索引还处于 pending
-- 想走较保守的 restore 路径
+- 想让 text/vector 派生层追上 SQLite 真相源
 
-## restore：全量重建派生索引
+## dream：完整重建派生层
 
 ```bash
-memo restore --full
+memo dream --full
 ```
 
 适用场景：
 
 - 派生索引可能损坏
-- 你明确要基于 SQLite 真相源做全量恢复
+- 你明确要基于 SQLite 真相源做完整派生层维护
 
 ## 当前不支持的旧接口
 
@@ -115,6 +115,7 @@ memo restore --full
 
 - `memo embed`
 - `memo search`
+- `memo restore`
 - `memo update`
 - `memo merge`
 - `memo delete`

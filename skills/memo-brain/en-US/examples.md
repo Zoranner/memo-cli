@@ -85,29 +85,29 @@ Use this when:
 
 - You want episode/entity/fact/edge counts
 - You need to confirm whether text/vector indexes are pending
-- You want dream queue status
+- You want provider readiness and whether dream is needed
 
-## restore: Restore Pending Derived Layers
+## dream: Maintain Derived Layers
 
 ```bash
-memo restore
+memo dream
 ```
 
 Use this when:
 
 - Remember has left indexes in pending state
-- You want the conservative restore path
+- You want text/vector derived layers to catch up with the SQLite truth source
 
-## restore: Full Rebuild of Derived Indexes
+## dream: Full Derived-Layer Rebuild
 
 ```bash
-memo restore --full
+memo dream --full
 ```
 
 Use this when:
 
 - Derived indexes may be damaged or stale
-- You explicitly want a full restore from SQLite truth source
+- You explicitly want full derived-layer maintenance from the SQLite truth source
 
 ## Old Interfaces That Are Not Supported Now
 
@@ -115,6 +115,7 @@ Do not keep using these old commands or parameters:
 
 - `memo embed`
 - `memo search`
+- `memo restore`
 - `memo update`
 - `memo merge`
 - `memo delete`
