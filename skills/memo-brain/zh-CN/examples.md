@@ -98,7 +98,7 @@ memo dream
 - remember 之后索引还处于 pending
 - 想让 text/vector 派生层追上 SQLite 真相源
 
-## dream：完整重建派生层
+## dream：完整维护派生层
 
 ```bash
 memo dream --full

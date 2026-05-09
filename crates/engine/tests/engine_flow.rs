@@ -664,6 +664,98 @@ fn recall_uses_persisted_working_set_after_reopen() -> Result<()> {
 }
 
 #[test]
+fn recall_query_coverage_matches_chinese_tokens() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let matching_id = engine.remember(episode_input("张伟 正在 上海 负责 低空物流 调度"))?;
+    engine.remember(episode_input("李雷 正在 深圳 负责 智能仓储 调度"))?;
+
+    let result = engine.recall(RecallRequest {
+        query: "张伟 上海 低空物流".to_string(),
+        limit: 1,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    assert_eq!(result.results.len(), 1);
+    assert!(
+        matches!(&result.results[0].memory, MemoryRecord::Episode(record) if record.id == matching_id),
+        "expected Chinese query coverage to select the Zhang Wei logistics memory, got {:?}",
+        result.results[0].memory
+    );
+    Ok(())
+}
+
+#[test]
+fn pinned_weak_match_does_not_outrank_unpinned_strong_match() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let pinned_id = engine.remember(episode_input(
+        "Riverbank Robotics keeps shared fleet telemetry archive notes.",
+    ))?;
+    let strong_id = engine.remember(episode_input(
+        "Harbor Analytics owns the shared fleet telemetry launch checklist.",
+    ))?;
+    engine.pin("episode", &pinned_id, Some("important"))?;
+    engine.restore(RestoreScope::Text)?;
+
+    let result = engine.recall(RecallRequest {
+        query: "Harbor Analytics shared fleet telemetry launch".to_string(),
+        limit: 2,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    assert!(
+        matches!(&result.results[0].memory, MemoryRecord::Episode(record) if record.id == strong_id),
+        "pinned weak match should not outrank the unpinned strong match: {:?}",
+        result.results
+    );
+    Ok(())
+}
+
+#[test]
+fn pinned_matching_candidate_gets_light_boost_and_reason() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    let unpinned_id = engine.remember(episode_input(
+        "Harbor Analytics keeps the fleet telemetry plan.",
+    ))?;
+    let pinned_id = engine.remember(episode_input(
+        "Riverbank Robotics keeps the fleet telemetry plan.",
+    ))?;
+    engine.pin("episode", &pinned_id, Some("review"))?;
+    engine.restore(RestoreScope::Text)?;
+
+    let result = engine.recall(RecallRequest {
+        query: "fleet telemetry plan".to_string(),
+        limit: 2,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    let pinned = result
+        .results
+        .iter()
+        .find(
+            |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == pinned_id),
+        )
+        .expect("expected pinned matching episode in recall results");
+    let unpinned = result
+        .results
+        .iter()
+        .find(|item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == unpinned_id))
+        .expect("expected unpinned matching episode in recall results");
+
+    assert!(pinned.score > unpinned.score);
+    assert!(pinned
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::Pinned)));
+    Ok(())
+}
+
+#[test]
 fn pure_working_set_recall_does_not_refresh_persisted_heat() -> Result<()> {
     let temp = TempDir::new()?;
     let (topic_id, topic_working_set_at) = {

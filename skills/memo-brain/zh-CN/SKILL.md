@@ -101,7 +101,7 @@ memo reflect <memory-id>
 memo dream
 ```
 
-如果需要完整重建派生层：
+如果需要完整派生层维护：
 
 ```bash
 memo dream --full
@@ -145,7 +145,7 @@ memo state
 
 ### 维护原则
 
-- 派生层维护统一走 `memo dream`，需要完整重建时使用 `memo dream --full`
+- 派生层维护统一走 `memo dream`，需要完整维护时使用 `memo dream --full`
 - `dream` 可以进入 extraction / embedding 慢路径；不要把这些慢路径包装成 `remember` / `recall` 的默认行为
 - 用户心智使用 Working Set / Pinned，不把 L0/session 作为外部说明词
 

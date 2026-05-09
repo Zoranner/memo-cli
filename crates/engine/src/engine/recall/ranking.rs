@@ -122,6 +122,14 @@ pub(super) fn recency_boost(updated_at: chrono::DateTime<chrono::Utc>) -> f32 {
 pub(super) fn hit_frequency_boost(hit_count: u64) -> f32 {
     ((hit_count as f32) + 1.0).ln() * 0.05
 }
+pub(super) fn pinned_boost(query: &str, memory: &MemoryRecord) -> f32 {
+    let coverage = query_coverage(query, memory);
+    if coverage >= 0.5 {
+        0.12
+    } else {
+        0.0
+    }
+}
 pub(super) fn answer_shape_boost(query: &str, memory: &MemoryRecord) -> f32 {
     if !looks_like_current_location_query(query) {
         return 0.0;
@@ -216,9 +224,37 @@ fn text_similarity(a: String, b: String) -> f32 {
 }
 fn lexical_tokens(text: &str) -> HashSet<String> {
     normalize_text(text)
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter_map(normalize_token)
+        .split(|character: char| !character.is_alphanumeric())
+        .flat_map(normalize_piece)
         .collect()
+}
+fn normalize_piece(piece: &str) -> Vec<String> {
+    let token = piece.trim().to_lowercase();
+    if token.is_empty() {
+        return Vec::new();
+    }
+    if token.is_ascii() {
+        return normalize_token(&token).into_iter().collect();
+    }
+
+    let mut tokens = HashSet::new();
+    if token.chars().count() >= 2 && !is_query_modifier(&token) {
+        tokens.insert(token.clone());
+    }
+
+    if contains_cjk(&token) {
+        let chars = token.chars().collect::<Vec<_>>();
+        for width in 2..=4.min(chars.len()) {
+            for window in chars.windows(width) {
+                let gram = window.iter().collect::<String>();
+                if !is_query_modifier(&gram) {
+                    tokens.insert(gram);
+                }
+            }
+        }
+    }
+
+    tokens.into_iter().collect()
 }
 fn normalize_token(token: &str) -> Option<String> {
     let token = token.trim();
@@ -256,12 +292,26 @@ fn looks_like_current_location_query(query: &str) -> bool {
         || tokens.contains("move")
 }
 fn subject_tokens(query: &str) -> HashSet<String> {
-    query
-        .split(|character: char| !character.is_ascii_alphanumeric())
+    let pieces = query
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|token| !token.trim().is_empty())
+        .collect::<Vec<_>>();
+    let mut subjects = pieces
+        .iter()
         .filter(|token| token.chars().next().is_some_and(char::is_uppercase))
-        .filter_map(|token| normalize_token(&token.to_ascii_lowercase()))
+        .filter_map(|token| normalize_token(&token.to_lowercase()))
         .filter(|token| !is_query_modifier(token))
-        .collect()
+        .collect::<HashSet<_>>();
+
+    for token in pieces.iter().filter(|token| !token.is_ascii()) {
+        for normalized in normalize_piece(token) {
+            if !is_query_modifier(&normalized) {
+                subjects.insert(normalized);
+            }
+        }
+    }
+
+    subjects
 }
 fn is_query_modifier(token: &str) -> bool {
     matches!(
@@ -281,7 +331,36 @@ fn is_query_modifier(token: &str) -> bool {
             | "base"
             | "transfer"
             | "promote"
+            | "哪里"
+            | "在哪"
+            | "现在"
+            | "当前"
+            | "最近"
+            | "居住"
+            | "城市"
+            | "位置"
+            | "地点"
+            | "办公室"
+            | "岗位"
+            | "职位"
+            | "基地"
+            | "调动"
+            | "晋升"
     )
+}
+fn contains_cjk(token: &str) -> bool {
+    token.chars().any(|character| {
+        matches!(
+            character,
+            '\u{3400}'..='\u{4DBF}'
+                | '\u{4E00}'..='\u{9FFF}'
+                | '\u{F900}'..='\u{FAFF}'
+                | '\u{20000}'..='\u{2A6DF}'
+                | '\u{2A700}'..='\u{2B73F}'
+                | '\u{2B740}'..='\u{2B81F}'
+                | '\u{2B820}'..='\u{2CEAF}'
+        )
+    })
 }
 fn is_stopword(token: &str) -> bool {
     matches!(

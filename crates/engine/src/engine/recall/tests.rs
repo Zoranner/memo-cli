@@ -4,28 +4,33 @@ use crate::types::{
     EpisodeRecord, MemoryLayer, MemoryRecord, RecallCapabilities, RecallResult, RecallResultSet,
 };
 
+use super::ranking::{pinned_boost, query_coverage, query_subject_tokens};
 use super::{session_cache::trim_session_cache, strategy::should_auto_escalate_to_deep_search};
 use crate::engine::SessionCache;
 
 fn episode_result(score: f32, reasons: Vec<crate::types::RecallReason>) -> RecallResult {
     RecallResult {
-        memory: MemoryRecord::Episode(EpisodeRecord {
-            id: "episode-1".to_string(),
-            content: "Paris travel checklist for May.".to_string(),
-            layer: MemoryLayer::L1,
-            confidence: 0.9,
-            source_episode_id: None,
-            session_id: None,
-            created_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
-            updated_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
-            last_seen_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
-            archived_at: None,
-            invalidated_at: None,
-            hit_count: 0,
-        }),
+        memory: episode_record("episode-1", "Paris travel checklist for May."),
         score,
         reasons,
     }
+}
+
+fn episode_record(id: &str, content: &str) -> MemoryRecord {
+    MemoryRecord::Episode(EpisodeRecord {
+        id: id.to_string(),
+        content: content.to_string(),
+        layer: MemoryLayer::L1,
+        confidence: 0.9,
+        source_episode_id: None,
+        session_id: None,
+        created_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
+        updated_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
+        last_seen_at: Utc.with_ymd_and_hms(2026, 4, 22, 10, 0, 0).unwrap(),
+        archived_at: None,
+        invalidated_at: None,
+        hit_count: 0,
+    })
 }
 
 fn result_set(results: Vec<RecallResult>) -> RecallResultSet {
@@ -106,4 +111,37 @@ fn trim_session_cache_caps_recent_topics_and_memory_ids() {
         session.recent_topics.first().map(String::as_str),
         Some("topic-32")
     );
+}
+
+#[test]
+fn query_coverage_counts_chinese_terms() {
+    let matching = episode_record("episode-1", "张伟 正在 上海 负责 低空物流 调度");
+    let unrelated = episode_record("episode-2", "李雷 正在 深圳 负责 智能仓储 调度");
+
+    assert!(query_coverage("张伟 上海 低空物流", &matching) >= 0.75);
+    assert!(query_coverage("张伟 上海 低空物流", &unrelated) < 0.5);
+}
+
+#[test]
+fn subject_tokens_include_chinese_subjects_without_location_modifiers() {
+    let subjects = query_subject_tokens("张伟 现在 在 上海 哪里");
+
+    assert!(subjects.contains("张伟"));
+    assert!(!subjects.contains("现在"));
+    assert!(!subjects.contains("哪里"));
+}
+
+#[test]
+fn pinned_boost_requires_meaningful_query_match() {
+    let matching = episode_record(
+        "episode-1",
+        "Riverbank Robotics keeps the fleet telemetry plan.",
+    );
+    let weak = episode_record(
+        "episode-2",
+        "Riverbank Robotics keeps shared archive notes.",
+    );
+
+    assert!(pinned_boost("fleet telemetry plan", &matching) > 0.0);
+    assert_eq!(pinned_boost("fleet telemetry plan", &weak), 0.0);
 }

@@ -125,7 +125,8 @@ memo dream [--full] [--json]
 - 配置了 extraction provider 时，dream 可以在慢路径补齐仍未结构化的 episode，而不会改变 `remember` 的默认延迟边界
 - 如果 extraction 未配置、不可用，或仍是模板占位 key，dream 会明确报告仍有 episode 只能作为文本记忆保留，而不是假装已经语义整理
 - dream 也是公开的 text/vector 派生层维护入口；内部修复细节只作为诊断信息，不单独暴露成用户流程
-- `--json` 输出机器可读结果
+- 文本输出包含 `provider_extraction_calls`、`provider_embedding_calls` 和 `pinned_skipped`
+- `--json` 输出机器可读结果，包含 `dream.provider_calls.extraction_calls`、`dream.provider_calls.embedding_calls` 和 `dream.pinned_skipped`
 
 ---
 

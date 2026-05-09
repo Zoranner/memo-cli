@@ -94,9 +94,44 @@ struct StateOutput<'a> {
 #[derive(Debug, Serialize)]
 struct StateDiagnostics<'a> {
     internal_reasons: Vec<&'static str>,
-    state: &'a SystemState,
+    state: StateDiagnosticsState<'a>,
     provider_runtime: &'a status::ProviderRuntimeSummary,
     provider_readiness: &'a status::ProviderReadinessSummary,
+}
+
+#[derive(Debug, Serialize)]
+struct StateDiagnosticsState<'a> {
+    episode_count: usize,
+    entity_count: usize,
+    fact_count: usize,
+    edge_count: usize,
+    unstructured_l1: usize,
+    unstructured_l2: usize,
+    structured_total: usize,
+    pinned_records: usize,
+    layers: &'a memo_engine::LayerSummary,
+    l3_cached: usize,
+    text_index: &'a IndexStatus,
+    vector_index: &'a IndexStatus,
+}
+
+impl<'a> From<&'a SystemState> for StateDiagnosticsState<'a> {
+    fn from(state: &'a SystemState) -> Self {
+        Self {
+            episode_count: state.episode_count,
+            entity_count: state.entity_count,
+            fact_count: state.fact_count,
+            edge_count: state.edge_count,
+            unstructured_l1: state.unstructured_l1,
+            unstructured_l2: state.unstructured_l2,
+            structured_total: state.structured_total,
+            pinned_records: state.pinned_records,
+            layers: &state.layers,
+            l3_cached: state.l3_cached,
+            text_index: &state.text_index,
+            vector_index: &state.vector_index,
+        }
+    }
 }
 
 impl<'a> StateOutput<'a> {
@@ -130,7 +165,7 @@ impl<'a> StateOutput<'a> {
             next,
             diagnostics: StateDiagnostics {
                 internal_reasons,
-                state,
+                state: state.into(),
                 provider_runtime,
                 provider_readiness,
             },

@@ -85,7 +85,7 @@ memo dream
 memo state
 ```
 
-`memo dream` runs a dream pass over memory layers, including slow-path provider extraction for still-unstructured episodes when configured. If extraction is not configured or still uses a placeholder key, dream reports that those episodes remain text-only. `memo dream` is also the public maintenance entrypoint for derived text/vector layers. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are derived layers that can be refreshed from it.
+`memo dream` runs a dream pass over memory layers, including slow-path provider extraction for still-unstructured episodes when configured. If extraction is not configured or still uses a placeholder key, dream reports that those episodes remain text-only. Its text and JSON output include extraction/embedding provider call counts and `pinned_skipped`. `memo dream` is also the public maintenance entrypoint for derived text/vector layers. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are derived layers that can be refreshed from it.
 
 `memo state` reports record counts, structure counts, layer/index health, provider readiness, and the latest provider runtime degradation summary when fallback paths were used.
 

@@ -85,7 +85,7 @@ memo dream
 memo state
 ```
 
-`memo dream` 会执行一次记忆整理；配置了 provider 时，它也会在慢路径补齐仍未结构化的 episode。如果 extraction 未配置或仍是占位 key，dream 会明确报告这些 episode 仍只能作为文本记忆保留。`memo dream` 也是公开的 text/vector 派生层维护入口。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可由它刷新出来的派生层。
+`memo dream` 会执行一次记忆整理；配置了 provider 时，它也会在慢路径补齐仍未结构化的 episode。如果 extraction 未配置或仍是占位 key，dream 会明确报告这些 episode 仍只能作为文本记忆保留。它的文本和 JSON 输出包含 extraction/embedding provider 调用统计以及 `pinned_skipped`。`memo dream` 也是公开的 text/vector 派生层维护入口。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可由它刷新出来的派生层。
 
 `memo state` 会输出记录数量、结构化统计、layer / index 健康度、provider 可用性，以及走过降级路径时最近一次 provider 运行态摘要。
 

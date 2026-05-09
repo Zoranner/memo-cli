@@ -98,7 +98,7 @@ Use this when:
 - Remember has left indexes in pending state
 - You want text/vector derived layers to catch up with the SQLite truth source
 
-## dream: Full Derived-Layer Rebuild
+## dream: Full Derived-Layer Maintenance
 
 ```bash
 memo dream --full

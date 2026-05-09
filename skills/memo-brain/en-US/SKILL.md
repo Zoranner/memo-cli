@@ -101,7 +101,7 @@ Standard action: `dream`
 memo dream
 ```
 
-For full derived-layer rebuild:
+For full derived-layer maintenance:
 
 ```bash
 memo dream --full
@@ -145,7 +145,7 @@ memo state
 
 ### Maintenance Principles
 
-- Derived-layer maintenance goes through `memo dream`; use `memo dream --full` only when a full rebuild is needed
+- Derived-layer maintenance goes through `memo dream`; use `memo dream --full` only when full maintenance is needed
 - `dream` may enter extraction / embedding slow paths; do not present those slow paths as default `remember` / `recall` behavior
 - Use Working Set / Pinned for user-facing memory semantics; do not expose L0/session as the user's mental model
 

@@ -19,6 +19,8 @@ pub enum RecallReason {
     LayerBoost,
     HitFrequencyBoost,
     WorkingSet,
+    #[serde(rename = "pinned")]
+    Pinned,
     SubjectMismatch,
     MmrSelected,
 }

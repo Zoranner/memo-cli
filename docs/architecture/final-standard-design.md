@@ -333,8 +333,8 @@ memo-brain 是本地 CLI 记忆引擎。
 
 当前问题：
 
-- `dream` 输出已包含派生层维护统计，但 extraction/embedding provider call 情况还需要继续细化；
-- Pinned 保护已覆盖主要自动 archive/invalidate/cooling 路径，CLI 和用户输出命名仍需继续从 anchored 收敛到 Pinned。
+- `dream` 输出已包含派生层维护统计和 extraction/embedding provider call 情况；
+- Pinned 保护已覆盖主要自动 archive/invalidate/cooling 路径，CLI state 输出已收敛到 Pinned；内部 `anchored_at` 兼容字段仍需继续收敛。
 
 最终标准：
 
@@ -356,7 +356,7 @@ memo-brain 是本地 CLI 记忆引擎。
 - 展示 episode/entity/fact/edge count；
 - 展示 unstructured L1/L2；
 - 展示 structured total；
-- 展示 anchored/Pinned record count；
+- 展示 Pinned record count；
 - 展示 layer summary；
 - 展示 L3 cache count；
 - 展示 text/vector index status；
@@ -368,7 +368,7 @@ memo-brain 是本地 CLI 记忆引擎。
 
 - 普通输出已收敛为 `status`、`message`、`next`；
 - JSON 输出已提供 `diagnostics.internal_reasons`；
-- anchored 兼容字段仍未完全从对外命名中移除；
+- CLI state 输出已避免暴露 anchored 口径，engine 内部兼容字段仍保留；
 - Working Set 统计和展示还可继续细化。
 
 最终标准：
@@ -504,12 +504,12 @@ memo-brain 的记忆模型是多轴模型，不是单一 L 轴。
 - DB API 已有 `pin_record`、`unpin_record`、`pinned_record_count`，旧 `anchor_record`/`unanchor_record` 仍作为兼容桥；
 - engine API 已有 `pin`、`unpin`；
 - dream 已在主要 cooling、archive、invalidate、merge 路径尊重 Pinned；
-- `state` 同时保留 anchored 兼容计数和 Pinned 计数。
+- `state` 内部仍保留 anchored 兼容计数，CLI diagnostics 对外只展示 Pinned 计数。
 
 最终标准：
 
-- `anchored_at` 收敛为 `pinned_at`；
-- 增加 `pinned_reason`；
+- 内部 `anchored_at` 兼容字段逐步收敛为 `pinned_at`；
+- 保留 `pinned_reason`；
 - 用户心智统一为 Pinned；
 - Pinned 默认由用户显式设置；
 - dream 不得自动冷却、归档、失效、覆盖 Pinned record；
@@ -1265,8 +1265,8 @@ pub trait RerankProvider: Send + Sync {
 当前实现：
 
 - `SessionCache` 保存 recent aliases、recent topics、active subjects、recent memory ids；
-- recall reason 中仍有 `L0`；
-- L0 exact alias match 分数 3.5；
+- recall reason 对外输出 `session_cache`，并保留 `L0`/`l0` serde alias 兼容旧 JSON；
+- session cache exact alias match 分数 3.5；
 - WorkingSet boost 当前来自 session cache。
 
 最终标准：
@@ -1329,7 +1329,7 @@ CLI parse
 
 当前 `execute_query` 的候选来源顺序：
 
-- L0/session exact alias；
+- session cache exact alias；
 - L3 cache contains normalized query；
 - SQLite exact/alias；
 - Tantivy BM25；
@@ -1338,7 +1338,7 @@ CLI parse
 
 候选初始分：
 
-- L0：3.5；
+- session cache：3.5；
 - L3：2.4；
 - exact/alias：3.0；
 - BM25：`0.4 + hit.score * 0.15`；
@@ -1357,7 +1357,7 @@ auto deep：
 
 - 初次非 deep 查询如果结果空，会 deep；
 - 如果首条没有 decisive reason 且单结果弱或前两名分差小，会 deep；
-- decisive reason 当前包括 L0、L3、Exact、Alias。
+- decisive reason 当前包括 session cache、L3、Exact、Alias。
 
 ### 当前 score shaping
 
@@ -1745,7 +1745,7 @@ pure index repair 明确不做：
 - episode/entity/fact/edge count；
 - unstructured L1/L2；
 - structured total；
-- anchored records；
+- Pinned records；
 - layer summary；
 - l3 cached；
 - text index status；
@@ -2070,12 +2070,11 @@ synthetic datasets：
 
 需要按最终标准收敛的差距：
 
-- 当前 `dream` 的 embedding 职责已进入维护路径，但 provider call 统计输出还不完整；
-- 当前 `DreamReport` 已包含 `derived_repairs` / `derived_refreshes` / 派生文档数，但还没有 `pinned_skipped` 和明确的 provider capability summary；
-- 当前 recall 输出已稳定展示 `provider_calls=0`、`total_candidates` 和 candidate `capabilities` 诊断语义，后续文档需保持同一契约；
-- 当前 L0/session cache 仍出现在 recall reason；
-- 当前 `anchored_at` 仍保留为兼容字段，对外命名还未完全统一成 Pinned；
-- 当前 Pinned 没有完整 recall 加权语义；
+- 当前 `dream` 的 embedding 职责已进入维护路径，`DreamReport` 和 CLI 输出已包含 extraction/embedding provider call 统计；
+- 当前 `DreamReport` 已包含 `derived_repairs` / `derived_refreshes` / 派生文档数和 `pinned_skipped`，但还没有明确的 provider capability summary；
+- 当前 recall 输出已稳定展示 `provider_calls=0`、`total_candidates`、candidate `capabilities` 和 `session_cache` reason 诊断语义，后续文档需保持同一契约；
+- 当前 `anchored_at` 仍保留为内部兼容字段，CLI state 对外命名已收敛为 Pinned；
+- 当前 Pinned 已有轻量 recall 加权和 `pinned` reason，但仍需继续随召回质量评估复核权重边界；
 - README、COMMANDS、中文文档已基本收敛到六个公开命令、默认 home 路径和 `dream` 维护入口，但仍需随实现继续复核；
 - skill、旧架构文档、安装脚本说明和模板注释仍需同步本文的默认路径、Working Set、Pinned 和 provider 边界；
 - 其他文档和分发材料仍有旧恢复命令、L0/session、provider 可选增强等口径漂移风险，尤其不能把 `restore`、`search`、`embed` 写成当前公开命令。
@@ -2137,11 +2136,10 @@ synthetic datasets：
 
 后续代码和文档改造建议按以下顺序推进：
 
-- 继续补 provider call 统计输出；
-- 补充 `DreamReport` 的 `pinned_skipped` 和 provider capability summary；
+- 补充 `DreamReport` 的 provider capability summary；
 - 继续收敛 skill、旧架构文档、安装脚本说明和模板口径；
-- 将 anchored CLI/output/state 语义收敛为 Pinned；
-- 修改 recall 排序，保证 L2 强匹配优先于弱相关 L3；
+- 继续收敛内部 `anchored_at` 兼容字段和旧 API 命名；
+- 继续复核 recall 排序，保证 L2 强匹配优先于弱相关 L3，并评估 Pinned 轻量加权边界；
 - 持续复核 README、COMMANDS、中文文档、架构文档、skill、安装脚本说明和模板注释；
 - 补全或更新 `tests/global_home_cli.rs` 覆盖默认路径和 `MEMO_DATA_DIR`；
 - 跑 `cargo fmt --all`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo build --all-features`、`cargo test --all-features`。

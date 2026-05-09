@@ -127,7 +127,8 @@ memo dream [--full] [--json]
 - when an extraction provider is configured, dream can enrich still-unstructured episodes on the slow path without changing `remember` default latency
 - if extraction is missing, degraded, or still using a template placeholder key, dream reports that unstructured episodes remain text-only instead of pretending semantic structuring is available
 - dream is also the public maintenance entrypoint for derived text/vector layers; internal repair details stay diagnostics, not a separate user workflow
-- `--json` emits machine-readable output
+- text output reports `provider_extraction_calls`, `provider_embedding_calls`, and `pinned_skipped`
+- `--json` emits machine-readable output, including `dream.provider_calls.extraction_calls`, `dream.provider_calls.embedding_calls`, and `dream.pinned_skipped`
 
 ---
 

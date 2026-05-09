@@ -104,6 +104,8 @@ mod tests {
             &SystemState {
                 episode_count: 1,
                 unstructured_l1: 1,
+                anchored_records: 3,
+                pinned_records: 3,
                 layers: memo_engine::LayerSummary {
                     l1: 1,
                     ..Default::default()
@@ -139,6 +141,7 @@ mod tests {
             output,
             "status: needs_dream\nmessage: 有新内容需要整理\nnext: memo dream"
         );
+        assert!(!output.to_ascii_lowercase().contains("anchored"));
     }
 
     #[test]
@@ -207,7 +210,11 @@ mod tests {
                         hit_count: 3,
                     }),
                     score: 3.4,
-                    reasons: vec![RecallReason::Alias, RecallReason::LayerBoost],
+                    reasons: vec![
+                        RecallReason::Alias,
+                        RecallReason::LayerBoost,
+                        RecallReason::Pinned,
+                    ],
                 }],
             },
             false,
@@ -221,7 +228,7 @@ mod tests {
             "candidate capabilities: text=true vector=false l1=true l2=false l3=false working_set=true"
         ));
         assert!(output.contains("[episode:ep-1] score=3.400 layer=L2"));
-        assert!(output.contains("reasons: alias, layer_boost"));
+        assert!(output.contains("reasons: alias, layer_boost, pinned"));
     }
 
     #[test]
@@ -281,7 +288,24 @@ mod tests {
                     working_set: true,
                 },
                 deep_search_used: false,
-                results: Vec::new(),
+                results: vec![RecallResult {
+                    memory: MemoryRecord::Episode(EpisodeRecord {
+                        id: "ep-pinned".to_string(),
+                        content: "Pinned recall note.".to_string(),
+                        layer: MemoryLayer::L2,
+                        confidence: 0.9,
+                        source_episode_id: None,
+                        session_id: None,
+                        created_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                        updated_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                        last_seen_at: Utc.with_ymd_and_hms(2026, 4, 21, 10, 0, 0).unwrap(),
+                        archived_at: None,
+                        invalidated_at: None,
+                        hit_count: 0,
+                    }),
+                    score: 1.0,
+                    reasons: vec![RecallReason::Pinned],
+                }],
             },
             true,
         )
@@ -294,6 +318,7 @@ mod tests {
         assert_eq!(parsed["capabilities"]["l1"], true);
         assert_eq!(parsed["capabilities"]["working_set"], true);
         assert_eq!(parsed["total_candidates"], 2);
+        assert_eq!(parsed["results"][0]["reasons"][0], "pinned");
     }
 
     #[test]
@@ -359,6 +384,8 @@ mod tests {
                 episode_count: 2,
                 unstructured_l1: 1,
                 structured_total: 1,
+                anchored_records: 7,
+                pinned_records: 7,
                 text_index: IndexStatus {
                     name: "text".to_string(),
                     status: "pending".to_string(),
@@ -396,7 +423,12 @@ mod tests {
         assert!(parsed.get("provider_runtime").is_none());
         assert!(parsed.get("provider_readiness").is_none());
         assert!(parsed.get("dream_jobs").is_none());
+        assert!(!output.contains("anchored_records"));
         assert_eq!(parsed["diagnostics"]["state"]["episode_count"], 2);
+        assert!(parsed["diagnostics"]["state"]
+            .get("anchored_records")
+            .is_none());
+        assert_eq!(parsed["diagnostics"]["state"]["pinned_records"], 7);
         assert!(parsed["diagnostics"]["provider_runtime"]["statuses"]
             .as_array()
             .expect("expected diagnostics provider_runtime statuses array")

@@ -81,42 +81,50 @@ impl MemoryEngine {
             );
         }
 
-        let mut scored: Vec<Candidate> = candidates
-            .into_values()
-            .map(|mut candidate| {
-                let recency = recency_boost(candidate.memory.activity_at());
-                if recency > 0.0 {
-                    candidate.score += recency;
-                    candidate.reasons.push(RecallReason::RecencyBoost);
+        let mut scored = Vec::new();
+        for mut candidate in candidates.into_values() {
+            let recency = recency_boost(candidate.memory.activity_at());
+            if recency > 0.0 {
+                candidate.score += recency;
+                candidate.reasons.push(RecallReason::RecencyBoost);
+            }
+            let working_boost = working_set_boost(
+                &candidate.memory,
+                &active_subjects,
+                &recent_memory_ids,
+                &request.query,
+            );
+            if working_boost > 0.0 {
+                candidate.score += working_boost;
+                candidate.reasons.push(RecallReason::WorkingSet);
+            }
+            let layer_boost = gated_layer_boost(&request.query, &candidate.memory);
+            if layer_boost > 0.0 {
+                candidate.score += layer_boost;
+                candidate.reasons.push(RecallReason::LayerBoost);
+            }
+            let frequency_boost = hit_frequency_boost(candidate.memory.hit_count());
+            if frequency_boost > 0.0 {
+                candidate.score += frequency_boost;
+                candidate.reasons.push(RecallReason::HitFrequencyBoost);
+            }
+            if self
+                .db
+                .is_pinned(candidate.memory.kind(), candidate.memory.id())?
+            {
+                let boost = pinned_boost(&request.query, &candidate.memory);
+                if boost > 0.0 {
+                    candidate.score += boost;
+                    candidate.reasons.push(RecallReason::Pinned);
                 }
-                let working_boost = working_set_boost(
-                    &candidate.memory,
-                    &active_subjects,
-                    &recent_memory_ids,
-                    &request.query,
-                );
-                if working_boost > 0.0 {
-                    candidate.score += working_boost;
-                    candidate.reasons.push(RecallReason::WorkingSet);
-                }
-                let layer_boost = gated_layer_boost(&request.query, &candidate.memory);
-                if layer_boost > 0.0 {
-                    candidate.score += layer_boost;
-                    candidate.reasons.push(RecallReason::LayerBoost);
-                }
-                let frequency_boost = hit_frequency_boost(candidate.memory.hit_count());
-                if frequency_boost > 0.0 {
-                    candidate.score += frequency_boost;
-                    candidate.reasons.push(RecallReason::HitFrequencyBoost);
-                }
-                candidate.score += answer_shape_boost(&request.query, &candidate.memory);
-                candidate.score += subject_coverage_boost(&request.query, &candidate.memory);
-                if has_subject_mismatch(&request.query, &candidate.memory) {
-                    candidate.reasons.push(RecallReason::SubjectMismatch);
-                }
-                candidate
-            })
-            .collect();
+            }
+            candidate.score += answer_shape_boost(&request.query, &candidate.memory);
+            candidate.score += subject_coverage_boost(&request.query, &candidate.memory);
+            if has_subject_mismatch(&request.query, &candidate.memory) {
+                candidate.reasons.push(RecallReason::SubjectMismatch);
+            }
+            scored.push(candidate);
+        }
         scored.sort_by(|a, b| b.score.total_cmp(&a.score));
         let total_candidates = scored.len();
         let capabilities = recall_capabilities(&scored);
