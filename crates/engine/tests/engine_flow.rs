@@ -518,6 +518,198 @@ fn recall_skips_query_embedding_when_vector_index_is_empty() -> Result<()> {
 }
 
 #[test]
+fn recall_reports_local_capabilities_and_actual_candidate_count() -> Result<()> {
+    let temp = TempDir::new()?;
+    let engine = open_engine(temp.path())?;
+    engine.remember(EpisodeInput {
+        content: "Riverbank Robotics builds warehouse drone telemetry systems.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Riverbank Robotics maintains warehouse drone batteries.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.remember(EpisodeInput {
+        content: "Riverbank Robotics tests warehouse drone charging docks.".to_string(),
+        layer: MemoryLayer::L1,
+        entities: Vec::new(),
+        facts: Vec::new(),
+        source_episode_id: None,
+        session_id: None,
+        recorded_at: None,
+        confidence: 0.9,
+    })?;
+    engine.restore(RestoreScope::Text)?;
+
+    let result = engine.recall(RecallRequest {
+        query: "Riverbank Robotics drone".to_string(),
+        limit: 1,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    assert_eq!(result.provider_calls, 0);
+    assert!(result.capabilities.l1);
+    assert!(!result.capabilities.l2);
+    assert!(!result.capabilities.l3);
+    assert!(!result.capabilities.vector);
+    assert!(result.capabilities.text);
+    assert!(result.capabilities.working_set);
+    assert_eq!(result.results.len(), 1);
+    assert!(
+        result.total_candidates >= 3,
+        "total_candidates should report the pre-selection candidate pool"
+    );
+    Ok(())
+}
+
+#[test]
+fn recall_uses_persisted_working_set_after_reopen() -> Result<()> {
+    let temp = TempDir::new()?;
+    let (topic_id, explicit_id) = {
+        let engine = open_engine(temp.path())?;
+        let topic_id = engine.remember(EpisodeInput {
+            content: "Riverbank Robotics designs shared fleet telemetry.".to_string(),
+            layer: MemoryLayer::L1,
+            entities: Vec::new(),
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: None,
+            recorded_at: None,
+            confidence: 0.9,
+        })?;
+        let explicit_id = engine.remember(EpisodeInput {
+            content: "Harbor Analytics documents shared fleet telemetry.".to_string(),
+            layer: MemoryLayer::L1,
+            entities: Vec::new(),
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: None,
+            recorded_at: None,
+            confidence: 0.9,
+        })?;
+        engine.restore(RestoreScope::Text)?;
+        let first = engine.recall(RecallRequest {
+            query: "Riverbank Robotics".to_string(),
+            limit: 1,
+            deep: false,
+            include_related_records: false,
+        })?;
+        assert!(first.results.iter().any(
+            |item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == topic_id)
+        ));
+        (topic_id, explicit_id)
+    };
+
+    let reopened = open_engine(temp.path())?;
+    let result = reopened.recall(RecallRequest {
+        query: "Harbor Analytics shared fleet telemetry".to_string(),
+        limit: 3,
+        deep: false,
+        include_related_records: false,
+    })?;
+
+    let topic = result
+        .results
+        .iter()
+        .find(|item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == topic_id))
+        .expect("expected recalled topic episode");
+    assert!(topic
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::WorkingSet)));
+    let explicit = result
+        .results
+        .iter()
+        .find(|item| {
+            matches!(&item.memory, MemoryRecord::Episode(record) if record.id == explicit_id)
+        })
+        .expect("expected explicitly matching episode");
+    assert!(explicit.score >= topic.score);
+    assert!(result.capabilities.working_set);
+    Ok(())
+}
+
+#[test]
+fn pure_working_set_recall_does_not_refresh_persisted_heat() -> Result<()> {
+    let temp = TempDir::new()?;
+    let (topic_id, topic_working_set_at) = {
+        let engine = open_engine(temp.path())?;
+        let topic_id = engine.remember(EpisodeInput {
+            content: "Riverbank Robotics designs shared fleet telemetry.".to_string(),
+            layer: MemoryLayer::L1,
+            entities: Vec::new(),
+            facts: Vec::new(),
+            source_episode_id: None,
+            session_id: None,
+            recorded_at: None,
+            confidence: 0.9,
+        })?;
+
+        let conn = Connection::open(temp.path().join("memory.db"))?;
+        let topic_working_set_at = conn.query_row(
+            "SELECT working_set_at FROM memory_layers
+             WHERE memory_id = ?1 AND memory_kind = 'episode'",
+            [&topic_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )?;
+        (topic_id, topic_working_set_at)
+    };
+
+    let reopened = open_engine(temp.path())?;
+    let result = reopened.recall(RecallRequest {
+        query: "shared fleet telemetry".to_string(),
+        limit: 3,
+        deep: false,
+        include_related_records: false,
+    })?;
+    let topic = result
+        .results
+        .iter()
+        .find(|item| matches!(&item.memory, MemoryRecord::Episode(record) if record.id == topic_id))
+        .expect("expected recalled topic episode");
+    assert!(topic
+        .reasons
+        .iter()
+        .any(|reason| matches!(reason, RecallReason::WorkingSet)));
+    assert!(topic.reasons.iter().all(|reason| !matches!(
+        reason,
+        RecallReason::L0
+            | RecallReason::L3
+            | RecallReason::Exact
+            | RecallReason::Alias
+            | RecallReason::Bm25
+            | RecallReason::Vector
+            | RecallReason::GraphHop { .. }
+    )));
+
+    let conn = Connection::open(temp.path().join("memory.db"))?;
+    let (hit_count, refreshed_working_set_at): (u64, Option<i64>) = conn.query_row(
+        "SELECT e.hit_count, ml.working_set_at
+         FROM episodes e
+         JOIN memory_layers ml ON ml.memory_id = e.id AND ml.memory_kind = 'episode'
+         WHERE e.id = ?1",
+        [&topic_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(hit_count, 0);
+    assert_eq!(refreshed_working_set_at, topic_working_set_at);
+    Ok(())
+}
+
+#[test]
 fn remember_does_not_call_embedding_provider_by_default() -> Result<()> {
     let temp = TempDir::new()?;
     let calls = Arc::new(AtomicUsize::new(0));

@@ -306,6 +306,61 @@ impl Database {
         transaction.commit()?;
         Ok(())
     }
+
+    pub fn recent_working_set_memory_ids(&self, limit: usize) -> Result<Vec<String>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn.lock().expect("sqlite mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT memory_id
+             FROM memory_layers
+             WHERE working_set_at IS NOT NULL
+               AND status = 'active'
+             ORDER BY working_set_at DESC, updated_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit as i64], |row| row.get::<_, String>(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn recent_working_set_subjects(&self, limit: usize) -> Result<Vec<String>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let records = {
+            let conn = self.conn.lock().expect("sqlite mutex poisoned");
+            let mut stmt = conn.prepare(
+                "SELECT memory_id, memory_kind
+                 FROM memory_layers
+                 WHERE working_set_at IS NOT NULL
+                   AND status = 'active'
+                 ORDER BY working_set_at DESC, updated_at DESC
+                 LIMIT ?1",
+            )?;
+            let rows = stmt.query_map([limit as i64], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+
+        let mut subjects = Vec::new();
+        let mut seen = HashSet::new();
+        for (id, kind) in records {
+            let Some(record) = self.get_active_memory_by_kind(&kind, &id)? else {
+                continue;
+            };
+            for token in working_set_subject_tokens(&record.text_for_ranking()) {
+                if seen.insert(token.clone()) {
+                    subjects.push(token);
+                }
+            }
+        }
+        Ok(subjects)
+    }
+
     pub fn archive_record(&self, kind: &str, id: &str) -> Result<()> {
         let conn = self.conn.lock().expect("sqlite mutex poisoned");
         let table = table_for_kind(kind)?;
@@ -728,4 +783,18 @@ impl Database {
 
         Ok(summary)
     }
+}
+
+fn working_set_subject_tokens(text: &str) -> Vec<String> {
+    normalize_text(text)
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter_map(|token| {
+            let token = token.trim();
+            if token.len() < 3 {
+                None
+            } else {
+                Some(token.to_string())
+            }
+        })
+        .collect()
 }

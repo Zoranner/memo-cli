@@ -29,10 +29,22 @@ pub struct RecallResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecallCapabilities {
+    pub text: bool,
+    pub vector: bool,
+    pub l1: bool,
+    pub l2: bool,
+    pub l3: bool,
+    pub working_set: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecallResultSet {
     pub results: Vec<RecallResult>,
     pub deep_search_used: bool,
     pub total_candidates: usize,
+    pub provider_calls: usize,
+    pub capabilities: RecallCapabilities,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

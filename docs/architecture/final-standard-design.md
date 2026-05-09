@@ -253,7 +253,7 @@ memo-brain 是本地 CLI 记忆引擎。
 
 当前问题：
 
-- 当前 recall 输出还没有稳定展示 `provider_calls=0` 能力位；
+- 当前 recall 输出已稳定展示 `provider_calls=0` 诊断语义；
 - 手工结构化输入仍属于高级入口，普通自然语言结构化依赖后续 `dream`。
 
 最终标准：
@@ -282,7 +282,7 @@ memo-brain 是本地 CLI 记忆引擎。
 当前问题：
 
 - `L0` 是进程内 session cache，不适合作为 CLI 产品语义；
-- 输出还没有稳定展示 `provider_calls=0`、`l1/l2/l3/working_set` 能力位。
+- 输出已稳定展示 `provider_calls=0`、`total_candidates` 和 candidate `capabilities` 诊断语义。
 
 最终标准：
 
@@ -1452,8 +1452,11 @@ text=true vector=true l1=true l2=true l3=true working_set=true provider_calls=0
 
 - `provider_calls` 是本次命令实际调用次数，不是配置状态；
 - 默认 `recall` 中 `provider_calls` 必须恒为 0；
+- `total_candidates` 是去重后的 pre-selection candidate pool，不是底层 raw hits；
+- `capabilities` 是候选池来源能力，不等于最终结果的 `reasons`；
 - `vector=true` 只表示本地 vector index 参与过查询，不表示本次调用了 embedding provider；
 - L1/L2/L3/Working Set 能力位应来自本次查询实际启用的本地来源；
+- `working_set=true` 只表示 Working Set 作为本地上下文候选或加权来源参与，不代表 text/vector index ready；
 - 如果 query 因派生层损坏跳过 text/vector，应同时输出 next action：运行 `dream`。
 
 ## Dream 算法模型
@@ -2068,7 +2071,7 @@ synthetic datasets：
 需要按最终标准收敛的差距：
 
 - 当前 `dream` 的 embedding 职责已进入维护路径，但 provider call 统计输出还不完整；
-- 当前 recall 输出没有稳定展示 `provider_calls=0` 能力位；
+- 当前 recall 输出已稳定展示 `provider_calls=0`、`total_candidates` 和 candidate `capabilities` 诊断语义，后续文档需保持同一契约；
 - 当前 L0/session cache 仍出现在 recall reason；
 - 当前 `anchored_at` 仍保留为兼容字段，对外命名还未完全统一成 Pinned；
 - 当前 Pinned 没有完整 recall 加权语义；

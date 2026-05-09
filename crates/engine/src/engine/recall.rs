@@ -9,7 +9,8 @@ use tracing::debug;
 use crate::{
     db::normalize_text,
     types::{
-        EntityRecord, MemoryRecord, RecallReason, RecallRequest, RecallResult, RecallResultSet,
+        EntityRecord, MemoryRecord, RecallCapabilities, RecallReason, RecallRequest, RecallResult,
+        RecallResultSet,
     },
 };
 

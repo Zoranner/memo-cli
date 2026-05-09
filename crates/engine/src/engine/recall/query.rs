@@ -12,8 +12,8 @@ impl MemoryEngine {
         let graph_limit = if deep { limit * 8 } else { limit * 4 };
         let graph_hops = if deep { 2 } else { 1 };
         let normalized = normalize_text(&request.query);
-        let active_subjects = self.active_working_subjects();
-        let recent_memory_ids = self.recent_working_memory_ids();
+        let active_subjects = self.active_working_subjects()?;
+        let recent_memory_ids = self.recent_working_memory_ids()?;
 
         if let Some(candidate) = self.l0_match(&normalized)? {
             add_candidate(&mut candidates, candidate);
@@ -70,6 +70,17 @@ impl MemoryEngine {
             );
         }
 
+        for memory in self.working_set_candidates(&request.query, &recent_memory_ids)? {
+            add_candidate(
+                &mut candidates,
+                Candidate {
+                    memory,
+                    score: 1.45,
+                    reasons: vec![RecallReason::WorkingSet],
+                },
+            );
+        }
+
         let mut scored: Vec<Candidate> = candidates
             .into_values()
             .map(|mut candidate| {
@@ -107,6 +118,8 @@ impl MemoryEngine {
             })
             .collect();
         scored.sort_by(|a, b| b.score.total_cmp(&a.score));
+        let total_candidates = scored.len();
+        let capabilities = recall_capabilities(&scored);
         if deep {
             filter_candidates_by_query_coverage(&request.query, &mut scored);
         }
@@ -129,9 +142,11 @@ impl MemoryEngine {
             })
             .collect::<Vec<_>>();
         Ok(RecallResultSet {
-            total_candidates: results.len(),
+            total_candidates,
             deep_search_used: deep,
             results,
+            provider_calls: 0,
+            capabilities,
         })
     }
     fn l0_match(&self, normalized_query: &str) -> Result<Option<Candidate>> {
@@ -168,20 +183,98 @@ impl MemoryEngine {
         }
         Ok(result)
     }
-    fn active_working_subjects(&self) -> Vec<String> {
-        self.session
+    fn active_working_subjects(&self) -> Result<Vec<String>> {
+        let mut subjects = self
+            .session
             .lock()
             .expect("session mutex poisoned")
             .active_subjects
-            .clone()
+            .clone();
+        let mut seen = subjects.iter().cloned().collect::<HashSet<_>>();
+        for subject in self.db.recent_working_set_subjects(32)? {
+            if seen.insert(subject.clone()) {
+                subjects.push(subject);
+            }
+        }
+        Ok(subjects)
     }
-    fn recent_working_memory_ids(&self) -> Vec<String> {
-        self.session
+    fn recent_working_memory_ids(&self) -> Result<Vec<String>> {
+        let mut ids = self
+            .session
             .lock()
             .expect("session mutex poisoned")
             .recent_memory_ids
-            .clone()
+            .clone();
+        let mut seen = ids.iter().cloned().collect::<HashSet<_>>();
+        for id in self.db.recent_working_set_memory_ids(32)? {
+            if seen.insert(id.clone()) {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
     }
+    fn working_set_candidates(
+        &self,
+        query: &str,
+        recent_memory_ids: &[String],
+    ) -> Result<Vec<MemoryRecord>> {
+        if recent_memory_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut result = Vec::new();
+        for id in recent_memory_ids.iter().rev().take(16) {
+            let Some(memory) = self.db.get_active_memory(id)? else {
+                continue;
+            };
+            if query_coverage(query, &memory) >= 0.5 {
+                result.push(memory);
+            }
+        }
+        Ok(result)
+    }
+}
+
+fn recall_capabilities(candidates: &[Candidate]) -> RecallCapabilities {
+    let mut capabilities = RecallCapabilities {
+        text: false,
+        vector: false,
+        l1: false,
+        l2: false,
+        l3: false,
+        working_set: false,
+    };
+
+    for candidate in candidates {
+        if candidate
+            .reasons
+            .iter()
+            .any(|reason| matches!(reason, RecallReason::Bm25))
+        {
+            capabilities.text = true;
+        }
+        if candidate
+            .reasons
+            .iter()
+            .any(|reason| matches!(reason, RecallReason::Vector))
+        {
+            capabilities.vector = true;
+        }
+        if candidate
+            .reasons
+            .iter()
+            .any(|reason| matches!(reason, RecallReason::WorkingSet))
+        {
+            capabilities.working_set = true;
+        }
+        match candidate.memory.layer() {
+            crate::types::MemoryLayer::L1 => capabilities.l1 = true,
+            crate::types::MemoryLayer::L2 => capabilities.l2 = true,
+            crate::types::MemoryLayer::L3 => capabilities.l3 = true,
+        }
+    }
+
+    capabilities
 }
 
 fn working_set_boost(
@@ -201,7 +294,7 @@ fn working_set_boost(
     }
     let query_subjects = query_subject_tokens(query);
     for subject in active_subjects.iter().rev().take(12) {
-        if !query_subjects.is_empty() && !query_subjects.contains(subject) {
+        if query_subjects.len() > 2 && !query_subjects.contains(subject) {
             continue;
         }
         if memory_contains_subject(memory, subject) {

@@ -16,7 +16,7 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use memo_engine::{
         DreamReport, EpisodeRecord, FactRecord, IndexStatus, MemoryLayer, MemoryRecord,
-        RecallReason, RecallResult, RecallResultSet, SystemState,
+        RecallCapabilities, RecallReason, RecallResult, RecallResultSet, SystemState,
     };
 
     #[test]
@@ -181,6 +181,15 @@ mod tests {
         let output = render_recall_result(
             &RecallResultSet {
                 total_candidates: 2,
+                provider_calls: 0,
+                capabilities: RecallCapabilities {
+                    text: true,
+                    vector: false,
+                    l1: true,
+                    l2: false,
+                    l3: false,
+                    working_set: true,
+                },
                 deep_search_used: true,
                 results: vec![RecallResult {
                     memory: MemoryRecord::Episode(EpisodeRecord {
@@ -206,8 +215,43 @@ mod tests {
         .expect("expected human recall output");
 
         assert!(output.contains("Recalled 1 item(s)"));
+        assert!(output.contains("from 2 unique pre-selection candidate(s)"));
+        assert!(output.contains("provider_calls=0"));
+        assert!(output.contains(
+            "candidate capabilities: text=true vector=false l1=true l2=false l3=false working_set=true"
+        ));
         assert!(output.contains("[episode:ep-1] score=3.400 layer=L2"));
         assert!(output.contains("reasons: alias, layer_boost"));
+    }
+
+    #[test]
+    fn render_recall_with_json_reports_provider_calls_capabilities_and_candidates() {
+        let output = render_recall_result(
+            &RecallResultSet {
+                total_candidates: 2,
+                provider_calls: 0,
+                capabilities: RecallCapabilities {
+                    text: true,
+                    vector: false,
+                    l1: true,
+                    l2: false,
+                    l3: false,
+                    working_set: true,
+                },
+                deep_search_used: false,
+                results: Vec::new(),
+            },
+            true,
+        )
+        .expect("expected json recall output");
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&output).expect("expected valid json output");
+        assert_eq!(parsed["provider_calls"], 0);
+        assert_eq!(parsed["capabilities"]["text"], true);
+        assert_eq!(parsed["capabilities"]["l1"], true);
+        assert_eq!(parsed["capabilities"]["working_set"], true);
+        assert_eq!(parsed["total_candidates"], 2);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use chrono::{TimeZone, Utc};
 
-use crate::types::{EpisodeRecord, MemoryLayer, MemoryRecord, RecallResult, RecallResultSet};
+use crate::types::{
+    EpisodeRecord, MemoryLayer, MemoryRecord, RecallCapabilities, RecallResult, RecallResultSet,
+};
 
 use super::{session_cache::trim_session_cache, strategy::should_auto_escalate_to_deep_search};
 use crate::engine::SessionCache;
@@ -26,24 +28,60 @@ fn episode_result(score: f32, reasons: Vec<crate::types::RecallReason>) -> Recal
     }
 }
 
+fn result_set(results: Vec<RecallResult>) -> RecallResultSet {
+    RecallResultSet {
+        deep_search_used: false,
+        total_candidates: results.len(),
+        provider_calls: 0,
+        capabilities: RecallCapabilities {
+            text: results.iter().any(|result| {
+                result
+                    .reasons
+                    .iter()
+                    .any(|reason| matches!(reason, crate::types::RecallReason::Bm25))
+            }),
+            vector: results.iter().any(|result| {
+                result
+                    .reasons
+                    .iter()
+                    .any(|reason| matches!(reason, crate::types::RecallReason::Vector))
+            }),
+            l1: results
+                .iter()
+                .any(|result| result.memory.layer() == MemoryLayer::L1),
+            l2: results
+                .iter()
+                .any(|result| result.memory.layer() == MemoryLayer::L2),
+            l3: results
+                .iter()
+                .any(|result| result.memory.layer() == MemoryLayer::L3),
+            working_set: results.iter().any(|result| {
+                result
+                    .reasons
+                    .iter()
+                    .any(|reason| matches!(reason, crate::types::RecallReason::WorkingSet))
+            }),
+        },
+        results,
+    }
+}
+
 #[test]
 fn weak_single_candidate_can_trigger_deep_search() {
-    let result = RecallResultSet {
-        deep_search_used: false,
-        total_candidates: 1,
-        results: vec![episode_result(0.72, vec![crate::types::RecallReason::Bm25])],
-    };
+    let result = result_set(vec![episode_result(
+        0.72,
+        vec![crate::types::RecallReason::Bm25],
+    )]);
 
     assert!(should_auto_escalate_to_deep_search(&result));
 }
 
 #[test]
 fn decisive_exact_hit_stays_on_fast_path() {
-    let result = RecallResultSet {
-        deep_search_used: false,
-        total_candidates: 1,
-        results: vec![episode_result(3.2, vec![crate::types::RecallReason::Exact])],
-    };
+    let result = result_set(vec![episode_result(
+        3.2,
+        vec![crate::types::RecallReason::Exact],
+    )]);
 
     assert!(!should_auto_escalate_to_deep_search(&result));
 }

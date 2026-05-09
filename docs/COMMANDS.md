@@ -93,6 +93,8 @@ memo recall <query> [OPTIONS]
 
 - Default recall reads local memory state and should not require provider calls
 - Output includes `deep_search_used` and per-result `reasons`
+- Recall diagnostics use precise local-search semantics: `provider_calls=0` means no provider was called by this command; `total_candidates` is the unique pre-selection candidate pool, not raw hits; `capabilities` describes candidate pool sources, not necessarily final result `reasons`
+- `working_set` is a local context candidate and weighting source; a Working Set hit does not mean the text or vector index is ready
 
 ---
 

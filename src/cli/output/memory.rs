@@ -10,15 +10,25 @@ pub(crate) fn render_recall_result(result: &RecallResultSet, json: bool) -> Resu
     }
 
     let mut lines = vec![format!(
-        "Recalled {} item(s) from {} candidate(s){}",
+        "Recalled {} item(s) from {} unique pre-selection candidate(s){} provider_calls={}",
         result.results.len(),
         result.total_candidates,
         if result.deep_search_used {
             " with deep recall"
         } else {
             ""
-        }
+        },
+        result.provider_calls
     )];
+    lines.push(format!(
+        "candidate capabilities: text={} vector={} l1={} l2={} l3={} working_set={}",
+        result.capabilities.text,
+        result.capabilities.vector,
+        result.capabilities.l1,
+        result.capabilities.l2,
+        result.capabilities.l3,
+        result.capabilities.working_set,
+    ));
 
     for (index, item) in result.results.iter().enumerate() {
         lines.push(format!(

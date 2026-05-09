@@ -5,6 +5,7 @@ impl MemoryEngine {
         let normalized_query = normalize_text(query);
         let memories = results
             .iter()
+            .filter(|result| has_retrieval_evidence(result))
             .map(|result| result.memory.clone())
             .collect::<Vec<_>>();
         let _ = self.db.increment_hit_counts(&memories);
@@ -76,6 +77,21 @@ impl MemoryEngine {
         trim_session_cache(&mut session);
         Ok(())
     }
+}
+
+fn has_retrieval_evidence(result: &RecallResult) -> bool {
+    result.reasons.iter().any(|reason| {
+        matches!(
+            reason,
+            RecallReason::L0
+                | RecallReason::L3
+                | RecallReason::Exact
+                | RecallReason::Alias
+                | RecallReason::Bm25
+                | RecallReason::Vector
+                | RecallReason::GraphHop { .. }
+        )
+    })
 }
 
 fn push_unique_recent(target: &mut Vec<String>, value: String) {
