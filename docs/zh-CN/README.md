@@ -23,7 +23,7 @@
 | 🔎 **混合检索** | 查询会组合 exact、alias、BM25、vector、graph、recency、layer、hit-frequency 等信号，并可按需进入 deep search |
 | 🧩 **结构化记住** | `memo remember` 接收自然语言 episode，配置 provider 后由 `memo dream` 慢路径补齐历史未结构化内容 |
 | 💤 **dream 工作流** | `memo dream` 负责记忆层级的晋升、冷却、归档、冲突收敛与慢路径结构化整理 |
-| ♻️ **可重建索引** | text 和 vector 索引都是派生层，可以从 SQLite 真相源刷新或全量重建 |
+| ♻️ **派生索引维护** | text 和 vector 索引都是派生层，通过显式 `memo dream` 从 SQLite 真相源维护 |
 | 🌐 **provider 扩展能力** | extraction、embedding 和 rerank 可通过 provider 配置接入 |
 
 ## 🧭 公开命令标准
@@ -40,11 +40,10 @@ Memo 应当通过这套公开动作语言被学习和理解：
 - `memo reflect`
 - `memo dream`
 - `memo state`
-- `memo restore`
 
 ## 🚀 快速开始
 
-### 第一步：一键安装
+### 一键安装
 
 **Windows (PowerShell):**
 ```powershell
@@ -58,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/in
 
 引导脚本从 `master` 分支加载，随后会按当前平台自动下载最新已发布的 GitHub Release，并默认把 `memo` 安装到 `~/.memo/bin`。如需覆盖安装目录，可设置 `MEMO_INSTALL_DIR`。
 
-### 第二步：唤醒本地记忆空间
+### 唤醒本地记忆空间
 
 ```bash
 memo awaken
@@ -69,7 +68,7 @@ memo awaken
 这会初始化 `~/.memo`，并把 `config.toml` 与 `providers.toml` 固定写在那里，同时准备实际使用的数据目录。
 默认数据目录是 `~/.memo/data`；如果想把数据文件放到别处，可通过 `MEMO_DATA_DIR` 或 `~/.memo/config.toml` 中的 `storage.data_dir` 覆盖。
 
-### 第三步：记住并回忆
+### 记住并回忆
 
 ```bash
 memo remember "Alice lives in Paris"
@@ -79,15 +78,14 @@ memo reflect <memory-id>
 
 `memo remember` 会先写入本地真相源。`--entity` 和 `--fact` 仍保留给高级结构化输入，但普通使用可以只写自然语言。`memo recall` 负责回忆相关内容，`memo reflect` 负责查看单条记忆详情。
 
-### 第四步：dream、restore 与 state
+### dream 与 state
 
 ```bash
 memo dream
-memo restore
 memo state
 ```
 
-`memo dream` 会执行一次记忆整理；配置了 provider 时，它也会在慢路径补齐仍未结构化的 episode。如果 extraction 未配置或仍是占位 key，dream 会明确报告这些 episode 仍只能作为文本记忆保留。`memo restore` 用于在需要时恢复派生层。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可重建的派生层。
+`memo dream` 会执行一次记忆整理；配置了 provider 时，它也会在慢路径补齐仍未结构化的 episode。如果 extraction 未配置或仍是占位 key，dream 会明确报告这些 episode 仍只能作为文本记忆保留。`memo dream` 也是公开的 text/vector 派生层维护入口。`memo state` 用于查看当前引擎状态。SQLite 始终是真相源；text 和 vector 索引都是可由它刷新出来的派生层。
 
 `memo state` 会输出记录数量、结构化统计、layer / index 健康度、provider 可用性，以及走过降级路径时最近一次 provider 运行态摘要。
 

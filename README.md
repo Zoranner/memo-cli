@@ -23,7 +23,7 @@
 | 🔎 **Hybrid Retrieval** | Queries combine exact, alias, BM25, vector, graph, recency, layer, and hit-frequency signals with optional deep search |
 | 🧩 **Structured Remembering** | `memo remember` accepts natural-language episodes, while `memo dream` enriches unstructured history through provider-backed extraction when configured |
 | 💤 **Dream Workflows** | `memo dream` promotes, cools, archives, reconciles memory layers, and performs slow-path structural consolidation |
-| ♻️ **Rebuildable Indexes** | Text and vector indexes are derived layers that can be refreshed or rebuilt from SQLite |
+| ♻️ **Derived Index Maintenance** | Text and vector indexes are derived layers maintained from SQLite through explicit `memo dream` runs |
 | 🌐 **Provider-Backed AI Hooks** | Extraction, embedding, and rerank can be wired through provider configuration |
 
 ## 🧭 Public Command Standard
@@ -40,11 +40,10 @@ Memo should be described and learned through this public action language:
 - `memo reflect`
 - `memo dream`
 - `memo state`
-- `memo restore`
 
 ## 🚀 Quick Start
 
-### Step 1: One-Click Install
+### One-Click Install
 
 **Windows (PowerShell):**
 ```powershell
@@ -58,7 +57,7 @@ curl -fsSL https://raw.githubusercontent.com/Zoranner/memo-cli/master/scripts/in
 
 The bootstrap script is loaded from the `master` branch, then downloads the latest published GitHub Release for your platform and installs `memo` into `~/.memo/bin` by default. Override the destination with `MEMO_INSTALL_DIR`.
 
-### Step 2: Awaken a Local Memory Space
+### Awaken a Local Memory Space
 
 ```bash
 memo awaken
@@ -69,7 +68,7 @@ If your current shell has not picked up the updated `PATH` yet, restart it first
 This initializes `~/.memo`, keeps `config.toml` and `providers.toml` there, and prepares the active data directory.
 By default the data directory is `~/.memo/data`. Set `MEMO_DATA_DIR` or `storage.data_dir` in `~/.memo/config.toml` when you need to move the data files elsewhere.
 
-### Step 3: Remember and Recall
+### Remember and Recall
 
 ```bash
 memo remember "Alice lives in Paris"
@@ -79,15 +78,14 @@ memo reflect <memory-id>
 
 `memo remember` writes memory into the local truth source. `--entity` and `--fact` remain available for advanced structured input, but normal use can stay natural-language. `memo recall` retrieves relevant memory, and `memo reflect` inspects one memory record in detail.
 
-### Step 4: Dream, Restore, and Inspect State
+### Dream and Inspect State
 
 ```bash
 memo dream
-memo restore
 memo state
 ```
 
-`memo dream` runs a dream pass over memory layers, including slow-path provider extraction for still-unstructured episodes when configured. If extraction is not configured or still uses a placeholder key, dream reports that those episodes remain text-only. `memo restore` recovers derived layers when needed. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are rebuildable derived layers.
+`memo dream` runs a dream pass over memory layers, including slow-path provider extraction for still-unstructured episodes when configured. If extraction is not configured or still uses a placeholder key, dream reports that those episodes remain text-only. `memo dream` is also the public maintenance entrypoint for derived text/vector layers. `memo state` exposes the current engine state. SQLite remains the truth source; text and vector indexes are derived layers that can be refreshed from it.
 
 `memo state` reports record counts, structure counts, layer/index health, provider readiness, and the latest provider runtime degradation summary when fallback paths were used.
 

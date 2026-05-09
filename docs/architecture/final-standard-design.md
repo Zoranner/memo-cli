@@ -306,7 +306,7 @@ memo-brain 是本地 CLI 记忆引擎。
 - CLI 参数：`id`、`--json`；
 - 通过 `engine.reflect(id)` 读取记录；
 - 输出单条 memory record；
-- 当前未形成持久化 Working Set 写回语义。
+- `engine.reflect(id)` 会把该记录写入持久化 Working Set。
 
 最终标准：
 
@@ -472,13 +472,12 @@ memo-brain 的记忆模型是多轴模型，不是单一 L 轴。
 
 当前实现：
 
-- 目前没有独立持久化 Working Set 字段；
-- recall 有 `WorkingSet` reason，但来源是进程内 `SessionCache`；
-- `SessionCache` 保存 recent aliases、recent topics、active subjects、recent memory ids；
-- `refresh_session_cache` 在 remember 后更新；
-- `record_query_session` 在 recall 后更新；
-- session cache 会 trim；
-- CLI 每次进程结束后该 cache 丢失。
+- `memory_layers` 已有 `working_set_at`；
+- remember 写入 episode、手工 entity/fact 时会记录 Working Set；
+- recall 对最终命中的 active records 写回 Working Set；
+- reflect 查看记录时会写回 Working Set；
+- dream 晋升、归档或失效相关记录时会更新对应活跃视图；
+- 进程内 `SessionCache` 仍存在，用于补充短期最近上下文，但不再是 Working Set 的唯一来源。
 
 最终标准：
 
@@ -500,10 +499,12 @@ memo-brain 的记忆模型是多轴模型，不是单一 L 轴。
 
 当前实现：
 
-- 当前数据库有 `memory_layers.anchored_at`；
-- DB API 有 `anchor_record`、`unanchor_record`、`anchored_record_count`；
-- `state` 展示 anchored count；
-- 当前还没有以 Pinned 名称形成完整 CLI、dream 保护和 recall/state 闭环。
+- `memory_layers` 已有 `pinned_at`、`pinned_reason`，并保留 `anchored_at` 作为兼容字段；
+- schema v4 会把旧 `anchored_at` 兼容迁移到 `pinned_at`；
+- DB API 已有 `pin_record`、`unpin_record`、`pinned_record_count`，旧 `anchor_record`/`unanchor_record` 仍作为兼容桥；
+- engine API 已有 `pin`、`unpin`；
+- dream 已在主要 cooling、archive、invalidate、merge 路径尊重 Pinned；
+- `state` 同时保留 anchored 兼容计数和 Pinned 计数。
 
 最终标准：
 
@@ -857,6 +858,9 @@ CREATE TABLE IF NOT EXISTS memory_layers (
   last_promoted_at INTEGER NULL,
   last_l3_promoted_at INTEGER NULL,
   anchored_at INTEGER NULL,
+  working_set_at INTEGER NULL,
+  pinned_at INTEGER NULL,
+  pinned_reason TEXT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY(memory_id, memory_kind)
@@ -871,7 +875,10 @@ CREATE TABLE IF NOT EXISTS memory_layers (
 - `status`：active/archived/invalidated；
 - `last_promoted_at`：最近晋升时间；
 - `last_l3_promoted_at`：最近进入 L3 时间；
-- `anchored_at`：当前锚定字段，最终收敛为 Pinned；
+- `anchored_at`：旧锚定兼容字段；
+- `working_set_at`：最近活跃横切视图；
+- `pinned_at`：显式保护时间；
+- `pinned_reason`：显式保护原因；
 - `created_at` / `updated_at`：元数据时间。
 
 当前读写：
@@ -880,10 +887,12 @@ CREATE TABLE IF NOT EXISTS memory_layers (
 - `update_layer` 同步业务表 layer 和 memory_layers layer；
 - L3 晋升写 `last_l3_promoted_at`；
 - archive/invalidate 更新 `status`；
-- `anchor_record` / `unanchor_record` 更新 `anchored_at`；
+- `mark_working_set` / `mark_working_set_records` 更新 `working_set_at`；
+- `pin_record` / `unpin_record` 更新 `pinned_at`、`pinned_reason`，并同步旧 `anchored_at` 兼容字段；
+- `anchor_record` / `unanchor_record` 作为兼容桥调用 pin/unpin；
 - `layer_summary` 从该表汇总。
 
-最终目标结构：
+目标结构继续保持：
 
 ```sql
 memory_layers(
@@ -904,9 +913,9 @@ memory_layers(
 
 迁移要求：
 
-- `anchored_at` 迁移或兼容读为 `pinned_at`；
-- 新增 `working_set_at`；
-- 新增 `pinned_reason`；
+- 旧 `anchored_at` 已通过 schema v4 迁移或兼容读为 `pinned_at`；
+- `working_set_at` 已加入 schema v4；
+- `pinned_reason` 已加入 schema v4；
 - 业务表 layer 继续作为查询优化镜像，但权威语义逐步收敛到 `memory_layers`。
 
 最终读写约束：
@@ -1341,7 +1350,7 @@ deep 参数影响：
 - text limit：deep 为 `limit * 12`，非 deep 为 `limit * 6`；
 - graph limit：deep 为 `limit * 8`，非 deep 为 `limit * 4`；
 - graph hops：deep 为 2，非 deep 为 1；
-- deep 后可能 rerank；
+- deep 不现场调用 rerank；
 - deep 后执行 query coverage filtering。
 
 auto deep：
